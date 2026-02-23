@@ -1,5 +1,5 @@
 // Choose base URL depending on environment
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://0.0.0.0:8000/api";
 
 export async function apiFetch<T>(
   path: string,
