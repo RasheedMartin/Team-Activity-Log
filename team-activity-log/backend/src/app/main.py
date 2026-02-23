@@ -5,10 +5,10 @@ from fastapi.staticfiles import StaticFiles
 from .routers.posts import router as posts_router
 from .routers.tags import router as tags_router
 from .routers.users import router as user_router
+import os
 
 app = FastAPI(title="Team Activity Log API")
 
-app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="frontend")
 
 
 origins = [
@@ -31,3 +31,6 @@ app.include_router(posts_router)
 @app.get("/")
 def health_check():
     return {"status": "ok"}
+
+if os.path.exists("frontend/dist"):
+    app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="frontend")
