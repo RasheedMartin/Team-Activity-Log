@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.models import Tags
+from ..models import Tags
 
 router = APIRouter()
 

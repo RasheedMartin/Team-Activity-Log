@@ -1,11 +1,15 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
-from app.routers.posts import router as posts_router
-from app.routers.tags import router as tags_router
-from app.routers.users import router as user_router
+from .routers.posts import router as posts_router
+from .routers.tags import router as tags_router
+from .routers.users import router as user_router
 
 app = FastAPI(title="Team Activity Log API")
+
+app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="frontend")
+
 
 origins = [
     "http://localhost:5173",
