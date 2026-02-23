@@ -22,11 +22,10 @@ import {
 import Placeholder from "@tiptap/extension-placeholder";
 import { useEditor, useEditorState, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useMemo } from "react";
 import { Av } from "./AvatarComponent";
 import { EditorToolbar } from "./EditorToolbar";
 import { ImageAnnotator } from "./ImageAnnotator";
-// import { ImageStrip } from "./ImageStrip";
 import type {
   PostRequest,
   UserData,
@@ -76,13 +75,8 @@ export const PostComposer = ({ onPost, users, tags }: PostComposerProps) => {
     pos: number;
   } | null>(null);
 
-  const [currentUser, setCurrentUser] = useState<UserData>();
-  useEffect(() => {
-    if (users) {
-      const ME = users[0];
-      setCurrentUser(ME);
-    }
-  }, [users]);
+  const currentUser = users ? users[0] : null;
+
   const fileRef = useRef<HTMLInputElement | null>(null);
   // Stable reference — only created once
   const AnnotatableImage = useMemo(

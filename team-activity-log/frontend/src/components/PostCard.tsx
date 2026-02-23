@@ -15,7 +15,7 @@ import {
   timeAgo,
   sBtn,
   mergeCodeBlocks,
-} from "../utilities/TeamLogsUtilities";
+} from "../utilities/helpers";
 import { Av } from "./AvatarComponent";
 import { CommentNode } from "./CommentNode";
 import { ImageAnnotator } from "./ImageAnnotator";
@@ -65,16 +65,11 @@ export const PostCard = forwardRef<HTMLElement, PostCardType>(
     } | null>(null);
     const [collapsed, setCollapsed] = useState(true);
     const COLLAPSE_HEIGHT = 300; // px — enough to show ~2 blocks
-    const [currentUser, setCurrentUser] = useState<UserData>();
-    const [user, setUser] = useState<UserData>();
-    useEffect(() => {
-      if (users) {
-        const value = getUser(users, post.userId);
-        setUser(value);
-        const ME = users[0];
-        setCurrentUser(ME);
-      }
-    }, [users, post.userId]);
+
+    const user = users ? getUser(users, post.userId) : null;
+
+    const currentUser = users ? users[0] : null;
+
     const contentRef = useRef<HTMLDivElement>(null);
     const EMOJIS = ["👍", "❤️", "🔥", "😅", "🎉", "✅"];
     const totalRx = Object.values(post.reactions).reduce(

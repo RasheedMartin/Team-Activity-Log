@@ -1,7 +1,3 @@
-/**
- * ImageAnnotator.jsx
- */
-
 import { useRef, useState, useEffect, useCallback } from "react";
 import {
   Box,
@@ -28,13 +24,41 @@ import {
   AutoFixNormal,
 } from "@mui/icons-material";
 
-const PALETTE = [
-  "#f59e0b", // amber
-  "#ef4444", // red
-  "#22c55e", // green
-  "#3b82f6", // blue
-  "#f472b6", // pink
-  "#a78bfa", // purple
+// ─── TYPES ────────────────────────────────────────────────────────────────────
+
+interface ImageAnnotatorProps {
+  imageSrc: string;
+  onSave: (dataUrl: string) => void;
+  onClose: () => void;
+  onDelete?: (() => void) | undefined;
+}
+
+interface TextPos {
+  x: number;
+  y: number;
+}
+
+interface CanvasSize {
+  w: number;
+  h: number;
+}
+
+interface ToolMeta {
+  key: string;
+  label: string;
+  kbd: string;
+  Icon: React.ElementType;
+}
+
+// ─── CONSTANTS ────────────────────────────────────────────────────────────────
+
+const PALETTE: string[] = [
+  "#f59e0b",
+  "#ef4444",
+  "#22c55e",
+  "#3b82f6",
+  "#f472b6",
+  "#a78bfa",
   "#5f5f5f",
   "#000000",
 ];
@@ -48,9 +72,11 @@ const TOOLS = {
   TEXT: "text",
   HIGHLIGHT: "highlight",
   ERASER: "eraser",
-};
+} as const;
 
-const TOOL_META = [
+type ToolKey = (typeof TOOLS)[keyof typeof TOOLS];
+
+const TOOL_META: ToolMeta[] = [
   { key: TOOLS.PEN, label: "Pen", kbd: "P", Icon: Edit },
   { key: TOOLS.LINE, label: "Line", kbd: "L", Icon: HorizontalRule },
   { key: TOOLS.RECT, label: "Rect", kbd: "R", Icon: Rectangle },
@@ -66,29 +92,39 @@ const TOOL_META = [
   { key: TOOLS.ERASER, label: "Eraser", kbd: "X", Icon: AutoFixNormal },
 ];
 
-export const ImageAnnotator = ({ imageSrc, onSave, onClose, onDelete }) => {
-  const bgRef = useRef(null);
-  const drawRef = useRef(null);
-  const overlayRef = useRef(null);
+const FREEHAND_TOOLS: ToolKey[] = [TOOLS.PEN, TOOLS.HIGHLIGHT, TOOLS.ERASER];
 
-  const [tool, setTool] = useState(TOOLS.PEN);
-  const [color, setColor] = useState("#f59e0b");
-  const [brushSize, setBrushSize] = useState(3);
-  const [opacity, setOpacity] = useState(1);
-  const [textInput, setTextInput] = useState("");
-  const [textPos, setTextPos] = useState(null); // {x,y} for text placement
-  const [history, setHistory] = useState([]); // undo stack (array of ImageData)
-  const [canvasSize, setCanvasSize] = useState({ w: 700, h: 450 });
+// ─── COMPONENT ────────────────────────────────────────────────────────────────
 
-  const isDrawing = useRef(false);
-  const startPos = useRef({ x: 0, y: 0 });
-  const lastPos = useRef({ x: 0, y: 0 });
+export const ImageAnnotator = ({
+  imageSrc,
+  onSave,
+  onClose,
+  onDelete,
+}: ImageAnnotatorProps) => {
+  const bgRef = useRef<HTMLCanvasElement>(null);
+  const drawRef = useRef<HTMLCanvasElement>(null);
+  const overlayRef = useRef<HTMLCanvasElement>(null);
+
+  const [tool, setTool] = useState<ToolKey>(TOOLS.PEN);
+  const [color, setColor] = useState<string>("#f59e0b");
+  const [brushSize, setBrushSize] = useState<number>(3);
+  const [opacity, setOpacity] = useState<number>(1);
+  const [textInput, setTextInput] = useState<string>("");
+  const [textPos, setTextPos] = useState<TextPos | null>(null);
+  const [history, setHistory] = useState<ImageData[]>([]);
+  const [canvasSize, setCanvasSize] = useState<CanvasSize>({ w: 700, h: 450 });
+
+  const isDrawing = useRef<boolean>(false);
+  const startPos = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const lastPos = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   // Refs so canvas callbacks always read current values without stale closures
-  const toolRef = useRef(tool);
-  const colorRef = useRef(color);
-  const opacityRef = useRef(opacity);
-  const brushSizeRef = useRef(brushSize);
+  const toolRef = useRef<ToolKey>(tool);
+  const colorRef = useRef<string>(color);
+  const opacityRef = useRef<number>(opacity);
+  const brushSizeRef = useRef<number>(brushSize);
+
   useEffect(() => {
     toolRef.current = tool;
   }, [tool]);
@@ -102,14 +138,25 @@ export const ImageAnnotator = ({ imageSrc, onSave, onClose, onDelete }) => {
     brushSizeRef.current = brushSize;
   }, [brushSize]);
 
-  // ── Load background ────────────────────────────────────────────────────────
+  // ── Load background ──────────────────────────────────────────────────────
   useEffect(() => {
     const bg = bgRef.current;
-    const ctx = bg.getContext("2d");
+    if (!bg || !drawRef.current || !overlayRef.current) return;
+    const ctx = bg.getContext("2d")!;
+
+    const setSize = (w: number, h: number) => {
+      bg.width = w;
+      bg.height = h;
+      drawRef.current!.width = w;
+      drawRef.current!.height = h;
+      overlayRef.current!.width = w;
+      overlayRef.current!.height = h;
+      setCanvasSize({ w, h });
+    };
+
     if (imageSrc) {
       const img = new window.Image();
       img.onload = () => {
-        // Fit image within max 700x500
         const maxW = 700,
           maxH = 500;
         let w = img.naturalWidth,
@@ -122,36 +169,37 @@ export const ImageAnnotator = ({ imageSrc, onSave, onClose, onDelete }) => {
           w = Math.round((w * maxH) / h);
           h = maxH;
         }
-        setCanvasSize({ w, h });
-        bg.width = w;
-        bg.height = h;
-        drawRef.current.width = w;
-        drawRef.current.height = h;
-        overlayRef.current.width = w;
-        overlayRef.current.height = h;
+        setSize(w, h);
         ctx.drawImage(img, 0, 0, w, h);
       };
       img.src = imageSrc;
     } else {
-      // Blank canvas
-      bg.width = canvasSize.w;
-      bg.height = canvasSize.h;
-      drawRef.current.width = canvasSize.w;
-      drawRef.current.height = canvasSize.h;
-      overlayRef.current.width = canvasSize.w;
-      overlayRef.current.height = canvasSize.h;
+      setSize(canvasSize.w, canvasSize.h);
       ctx.fillStyle = "#0d1117";
       ctx.fillRect(0, 0, canvasSize.w, canvasSize.h);
     }
-  }, [imageSrc]);
+  }, [canvasSize.h, canvasSize.w, imageSrc]);
 
-  // ── Keyboard shortcuts ─────────────────────────────────────────────────────
+  // ── Keyboard shortcuts ───────────────────────────────────────────────────
+  const undo = useCallback(() => {
+    if (!history.length) return;
+    const ctx = drawRef.current!.getContext("2d")!;
+    ctx.putImageData(history[history.length - 1], 0, 0);
+    setHistory((h) => h.slice(0, -1));
+  }, [history]);
+
+  const clearAll = () => {
+    snapshot();
+    const ctx = drawRef.current!.getContext("2d")!;
+    ctx.clearRect(0, 0, drawRef.current!.width, drawRef.current!.height);
+  };
+
   useEffect(() => {
     const map = Object.fromEntries(
-      TOOL_META.map((t) => [t.kbd.toLowerCase(), t.key]),
+      TOOL_META.map((t) => [t.kbd.toLowerCase(), t.key as ToolKey]),
     );
-    const handler = (e) => {
-      if (e.target.tagName === "INPUT") return;
+    const handler = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement).tagName === "INPUT") return;
       if ((e.metaKey || e.ctrlKey) && e.key === "z") {
         e.preventDefault();
         undo();
@@ -162,46 +210,38 @@ export const ImageAnnotator = ({ imageSrc, onSave, onClose, onDelete }) => {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [history]);
+  }, [history, undo]);
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
-  const getPos = (e) => {
-    const r = drawRef.current.getBoundingClientRect();
-    const sx = drawRef.current.width / r.width;
-    const sy = drawRef.current.height / r.height;
-    const src = e.touches?.[0] || e;
-    return { x: (src.clientX - r.left) * sx, y: (src.clientY - r.top) * sy };
+  // ── Helpers ──────────────────────────────────────────────────────────────
+  const getPos = (
+    e: React.MouseEvent | React.TouchEvent,
+  ): { x: number; y: number } => {
+    const canvas = drawRef.current!;
+    const r = canvas.getBoundingClientRect();
+    const sx = canvas.width / r.width;
+    const sy = canvas.height / r.height;
+    const src = (e as React.TouchEvent).touches?.[0] ?? (e as React.MouseEvent);
+    return {
+      x: ((src as Touch | MouseEvent).clientX - r.left) * sx,
+      y: ((src as Touch | MouseEvent).clientY - r.top) * sy,
+    };
   };
 
   const snapshot = () => {
-    const ctx = drawRef.current.getContext("2d");
+    const ctx = drawRef.current!.getContext("2d")!;
     setHistory((h) => [
       ...h.slice(-30),
-      ctx.getImageData(0, 0, drawRef.current.width, drawRef.current.height),
+      ctx.getImageData(0, 0, drawRef.current!.width, drawRef.current!.height),
     ]);
   };
 
-  const undo = useCallback(() => {
-    if (!history.length) return;
-    const ctx = drawRef.current.getContext("2d");
-    ctx.putImageData(history[history.length - 1], 0, 0);
-    setHistory((h) => h.slice(0, -1));
-  }, [history]);
-
-  const clearAll = () => {
-    snapshot();
-    const ctx = drawRef.current.getContext("2d");
-    ctx.clearRect(0, 0, drawRef.current.width, drawRef.current.height);
-  };
-
-  // ── Single applyCtx — reads from refs, no stale closure risk ──────────────
-  const applyCtx = (ctx) => {
+  // ── applyCtx — reads from refs, no stale closure risk ───────────────────
+  const applyCtx = (ctx: CanvasRenderingContext2D) => {
     const t = toolRef.current;
     const c = colorRef.current;
     const o = opacityRef.current;
     const bs = brushSizeRef.current;
 
-    // Always reset first so no settings bleed between tools
     ctx.globalCompositeOperation = "source-over";
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
@@ -226,13 +266,19 @@ export const ImageAnnotator = ({ imageSrc, onSave, onClose, onDelete }) => {
     }
   };
 
-  const resetCtx = (ctx) => {
+  const resetCtx = (ctx: CanvasRenderingContext2D) => {
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = "source-over";
   };
 
-  // ── Shape drawing ──────────────────────────────────────────────────────────
-  const drawArrow = (ctx, x1, y1, x2, y2) => {
+  // ── Shape drawing ────────────────────────────────────────────────────────
+  const drawArrow = (
+    ctx: CanvasRenderingContext2D,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+  ) => {
     const bs = brushSizeRef.current;
     const a = Math.atan2(y2 - y1, x2 - x1);
     const hl = Math.max(12, bs * 5);
@@ -254,7 +300,13 @@ export const ImageAnnotator = ({ imageSrc, onSave, onClose, onDelete }) => {
     ctx.fill();
   };
 
-  const drawShape = (ctx, x1, y1, x2, y2) => {
+  const drawShape = (
+    ctx: CanvasRenderingContext2D,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+  ) => {
     applyCtx(ctx);
     const t = toolRef.current;
     ctx.beginPath();
@@ -284,8 +336,8 @@ export const ImageAnnotator = ({ imageSrc, onSave, onClose, onDelete }) => {
     resetCtx(ctx);
   };
 
-  // ── Pointer events — ONE set, no duplicates ────────────────────────────────
-  const onDown = (e) => {
+  // ── Pointer events ───────────────────────────────────────────────────────
+  const onDown = (e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
     if (toolRef.current === TOOLS.TEXT) {
       setTextPos(getPos(e));
@@ -298,23 +350,21 @@ export const ImageAnnotator = ({ imageSrc, onSave, onClose, onDelete }) => {
     lastPos.current = p;
     snapshot();
 
-    if ([TOOLS.PEN, TOOLS.HIGHLIGHT, TOOLS.ERASER].includes(toolRef.current)) {
-      const ctx = drawRef.current.getContext("2d");
+    if (FREEHAND_TOOLS.includes(toolRef.current)) {
+      const ctx = drawRef.current!.getContext("2d")!;
       applyCtx(ctx);
       ctx.beginPath();
       ctx.moveTo(p.x, p.y);
     }
   };
 
-  const onMove = (e) => {
+  const onMove = (e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
     if (!isDrawing.current) return;
     const p = getPos(e);
 
-    if ([TOOLS.PEN, TOOLS.HIGHLIGHT, TOOLS.ERASER].includes(toolRef.current)) {
-      const ctx = drawRef.current.getContext("2d");
-      // Re-apply every segment — ensures opacity/size changes mid-stroke take effect
-      // and prevents settings from previous tool bleeding through
+    if (FREEHAND_TOOLS.includes(toolRef.current)) {
+      const ctx = drawRef.current!.getContext("2d")!;
       applyCtx(ctx);
       ctx.beginPath();
       ctx.moveTo(lastPos.current.x, lastPos.current.y);
@@ -322,37 +372,42 @@ export const ImageAnnotator = ({ imageSrc, onSave, onClose, onDelete }) => {
       ctx.stroke();
       lastPos.current = p;
     } else {
-      const oCtx = overlayRef.current.getContext("2d");
-      oCtx.clearRect(0, 0, overlayRef.current.width, overlayRef.current.height);
+      const oCtx = overlayRef.current!.getContext("2d")!;
+      oCtx.clearRect(
+        0,
+        0,
+        overlayRef.current!.width,
+        overlayRef.current!.height,
+      );
       drawShape(oCtx, startPos.current.x, startPos.current.y, p.x, p.y);
     }
   };
 
-  const onUp = (e) => {
+  const onUp = (e: React.MouseEvent | React.TouchEvent) => {
     if (!isDrawing.current) return;
     isDrawing.current = false;
     const p = getPos(e);
 
-    if (![TOOLS.PEN, TOOLS.HIGHLIGHT, TOOLS.ERASER].includes(toolRef.current)) {
+    if (!FREEHAND_TOOLS.includes(toolRef.current)) {
       drawShape(
-        drawRef.current.getContext("2d"),
+        drawRef.current!.getContext("2d")!,
         startPos.current.x,
         startPos.current.y,
         p.x,
         p.y,
       );
-      overlayRef.current
-        .getContext("2d")
-        .clearRect(0, 0, overlayRef.current.width, overlayRef.current.height);
+      overlayRef
+        .current!.getContext("2d")!
+        .clearRect(0, 0, overlayRef.current!.width, overlayRef.current!.height);
     }
-    resetCtx(drawRef.current.getContext("2d"));
+    resetCtx(drawRef.current!.getContext("2d")!);
   };
 
-  // ── Text ───────────────────────────────────────────────────────────────────
+  // ── Text ─────────────────────────────────────────────────────────────────
   const commitText = () => {
     if (!textInput.trim() || !textPos) return;
     snapshot();
-    const ctx = drawRef.current.getContext("2d");
+    const ctx = drawRef.current!.getContext("2d")!;
     ctx.font = `${brushSizeRef.current * 6 + 10}px 'IBM Plex Sans', sans-serif`;
     ctx.fillStyle = colorRef.current;
     ctx.globalAlpha = opacityRef.current;
@@ -362,14 +417,14 @@ export const ImageAnnotator = ({ imageSrc, onSave, onClose, onDelete }) => {
     setTextInput("");
   };
 
-  // ── Save ───────────────────────────────────────────────────────────────────
+  // ── Save ──────────────────────────────────────────────────────────────────
   const handleSave = () => {
     const out = document.createElement("canvas");
-    out.width = bgRef.current.width;
-    out.height = bgRef.current.height;
-    const ctx = out.getContext("2d");
-    ctx.drawImage(bgRef.current, 0, 0);
-    ctx.drawImage(drawRef.current, 0, 0);
+    out.width = bgRef.current!.width;
+    out.height = bgRef.current!.height;
+    const ctx = out.getContext("2d")!;
+    ctx.drawImage(bgRef.current!, 0, 0);
+    ctx.drawImage(drawRef.current!, 0, 0);
     onSave(out.toDataURL("image/png"));
     onClose();
   };
@@ -377,6 +432,7 @@ export const ImageAnnotator = ({ imageSrc, onSave, onClose, onDelete }) => {
   const cursor =
     tool === TOOLS.TEXT ? "text" : tool === TOOLS.ERASER ? "cell" : "crosshair";
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <Box
       sx={{
@@ -474,7 +530,7 @@ export const ImageAnnotator = ({ imageSrc, onSave, onClose, onDelete }) => {
               <Tooltip key={key} title={`${label} (${kbd})`}>
                 <IconButton
                   size="small"
-                  onClick={() => setTool(key)}
+                  onClick={() => setTool(key as ToolKey)}
                   sx={{
                     borderRadius: 1,
                     bgcolor: tool === key ? "primary.main" : "transparent",
@@ -490,7 +546,8 @@ export const ImageAnnotator = ({ imageSrc, onSave, onClose, onDelete }) => {
               </Tooltip>
             ))}
           </Stack>
-          <Divider flexItem orientation="vertical" background="black" />
+
+          <Divider flexItem orientation="vertical" />
 
           <Stack direction="row" gap={0.5} alignItems="center">
             {PALETTE.map((c) => (
@@ -514,7 +571,8 @@ export const ImageAnnotator = ({ imageSrc, onSave, onClose, onDelete }) => {
             ))}
           </Stack>
 
-          <Divider flexItem orientation="vertical" background="black" />
+          <Divider flexItem orientation="vertical" />
+
           <Stack
             direction="row"
             alignItems="center"
@@ -533,7 +591,7 @@ export const ImageAnnotator = ({ imageSrc, onSave, onClose, onDelete }) => {
               min={1}
               max={20}
               value={brushSize}
-              onChange={(_, v) => setBrushSize(v)}
+              onChange={(_, v) => setBrushSize(v as number)}
               sx={{ width: 70, color: "primary.main" }}
             />
             <Typography
@@ -564,7 +622,7 @@ export const ImageAnnotator = ({ imageSrc, onSave, onClose, onDelete }) => {
               max={1}
               step={0.05}
               value={opacity}
-              onChange={(_, v) => setOpacity(v)}
+              onChange={(_, v) => setOpacity(v as number)}
               sx={{ width: 70, color: "primary.main" }}
             />
             <Typography
@@ -663,7 +721,7 @@ export const ImageAnnotator = ({ imageSrc, onSave, onClose, onDelete }) => {
             <Typography
               key={kbd}
               variant="caption"
-              color="text.enabled"
+              color="text.disabled"
               sx={{ fontFamily: "monospace" }}
             >
               <Box

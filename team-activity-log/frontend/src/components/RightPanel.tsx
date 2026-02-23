@@ -4,7 +4,7 @@ import {
   countComments,
   getUser,
   timeAgo,
-} from "../utilities/TeamLogsUtilities";
+} from "../utilities/helpers";
 import { Av } from "./AvatarComponent";
 import type {
   CommentType,
