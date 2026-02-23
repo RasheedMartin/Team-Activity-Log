@@ -5,6 +5,10 @@ FROM node:20-alpine AS frontend-build
 
 WORKDIR /app/frontend
 
+# Declare build arg
+ARG VITE_API_URL
+ENV VITE_API_URL=$VITE_API_URL
+
 # Install frontend dependencies
 COPY frontend/package*.json ./
 RUN npm install
@@ -35,3 +39,5 @@ EXPOSE 8000
 
 # Start FastAPI
 CMD ["uvicorn", "src.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+VITE_API_URL=http://0.0.0.0:8000/api
