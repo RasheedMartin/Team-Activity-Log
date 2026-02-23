@@ -11,9 +11,9 @@ import type {
   TagsType,
   UserData,
 } from "../interfaces/TeamActivityLogInterfaces";
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { Clear } from "@mui/icons-material";
-import { sBtn } from "../utilities/TeamLogsUtilities";
+import { sBtn } from "../utilities/helpers";
 
 interface LeftSidebarType {
   filterUser: number | null;
@@ -40,19 +40,15 @@ export const LeftPanel = ({
   search,
   setSearch,
 }: LeftSidebarType) => {
-  const [tagCounts, setTagCount] = useState<Record<string, number>>();
   const activeFilters = filterTags.length + (filterUser ? 1 : 0);
 
-  useEffect(() => {
-    if (tags && posts) {
-      const tagCount = tags
-        ? tags.reduce<Record<string, number>>((acc, t) => {
-            acc[t.label] = posts.filter((p) => p.tags.includes(t.label)).length;
-            return acc;
-          }, {})
-        : {};
-      setTagCount(tagCount);
-    }
+  const tagCounts = useMemo(() => {
+    if (!tags || !posts) return {};
+
+    return tags.reduce<Record<string, number>>((acc, t) => {
+      acc[t.label] = posts.filter((p) => p.tags.includes(t.label)).length;
+      return acc;
+    }, {});
   }, [tags, posts]);
 
   return (

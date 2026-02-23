@@ -2,8 +2,8 @@ import { ThemeProvider } from "@emotion/react";
 import { CssBaseline, Box, GlobalStyles } from "@mui/material";
 
 import { useEffect, useRef, useState } from "react";
-import { mkComment } from "../utilities/TeamLogsUtilities";
-import { addReplyToTree, theme } from "../utilities/TeamLogsUtilities";
+import { mkComment } from "../utilities/helpers";
+import { addReplyToTree } from "../utilities/helpers";
 import { LeftPanel } from "../components/LeftPanel";
 import { PostCard } from "../components/PostCard";
 import { RightPanel } from "../components/RightPanel";
@@ -16,10 +16,10 @@ import type {
 } from "../interfaces/TeamActivityLogInterfaces";
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "../api/client";
+import { theme } from "../utilities/theme";
 
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 export const TeamActivityLog = () => {
-  const [newPosts, setNewPost] = useState<PostType[]>();
   const [search, setSearch] = useState<string>("");
   const [filterUser, setFilterUser] = useState<number | null>(null);
   const [filterTags, setFilterTags] = useState<string[]>([]);
@@ -27,36 +27,32 @@ export const TeamActivityLog = () => {
   const [commentRx, setCommentRx] = useState<CommentReactType>({});
   const postRefs = useRef<Record<number, HTMLElement | null>>({});
 
-  const {
-    data: users,
-    isPending: usersIsPending,
-    error: usersError,
-  } = useQuery({
+  const { data: users } = useQuery({
     queryKey: ["users"],
     queryFn: () => apiFetch<UserData[]>("/users"),
   });
-  const {
-    data: tags,
-    isPending: tagsPending,
-    error: tagsError,
-  } = useQuery({
+  const { data: tags } = useQuery({
     queryKey: ["tags"],
     queryFn: () => apiFetch<TagsType[]>("/tags"),
   });
-  const {
-    data: posts,
-    isPending: postsPending,
-    error: postsError,
-  } = useQuery({
+  const { data: posts } = useQuery({
     queryKey: ["posts"],
     queryFn: () => apiFetch<PostType[]>("/posts"),
   });
 
   const ME = users?.[0];
 
+  const [newPosts, setNewPost] = useState<PostType[]>(() => posts ?? []);
+
+  const didInit = useRef(false);
+
   useEffect(() => {
-    if (posts) {
+    if (!posts) return;
+
+    if (!didInit.current) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setNewPost(posts);
+      didInit.current = true;
     }
   }, [posts]);
 
@@ -342,7 +338,7 @@ export const TeamActivityLog = () => {
               setFilterUser={setFilterUser}
               filterTags={filterTags}
               toggleTag={toggleTag}
-              posts={posts}
+              posts={newPosts}
               users={users}
               tags={tags}
               search={search}

@@ -2,7 +2,7 @@ import { Avatar } from "@mui/material";
 import type { UserData } from "../interfaces/TeamActivityLogInterfaces";
 
 export interface AvatarProps {
-  user?: UserData;
+  user: UserData | null;
   size: number;
 }
 

@@ -1,7 +1,7 @@
 import { Box } from "@mui/material";
 import { useState } from "react";
 import { Av } from "./AvatarComponent";
-import { sBtn } from "../utilities/TeamLogsUtilities";
+import { sBtn } from "../utilities/helpers";
 import type { UserData } from "../interfaces/TeamActivityLogInterfaces";
 
 export interface ReplyBoxProps {

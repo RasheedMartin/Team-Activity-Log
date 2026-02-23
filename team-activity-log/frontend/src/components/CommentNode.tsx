@@ -1,7 +1,7 @@
 import { Box } from "@mui/material";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ReplyBox } from "./ReplyBox";
-import { getUser, timeAgo } from "../utilities/TeamLogsUtilities";
+import { getUser, timeAgo } from "../utilities/helpers";
 import { Av } from "./AvatarComponent";
 import type {
   CommentType,
@@ -39,14 +39,9 @@ export const CommentNode = ({
   const indent = depth * 20;
   const rxs = reactions?.[comment.id] || {};
   const totalRx = Object.values(rxs).reduce((a, b) => a + b.length, 0);
-  const [user, setUser] = useState<UserData>();
 
-  useEffect(() => {
-    if (users) {
-      const value = getUser(users, comment.userId);
-      setUser(value);
-    }
-  }, [users, comment.userId]);
+  const user = users ? getUser(users, comment.userId) : null;
+
   return (
     <Box style={{ marginLeft: indent, marginTop: depth === 0 ? 10 : 6 }}>
       {/* Thread line */}
