@@ -28,7 +28,7 @@ app.include_router(user_router)
 app.include_router(tags_router)
 app.include_router(posts_router)
 
-@app.get("/")
+@app.get("/health")
 def health_check():
     return {"status": "ok"}
 
