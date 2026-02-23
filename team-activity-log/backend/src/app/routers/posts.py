@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 
 from fastapi import APIRouter
 
-from app.models import Posts
+from ..models import Posts
 
 router = APIRouter()
 
