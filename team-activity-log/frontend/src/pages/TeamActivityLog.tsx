@@ -466,6 +466,9 @@ export const TeamActivityLog = () => {
                     postRefs.current[post.id] = el;
                   }}
                   setOpenPanel={setOpenPanel}
+                  isMobile={isMobile}
+                  isTablet={isTablet}
+                  setRightOpen={setRightOpen}
                 />
               ))
             )}
@@ -493,6 +496,8 @@ export const TeamActivityLog = () => {
                 openPanel={openPanel}
                 setOpenPanel={setOpenPanel}
                 setFocusedPostId={setFocusedPostId}
+                isMobile={isMobile}
+                isTablet={isTablet}
               />
             </Box>
           ) : (
@@ -550,6 +555,8 @@ export const TeamActivityLog = () => {
                   openPanel={openPanel}
                   setOpenPanel={setOpenPanel}
                   setFocusedPostId={setFocusedPostId}
+                  isMobile={isMobile}
+                  isTablet={isTablet}
                 />
               </Box>
             </Drawer>
