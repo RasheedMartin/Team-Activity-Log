@@ -50,23 +50,13 @@ export interface PostType {
   userId: number;
   timestamp: Date;
   tags: string[];
-  reactions: Record<string, number[]>;
   comments: CommentType[];
   blocks: BlockType[];
+  title: string;
 }
 
-export type CommentReactType = Record<
-  number, // postId
-  Record<
-    number, // commentId
-    Record<
-      string, // emoji
-      number[] // array of userIds
-    >
-  >
->;
-
 export interface PostRequest {
+  title: string;
   blocks: BlockType[];
   tags: string[];
 }
@@ -74,3 +64,11 @@ export interface PostRequest {
 export type ComposerBlock =
   | { id: string; type: "text"; content: string }
   | { id: string; type: "image"; src: string };
+
+export type OpenPanel =
+  | "composer"
+  | "stats"
+  | "comments"
+  | "posts"
+  | "fullpost"
+  | null;

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Annotated, Dict, List, Literal, Union
+from typing import Annotated, List, Literal, Union
 
 from pydantic import BaseModel, Field
 
@@ -49,14 +49,15 @@ class Posts(BaseModel):
     userId: int
     timestamp: datetime
     tags: List[str]
-    reactions: Dict[str, List[int]]
     comments: List[Comments]
-    blocks: List[Block]              
+    blocks: List[Block]  
+    title: str
+            
 
-CommentReactions = Dict[int, Dict[int, Dict[str, List[int]]]]
 
 class PostRequest(BaseModel):
     blocks: List[Block]         
     tags: List[str]
+    title: str
 
 

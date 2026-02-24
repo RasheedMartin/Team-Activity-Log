@@ -12,14 +12,6 @@ interface CommentNodeProps {
   comment: CommentType;
   depth: number;
   onReply: (parentId: number, text: string) => void;
-  reactions: Record<
-    number, // commentId
-    Record<
-      string, // emoji
-      number[] // array of userIds
-    >
-  >;
-  onReact: (cid: number, e: string) => void;
   users: UserData[];
 }
 
@@ -28,8 +20,6 @@ export const CommentNode = ({
   comment,
   depth = 0,
   onReply,
-  reactions,
-  onReact,
   users,
 }: CommentNodeProps) => {
   const ME = users[0];
@@ -37,8 +27,6 @@ export const CommentNode = ({
   const [replying, setReplying] = useState(false);
   const hasReplies = comment.replies?.length > 0;
   const indent = depth * 20;
-  const rxs = reactions?.[comment.id] || {};
-  const totalRx = Object.values(rxs).reduce((a, b) => a + b.length, 0);
 
   const user = users ? getUser(users, comment.userId) : null;
 
@@ -111,35 +99,7 @@ export const CommentNode = ({
                 }}
               >
                 {/* Inline reactions */}
-                {totalRx > 0 &&
-                  Object.entries(rxs)
-                    .filter(([, a]) => a.length > 0)
-                    .map(([e, a]) => (
-                      <button
-                        key={e}
-                        onClick={() => onReact(comment.id, e)}
-                        style={{
-                          background: ME
-                            ? a.includes(ME.id)
-                              ? "#f59e0b18"
-                              : "transparent"
-                            : "transparent",
-                          border: `1px solid ${ME ? (a.includes(ME.id) ? "#f59e0b44" : "#ffffff10") : "#ffffff10"}`,
-                          borderRadius: 12,
-                          padding: "1px 7px",
-                          cursor: "pointer",
-                          fontSize: ".72rem",
-                          color: ME
-                            ? a.includes(ME.id)
-                              ? "#f59e0b"
-                              : "#64748b"
-                            : "#64748b",
-                          fontFamily: "inherit",
-                        }}
-                      >
-                        {e} {a.length}
-                      </button>
-                    ))}
+
                 <button
                   onClick={() => setReplying(!replying)}
                   style={{
@@ -195,8 +155,6 @@ export const CommentNode = ({
                   comment={r}
                   depth={depth + 1}
                   onReply={onReply}
-                  reactions={reactions}
-                  onReact={onReact}
                   users={users}
                 />
               ))}

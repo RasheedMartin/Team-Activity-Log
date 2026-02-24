@@ -34,7 +34,7 @@ import type {
 } from "../interfaces/TeamActivityLogInterfaces";
 
 interface PostComposerProps {
-  onPost: ({ blocks, tags }: PostRequest) => void;
+  onPost: ({ title, blocks, tags }: PostRequest) => void;
   users?: UserData[];
   tags?: TagsType[];
 }
@@ -67,7 +67,7 @@ const createAnnotatableImage = (
 // ─── POST COMPOSER ────────────────────────────────────────────────────────────
 export const PostComposer = ({ onPost, users, tags }: PostComposerProps) => {
   const [open, setOpen] = useState(false);
-
+  const [title, setTitle] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagAnchor, setTagAnchor] = useState<HTMLDivElement | null>(null);
   const [annotatingImg, setAnnotatingImg] = useState<{
@@ -166,7 +166,8 @@ export const PostComposer = ({ onPost, users, tags }: PostComposerProps) => {
       }
     });
 
-    onPost({ blocks: blocks, tags: selectedTags });
+    onPost({ title: title.trim(), blocks, tags: selectedTags });
+    setTitle("");
 
     editor.commands.clearContent();
     setSelectedTags([]);
@@ -217,6 +218,28 @@ export const PostComposer = ({ onPost, users, tags }: PostComposerProps) => {
           >
             <EditorToolbar editor={editor} />
           </Stack>
+          {/* Title */}
+          <Box sx={{ px: 2, pt: 1 }}>
+            <Typography
+              component="input"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Title (optional)"
+              sx={{
+                width: "100%",
+                border: "none",
+                outline: "none",
+                bgcolor: "transparent",
+                fontSize: "1.1rem",
+                fontWeight: 600,
+                color: "text.primary",
+                "::placeholder": {
+                  color: "text.secondary",
+                  fontWeight: 400,
+                },
+              }}
+            />
+          </Box>
           <Divider />
         </Box>
         {/* Editor area */}
