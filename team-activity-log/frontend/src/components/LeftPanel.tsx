@@ -26,6 +26,8 @@ interface LeftSidebarType {
   tags?: TagsType[];
   search: string;
   setSearch: React.Dispatch<React.SetStateAction<string>>;
+  isMobile: boolean;
+  isTablet: boolean;
 }
 // ─── LEFT SIDEBAR ─────────────────────────────────────────────────────────────
 export const LeftPanel = ({
@@ -39,6 +41,8 @@ export const LeftPanel = ({
   tags,
   search,
   setSearch,
+  isMobile,
+  isTablet,
 }: LeftSidebarType) => {
   const activeFilters = filterTags.length + (filterUser ? 1 : 0);
 
@@ -83,32 +87,34 @@ export const LeftPanel = ({
             alignItems: "center",
           }}
         >
-          <Box style={{ flexShrink: 0 }}>
-            <Box
-              style={{
-                fontFamily: "'IBM Plex Mono',monospace",
-                color: "#f59e0b",
-                fontWeight: 700,
-                letterSpacing: 3,
-                fontSize: ".85rem",
-              }}
-            >
-              TEAM LOG
+          {(isMobile || isTablet) && (
+            <Box style={{ flexShrink: 0 }}>
+              <Box
+                style={{
+                  fontFamily: "'IBM Plex Mono',monospace",
+                  color: "#f59e0b",
+                  fontWeight: 700,
+                  letterSpacing: 3,
+                  fontSize: ".85rem",
+                }}
+              >
+                TEAM LOG
+              </Box>
+              <Box
+                style={{
+                  fontFamily: "monospace",
+                  color: "#334155",
+                  fontSize: ".58rem",
+                }}
+              >
+                {new Date().toLocaleDateString("en-US", {
+                  weekday: "long",
+                  month: "long",
+                  day: "numeric",
+                })}
+              </Box>
             </Box>
-            <Box
-              style={{
-                fontFamily: "monospace",
-                color: "#334155",
-                fontSize: ".58rem",
-              }}
-            >
-              {new Date().toLocaleDateString("en-US", {
-                weekday: "long",
-                month: "long",
-                day: "numeric",
-              })}
-            </Box>
-          </Box>
+          )}
         </Box>
       </Box>
       <Box sx={{ flex: 1, position: "relative", maxWidth: 500, mb: 1 }}>

@@ -8,13 +8,14 @@ import {
 import { Av } from "./AvatarComponent";
 import type {
   CommentType,
+  OpenPanel,
   PostRequest,
   PostType,
   TagsType,
   UserData,
 } from "../interfaces/TeamActivityLogInterfaces";
 import { PostComposer } from "./PostComposer";
-import { useState } from "react";
+import { FullPostPanel } from "./FullPostPanel";
 
 interface RightPanelProps {
   posts?: PostType[];
@@ -22,9 +23,15 @@ interface RightPanelProps {
   handlePost: ({ blocks, tags }: PostRequest) => void;
   tags?: TagsType[];
   onClick: (postId: number) => void;
+  focusedPost?: PostType | null;
+  onClearPost?: () => void;
+  onAddComment: (postId: number, text: string) => void;
+  onAddReply: (postId: number, parentId: number, text: string) => void;
+  onUpdateImage: (postId: number, blockIdx: number, dataUrl: string) => void;
+  openPanel: OpenPanel;
+  setOpenPanel: React.Dispatch<React.SetStateAction<OpenPanel>>;
+  setFocusedPostId: React.Dispatch<React.SetStateAction<number | null>>;
 }
-
-type OpenPanel = "composer" | "stats" | "comments" | "posts" | null;
 
 const SectionHeader = ({
   label,
@@ -76,9 +83,15 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   handlePost,
   tags,
   onClick,
+  focusedPost,
+  onClearPost,
+  onAddComment,
+  onAddReply,
+  onUpdateImage,
+  openPanel,
+  setOpenPanel,
+  setFocusedPostId,
 }) => {
-  const [openPanel, setOpenPanel] = useState<OpenPanel>("composer");
-
   const toggle = (panel: OpenPanel) =>
     setOpenPanel((prev) => (prev === panel ? "composer" : panel));
 
@@ -108,11 +121,11 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   return (
     <aside
       style={{
-        width: 1440,
-        flexShrink: 0,
+        maxWidth: 1400,
         display: "flex",
         flexDirection: "column",
         gap: 10,
+        minWidth: 1300,
       }}
     >
       {/* Composer */}
@@ -220,7 +233,11 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                 return (
                   <Box
                     key={c.id}
-                    onClick={() => onClick(c.postId)}
+                    onClick={() => {
+                      onClick(c.postId);
+                      setFocusedPostId(c.postId);
+                      setOpenPanel("fullpost");
+                    }}
                     style={{
                       display: "flex",
                       gap: 7,
@@ -277,7 +294,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
           </Box>
         </Collapse>
       </Box>
-      {/* Recent comments */}
+      {/* Recent posts */}
       <Box
         style={{
           background: "#171b26",
@@ -299,7 +316,11 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                 return (
                   <Box
                     key={p.id}
-                    onClick={() => onClick(p.id)}
+                    onClick={() => {
+                      onClick(p.id);
+                      setFocusedPostId(p.id);
+                      setOpenPanel("fullpost");
+                    }}
                     style={{
                       display: "flex",
                       gap: 7,
@@ -370,6 +391,36 @@ export const RightPanel: React.FC<RightPanelProps> = ({
           </Box>
         </Collapse>
       </Box>
+      {focusedPost && (
+        <Box
+          style={{
+            background: "#171b26",
+            border: "1px solid #ffffff0c",
+            borderRadius: 10,
+            padding: "14px",
+          }}
+        >
+          <SectionHeader
+            label="FULL POST"
+            isOpen={openPanel === "fullpost"}
+            onClick={() => toggle("fullpost")}
+          />
+          <Collapse in={openPanel === "fullpost"}>
+            <Box style={{ marginTop: 10 }}>
+              {/* ── PINNED FULL POST — always at top when active ── */}
+              <FullPostPanel
+                post={focusedPost}
+                onAddComment={onAddComment}
+                onAddReply={onAddReply}
+                onUpdateImage={onUpdateImage}
+                users={users}
+                tags={tags}
+                onClose={onClearPost ?? (() => {})}
+              />
+            </Box>
+          </Collapse>
+        </Box>
+      )}
     </aside>
   );
 };

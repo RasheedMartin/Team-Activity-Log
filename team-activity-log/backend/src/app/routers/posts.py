@@ -21,7 +21,6 @@ INITIAL_POSTS = [
         "userId": 1,
         "timestamp": mins_ago(14),
         "tags": ["frontend", "design"],
-        "reactions": {"👍": [2, 3], "🔥": [4]},
         "blocks": [
             {
                 "type": "text",
@@ -35,6 +34,7 @@ INITIAL_POSTS = [
 
             },
         ],
+        "title": "Dashboard Migration",
         "comments": [
             {
                 "id": 1,
@@ -101,11 +101,11 @@ INITIAL_POSTS = [
         "userId": 4,
         "timestamp": mins_ago(47),
         "tags": ["infra", "bug", "urgent"],
-        "reactions": {"👍": [1, 3, 5], "😅": [2]},
+        "title": "Production Incident",
         "blocks": [
             {
                 "type": "text",
-                "html": "<p>🚨 Production incident <strong>resolved</strong>. Root cause: memory leak in the background job worker. Under high concurrency the pool wasn't releasing connections.</p>",
+                "html": "<p>Production incident <strong>resolved</strong>. Root cause: memory leak in the background job worker. Under high concurrency the pool wasn't releasing connections.</p>",
                 "position": 0
 
             },
@@ -157,7 +157,7 @@ INITIAL_POSTS = [
                                 "userId": 2,
                                 "postId": 2,
                                 "parentId": 10,
-                                "text": "👍 Assigned myself.",
+                                "text": "Assigned myself.",
                                 "time": mins_ago(28),
                                 "replies": [],
                             }
@@ -172,7 +172,7 @@ INITIAL_POSTS = [
         "userId": 3,
         "timestamp": mins_ago(120),
         "tags": ["design", "feature"],
-        "reactions": {"👍": [1, 2, 4, 5], "❤️": [1]},
+        "title": "",
         "blocks": [
             {
                 "type": "text",

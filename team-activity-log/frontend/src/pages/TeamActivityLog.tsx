@@ -1,14 +1,21 @@
 import { ThemeProvider } from "@emotion/react";
-import { CssBaseline, Box, GlobalStyles } from "@mui/material";
+import {
+  CssBaseline,
+  Box,
+  GlobalStyles,
+  useMediaQuery,
+  Drawer,
+  IconButton,
+} from "@mui/material";
+import { Menu, Add, Close, FilterList } from "@mui/icons-material";
 
 import { useEffect, useRef, useState } from "react";
 import { mkComment } from "../utilities/helpers";
 import { addReplyToTree } from "../utilities/helpers";
 import { LeftPanel } from "../components/LeftPanel";
-import { PostCard } from "../components/PostCard";
 import { RightPanel } from "../components/RightPanel";
 import type {
-  CommentReactType,
+  OpenPanel,
   PostRequest,
   PostType,
   TagsType,
@@ -17,15 +24,24 @@ import type {
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "../api/client";
 import { theme } from "../utilities/theme";
+import { PreviewCard } from "../components/PreviewCard";
 
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 export const TeamActivityLog = () => {
   const [search, setSearch] = useState<string>("");
   const [filterUser, setFilterUser] = useState<number | null>(null);
   const [filterTags, setFilterTags] = useState<string[]>([]);
-  // Per-post, per-comment reactions: { postId: { commentId: { emoji: [userId] } } }
-  const [commentRx, setCommentRx] = useState<CommentReactType>({});
   const postRefs = useRef<Record<number, HTMLElement | null>>({});
+  const [focusedPostId, setFocusedPostId] = useState<number | null>(null);
+  const [openPanel, setOpenPanel] = useState<OpenPanel>("composer");
+
+  // Mobile drawer state
+  const [leftOpen, setLeftOpen] = useState(false);
+  const [rightOpen, setRightOpen] = useState(false);
+
+  // Breakpoints
+  const isMobile = useMediaQuery("(max-width:768px)");
+  const isTablet = useMediaQuery("(max-width:1424px)");
 
   const { data: users } = useQuery({
     queryKey: ["users"],
@@ -41,22 +57,18 @@ export const TeamActivityLog = () => {
   });
 
   const ME = users?.[0];
-
   const [newPosts, setNewPost] = useState<PostType[]>(() => posts ?? []);
-
   const didInit = useRef(false);
 
   useEffect(() => {
     if (!posts) return;
-
     if (!didInit.current) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setNewPost(posts);
       didInit.current = true;
     }
   }, [posts]);
 
-  const handlePost = ({ blocks, tags }: PostRequest) => {
+  const handlePost = ({ title, blocks, tags }: PostRequest) => {
     if (!ME) return;
     setNewPost((p) => [
       {
@@ -64,32 +76,14 @@ export const TeamActivityLog = () => {
         userId: ME.id,
         timestamp: new Date(),
         tags,
-        reactions: {},
         comments: [],
         blocks,
+        title,
       },
       ...(p?.length ? p : []),
     ]);
-  };
-
-  const handleReact = (postId: number, emoji: string) => {
-    if (!ME) return;
-    // Change to a mutation later
-    setNewPost((p) =>
-      p?.map((post) => {
-        if (post.id !== postId) return post;
-        const curr = post.reactions[emoji] || [];
-        return {
-          ...post,
-          reactions: {
-            ...post.reactions,
-            [emoji]: curr.includes(ME.id)
-              ? curr.filter((i) => i !== ME.id)
-              : [...curr, ME.id],
-          },
-        };
-      }),
-    );
+    // Close drawer on mobile after posting
+    if (isMobile) setRightOpen(false);
   };
 
   const handleAddComment = (postId: number, text: string) => {
@@ -112,7 +106,6 @@ export const TeamActivityLog = () => {
 
   const handleAddReply = (postId: number, parentId: number, text: string) => {
     if (!ME) return;
-
     const reply = mkComment({
       id: 596,
       postId: postId,
@@ -132,32 +125,6 @@ export const TeamActivityLog = () => {
     );
   };
 
-  const handleCommentReact = (
-    postId: number,
-    commentId: number,
-    emoji: string,
-  ) => {
-    if (!ME) return;
-
-    setCommentRx((prev) => {
-      const postRx = prev[postId] || {};
-      const cRx = postRx[commentId] || {};
-      const curr = cRx[emoji] || [];
-      return {
-        ...prev,
-        [postId]: {
-          ...postRx,
-          [commentId]: {
-            ...cRx,
-            [emoji]: curr.includes(ME.id)
-              ? curr.filter((i: number) => i !== ME.id)
-              : [...curr, ME.id],
-          },
-        },
-      };
-    });
-  };
-  // Update a single image in a post (after annotating from the feed)
   const handleUpdateImage = (
     postId: number,
     blockIdx: number,
@@ -180,8 +147,8 @@ export const TeamActivityLog = () => {
   };
 
   const toggleTag = (tag: string) =>
-    setFilterTags((post) =>
-      post.includes(tag) ? post.filter((x) => x !== tag) : [...post, tag],
+    setFilterTags((prev) =>
+      prev.includes(tag) ? prev.filter((x) => x !== tag) : [...prev, tag],
     );
 
   const filtered =
@@ -191,7 +158,6 @@ export const TeamActivityLog = () => {
         return false;
       if (search) {
         const q = search.toLowerCase();
-        // Concatenate all text blocks to search across the whole post
         const txt = p.blocks
           .filter((b) => b.type === "text")
           .map((b) => b.html.replace(/<[^>]+>/g, ""))
@@ -203,16 +169,13 @@ export const TeamActivityLog = () => {
       return true;
     }) ?? [];
 
-  // TeamActivityLog.tsx
   const focusPost = (postId: number) => {
-    // Find the post to get its userId and tags
     const post = newPosts?.find((p) => p.id === postId);
     if (!post) return;
-
-    setFilterUser(post.userId); // filter by author
-    // optionally filter by first tag too:
-    // setFilterTags(post.tags.slice(0, 1));
-
+    setFilterUser(post.userId);
+    // Close drawers on mobile when navigating to a post
+    setLeftOpen(false);
+    setRightOpen(false);
     setTimeout(() => {
       postRefs.current[postId]?.scrollIntoView({
         behavior: "smooth",
@@ -220,11 +183,13 @@ export const TeamActivityLog = () => {
       });
     }, 50);
   };
+  const focusedPost = newPosts?.find((p) => p.id === focusedPostId) ?? null;
+
+  const activeFilters = filterTags.length + (filterUser ? 1 : 0);
 
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-
       <GlobalStyles
         styles={{
           ".ProseMirror, .post-content": {
@@ -238,8 +203,6 @@ export const TeamActivityLog = () => {
           ".ProseMirror p:last-child, .post-content p:last-child": {
             marginBottom: 0,
           },
-
-          // Inline code
           ".ProseMirror code, .post-content code": {
             background: "rgba(255,255,255,.09)",
             padding: "1px 6px",
@@ -248,31 +211,26 @@ export const TeamActivityLog = () => {
             fontSize: ".82em",
             color: "#90caf9",
           },
-
-          // Code block
           ".ProseMirror pre": {
             background: "#0a0d14",
             padding: "10px 14px",
             overflowX: "auto",
             margin: "0",
           },
-
           ".post-content pre": {
             background: "#0a0d14",
             borderBottom: "none",
             borderRadius: 0,
             padding: "2px 14px",
-            margin: "0 16px", // ← matches the text block padding
+            margin: "0 16px",
             overflowX: "auto",
           },
-          ".ProseMirror pre code,  .post-content pre code": {
+          ".ProseMirror pre code, .post-content pre code": {
             background: "none",
             padding: 0,
             color: "#e2e8f0",
             fontSize: ".85em",
           },
-
-          // Blockquote — visually distinct from code block
           ".ProseMirror blockquote, .post-content blockquote": {
             borderLeft: "3px solid #f59e0b",
             paddingLeft: 12,
@@ -280,81 +238,208 @@ export const TeamActivityLog = () => {
             color: "#90a4ae",
             fontStyle: "italic",
           },
-
           ".ProseMirror ul, .ProseMirror ol, .post-content ul, .post-content ol":
-            {
-              paddingLeft: 20,
-              margin: "4px 0",
-            },
-
-          // Placeholder
-          ".ProseMirror p.is-editor-empty:first-of-type::before, .post-content p.is-editor-empty:first-of-type::before":
-            {
-              content: "attr(data-placeholder)",
-              color: "#334155",
-              pointerEvents: "none",
-              float: "left",
-              height: 0,
-              fontStyle: "italic",
-            },
+            { paddingLeft: 20, margin: "4px 0" },
+          ".ProseMirror p.is-editor-empty:first-of-type::before": {
+            content: "attr(data-placeholder)",
+            color: "#334155",
+            pointerEvents: "none",
+            float: "left",
+            height: 0,
+            fontStyle: "italic",
+          },
         }}
       />
+
       <Box
         style={{
           background: "#0b0f18",
           fontFamily: "'IBM Plex Sans',sans-serif",
           color: "#e2e8f0",
           boxSizing: "border-box",
-          overflow: "hidden",
+          height: "100vh",
+          width: "100vw",
+          display: "flex",
           flexDirection: "column",
-          marginTop: 20,
+          overflow: "hidden",
         }}
       >
-        {/* MAIN 3-COLUMN LAYOUT */}
+        {/* ── TOP NAV ── */}
         <Box
           style={{
-            margin: "0",
-            padding: "20px 12px",
+            flexShrink: 0,
+            background: "rgba(11,15,24,.97)",
+            backdropFilter: "blur(14px)",
+            borderBottom: "1px solid #ffffff0a",
+            padding: "10px 16px",
             display: "flex",
-            gap: 18,
-            alignItems: "flex-start",
-            height: "calc(100vh - 90px)",
-            overflow: "hidden",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
           }}
         >
-          <Box
-            style={{
-              position: "sticky",
-              top: 20,
-              height: "calc(100vh - 130px)",
-              overflowY: "auto",
-              flexShrink: 0,
-            }}
-          >
-            {" "}
-            {/* LEFT PANEL */}
-            <LeftPanel
-              filterUser={filterUser}
-              setFilterUser={setFilterUser}
-              filterTags={filterTags}
-              toggleTag={toggleTag}
-              posts={newPosts}
-              users={users}
-              tags={tags}
-              search={search}
-              setSearch={setSearch}
-              setFilterTags={setFilterTags}
-            />
+          {/* Left: hamburger (mobile/tablet) + logo */}
+          <Box style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {(isMobile || isTablet) && (
+              <IconButton
+                size="small"
+                onClick={() => setLeftOpen(true)}
+                sx={{ color: activeFilters > 0 ? "#f59e0b" : "text.secondary" }}
+              >
+                {activeFilters > 0 ? (
+                  <FilterList fontSize="small" />
+                ) : (
+                  <Menu fontSize="small" />
+                )}
+              </IconButton>
+            )}
+            <Box>
+              <Box
+                style={{
+                  fontFamily: "'IBM Plex Mono',monospace",
+                  color: "#f59e0b",
+                  fontWeight: 700,
+                  letterSpacing: 3,
+                  fontSize: ".85rem",
+                }}
+              >
+                TEAM LOG
+              </Box>
+              <Box
+                style={{
+                  fontFamily: "monospace",
+                  color: "#334155",
+                  fontSize: ".58rem",
+                }}
+              >
+                {new Date().toLocaleDateString("en-US", {
+                  weekday: "long",
+                  month: "long",
+                  day: "numeric",
+                })}
+              </Box>
+            </Box>
           </Box>
+
+          {/* Right: compose button (mobile/tablet) */}
+          {(isMobile || isTablet) && (
+            <IconButton
+              size="small"
+              onClick={() => setRightOpen(true)}
+              sx={{
+                bgcolor: "#f59e0b",
+                color: "#0b0f18",
+                "&:hover": { bgcolor: "#d97706" },
+                width: 32,
+                height: 32,
+              }}
+            >
+              <Add fontSize="small" />
+            </IconButton>
+          )}
+        </Box>
+
+        {/* ── MAIN LAYOUT ── */}
+        <Box
+          style={{
+            flex: 1,
+            overflow: "hidden",
+            display: "flex",
+            gap: isMobile ? 0 : 18,
+            padding: isMobile ? "12px 8px" : "20px 12px",
+            alignItems: "flex-start",
+          }}
+        >
+          {/* LEFT PANEL — desktop inline, mobile/tablet drawer */}
+          {!isMobile && !isTablet ? (
+            <Box
+              style={{
+                flexShrink: 0,
+                height: "100%",
+                overflowY: "auto",
+              }}
+            >
+              <LeftPanel
+                filterUser={filterUser}
+                setFilterUser={setFilterUser}
+                filterTags={filterTags}
+                toggleTag={toggleTag}
+                posts={newPosts}
+                users={users}
+                tags={tags}
+                search={search}
+                setSearch={setSearch}
+                setFilterTags={setFilterTags}
+                isMobile={isMobile}
+                isTablet={isTablet}
+              />
+            </Box>
+          ) : (
+            <Drawer
+              anchor="left"
+              open={leftOpen}
+              onClose={() => setLeftOpen(false)}
+              PaperProps={{
+                sx: {
+                  bgcolor: "#0b0f18",
+                  width: 260,
+                  p: 2,
+                  borderRight: "1px solid #ffffff0c",
+                },
+              }}
+            >
+              <Box
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: 12,
+                }}
+              >
+                <Box
+                  style={{
+                    fontFamily: "monospace",
+                    fontSize: ".6rem",
+                    color: "#334155",
+                    letterSpacing: 2,
+                  }}
+                >
+                  FILTERS
+                </Box>
+                <IconButton
+                  size="small"
+                  onClick={() => setLeftOpen(false)}
+                  sx={{ color: "text.secondary" }}
+                >
+                  <Close fontSize="small" />
+                </IconButton>
+              </Box>
+              <LeftPanel
+                filterUser={filterUser}
+                setFilterUser={setFilterUser}
+                filterTags={filterTags}
+                toggleTag={toggleTag}
+                posts={newPosts}
+                users={users}
+                tags={tags}
+                search={search}
+                setSearch={setSearch}
+                setFilterTags={setFilterTags}
+                isMobile={isMobile}
+                isTablet={isTablet}
+              />
+            </Drawer>
+          )}
+
+          {/* CENTER FEED */}
           <Box
             component="main"
             style={{
               flex: 1,
-              minWidth: 0,
               height: "100%",
               overflowY: "auto",
-              width: 800,
-              paddingRight: 4,
+              paddingRight: isMobile ? 0 : 4,
+              minWidth: 550,
             }}
           >
             {filtered.length === 0 ? (
@@ -370,42 +455,105 @@ export const TeamActivityLog = () => {
               </Box>
             ) : (
               filtered.map((post) => (
-                <PostCard
+                <PreviewCard
                   key={post.id}
                   post={post}
-                  onReact={handleReact}
-                  onAddComment={handleAddComment}
-                  onAddReply={handleAddReply}
-                  onUpdateImage={handleUpdateImage}
-                  commentReactions={commentRx}
-                  onCommentReact={handleCommentReact}
+                  onViewPost={(p) => setFocusedPostId(p.id)}
                   users={users}
                   tags={tags}
+                  isActive={focusedPostId === post.id}
                   ref={(el) => {
                     postRefs.current[post.id] = el;
                   }}
+                  setOpenPanel={setOpenPanel}
                 />
               ))
             )}
           </Box>
-          {/* RIGHT PANEL — sticky */}
-          <Box
-            style={{
-              position: "sticky",
-              top: 20,
-              height: "calc(100vh - 130px)",
-              overflowY: "auto",
-              flexShrink: 0,
-            }}
-          >
-            <RightPanel
-              posts={newPosts}
-              users={users}
-              handlePost={handlePost}
-              tags={tags}
-              onClick={focusPost}
-            />
-          </Box>
+
+          {/* RIGHT PANEL — desktop inline, mobile/tablet drawer */}
+          {!isMobile && !isTablet ? (
+            <Box
+              style={{
+                height: "100%",
+                overflowY: "auto",
+              }}
+            >
+              <RightPanel
+                posts={newPosts}
+                users={users}
+                handlePost={handlePost}
+                tags={tags}
+                onClick={focusPost}
+                focusedPost={focusedPost}
+                onClearPost={() => setFocusedPostId(null)}
+                onAddComment={handleAddComment}
+                onAddReply={handleAddReply}
+                onUpdateImage={handleUpdateImage}
+                openPanel={openPanel}
+                setOpenPanel={setOpenPanel}
+                setFocusedPostId={setFocusedPostId}
+              />
+            </Box>
+          ) : (
+            <Drawer
+              anchor="right"
+              open={rightOpen}
+              onClose={() => setRightOpen(false)}
+              PaperProps={{
+                sx: {
+                  bgcolor: "#0b0f18",
+                  width: isMobile ? "100vw" : 320,
+                  borderLeft: "1px solid #ffffff0c",
+                },
+              }}
+            >
+              <Box
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "12px 16px",
+                  borderBottom: "1px solid #ffffff0c",
+                }}
+              >
+                <Box
+                  style={{
+                    fontFamily: "monospace",
+                    fontSize: ".6rem",
+                    color: "#334155",
+                    letterSpacing: 2,
+                  }}
+                >
+                  MENU
+                </Box>
+                <IconButton
+                  size="small"
+                  onClick={() => setRightOpen(false)}
+                  sx={{ color: "text.secondary" }}
+                >
+                  <Close fontSize="small" />
+                </IconButton>
+              </Box>
+              <Box style={{ overflowY: "auto", flex: 1 }}>
+                <RightPanel
+                  posts={newPosts}
+                  users={users}
+                  handlePost={handlePost}
+                  tags={tags}
+                  onClick={focusPost}
+                  focusedPost={focusedPost}
+                  onClearPost={() => setFocusedPostId(null)}
+                  onAddComment={handleAddComment}
+                  onAddReply={handleAddReply}
+                  onUpdateImage={handleUpdateImage}
+                  openPanel={openPanel}
+                  setOpenPanel={setOpenPanel}
+                  setFocusedPostId={setFocusedPostId}
+                />
+              </Box>
+            </Drawer>
+          )}
         </Box>
       </Box>
     </ThemeProvider>
