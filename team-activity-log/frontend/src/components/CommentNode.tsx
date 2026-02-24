@@ -22,7 +22,6 @@ export const CommentNode = ({
   onReply,
   users,
 }: CommentNodeProps) => {
-  const ME = users[0];
   const [showReplies, setShowReplies] = useState(true);
   const [replying, setReplying] = useState(false);
   const hasReplies = comment.replies?.length > 0;

@@ -40,7 +40,6 @@ interface PostCardType {
 // ─── POST CARD ────────────────────────────────────────────────────────────────
 export const PostCard = ({
   post,
-  onReact,
   onAddComment,
   onAddReply,
 

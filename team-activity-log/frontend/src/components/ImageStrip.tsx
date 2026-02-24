@@ -1,12 +1,5 @@
-import { Edit, Close, AddPhotoAlternate } from "@mui/icons-material";
-import {
-  Stack,
-  Box,
-  Tooltip,
-  IconButton,
-  Typography,
-  Dialog,
-} from "@mui/material";
+import { Close } from "@mui/icons-material";
+import { Stack, Box, IconButton, Dialog } from "@mui/material";
 import type { BlockType } from "../interfaces/TeamActivityLogInterfaces";
 import { useState } from "react";
 
