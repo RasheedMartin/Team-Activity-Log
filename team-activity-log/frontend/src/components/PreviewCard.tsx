@@ -19,10 +19,26 @@ interface PreviewCardProps {
   tags?: TagsType[];
   isActive?: boolean;
   setOpenPanel: React.Dispatch<React.SetStateAction<OpenPanel>>;
+  setRightOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  isMobile: boolean;
+  isTablet: boolean;
 }
 
 export const PreviewCard = forwardRef<HTMLElement, PreviewCardProps>(
-  ({ post, onViewPost, users, tags, isActive, setOpenPanel }, ref) => {
+  (
+    {
+      post,
+      onViewPost,
+      users,
+      tags,
+      isActive,
+      setOpenPanel,
+      setRightOpen,
+      isMobile,
+      isTablet,
+    },
+    ref,
+  ) => {
     const [user, setUser] = useState<UserData | null>(null);
 
     useEffect(() => {
@@ -239,6 +255,7 @@ export const PreviewCard = forwardRef<HTMLElement, PreviewCardProps>(
               onClick={() => {
                 onViewPost(post);
                 setOpenPanel("fullpost");
+                if (isMobile || isTablet) setRightOpen(true);
               }}
               sx={{
                 color: isActive ? "#f59e0b" : "text.secondary",

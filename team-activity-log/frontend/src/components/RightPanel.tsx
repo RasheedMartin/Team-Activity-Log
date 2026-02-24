@@ -31,6 +31,8 @@ interface RightPanelProps {
   openPanel: OpenPanel;
   setOpenPanel: React.Dispatch<React.SetStateAction<OpenPanel>>;
   setFocusedPostId: React.Dispatch<React.SetStateAction<number | null>>;
+  isMobile: boolean;
+  isTablet: boolean;
 }
 
 const SectionHeader = ({
@@ -91,6 +93,8 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   openPanel,
   setOpenPanel,
   setFocusedPostId,
+  isMobile,
+  isTablet,
 }) => {
   const toggle = (panel: OpenPanel) =>
     setOpenPanel((prev) => (prev === panel ? "composer" : panel));
@@ -119,13 +123,16 @@ export const RightPanel: React.FC<RightPanelProps> = ({
     .slice(0, 20);
 
   return (
-    <aside
-      style={{
-        maxWidth: 1400,
+    <Box
+      component="aside"
+      sx={{
+        width: "100%", // always take full width of container
+        maxWidth: 1400, // never exceed 1400px
+        mx: "auto", // center horizontally
         display: "flex",
         flexDirection: "column",
-        gap: 10,
-        minWidth: 1300,
+        gap: 1,
+        px: isMobile || isTablet ? 2 : 0, // optional padding on small screens
       }}
     >
       {/* Composer */}
@@ -421,6 +428,6 @@ export const RightPanel: React.FC<RightPanelProps> = ({
           </Collapse>
         </Box>
       )}
-    </aside>
+    </Box>
   );
 };
