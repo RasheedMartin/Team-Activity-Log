@@ -17,14 +17,13 @@ import sys
 import uuid
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-
 
 def _alembic_cfg():
+    """Migrations ship inside the package, so this works from a checkout or an installed image."""
     from alembic.config import Config
 
-    cfg = Config(str(ROOT / "alembic.ini"))
-    cfg.set_main_option("script_location", str(ROOT / "src" / "tal" / "migrations"))
+    cfg = Config()
+    cfg.set_main_option("script_location", str(Path(__file__).resolve().parent / "migrations"))
     return cfg
 
 
@@ -119,8 +118,11 @@ def main(argv: list[str] | None = None) -> int:
         return asyncio.run(_check())
     if a.cmd == "migrate":
         from alembic import command
+        from alembic.script import ScriptDirectory
 
-        command.upgrade(_alembic_cfg(), "head")
+        cfg = _alembic_cfg()
+        command.upgrade(cfg, "head")
+        print(f"Database schema is at {ScriptDirectory.from_config(cfg).get_current_head()} (latest).")
         return 0
     if a.cmd == "init-search":
         asyncio.run(_init_search())
@@ -131,7 +133,8 @@ def main(argv: list[str] | None = None) -> int:
     if a.cmd == "serve":
         import uvicorn
 
-        uvicorn.run("tal.main:app", host=a.host, port=a.port, reload=a.reload, proxy_headers=True)
+        # Behind Railway's (or any) proxy: trust X-Forwarded-* so client IPs and https are right.
+        uvicorn.run("tal.main:app", host=a.host, port=a.port, reload=a.reload, proxy_headers=True, forwarded_allow_ips="*")
         return 0
     if a.cmd == "worker":
         asyncio.run(_worker())

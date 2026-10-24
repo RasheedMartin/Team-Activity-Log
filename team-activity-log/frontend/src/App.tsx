@@ -1,7 +1,7 @@
 import { Box, LinearProgress } from "@mui/material";
 import { lazy, Suspense, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
-import { ApiError } from "./api/client";
+import { API_MODE, ApiError } from "./api/client";
 import { useMe } from "./api/hooks";
 import { AppShell } from "./app/AppShell";
 import { homePath, useOrgScope, useWorkspaceScope } from "./app/session";
@@ -86,7 +86,8 @@ export function App() {
       <Route path="/magic/:token" element={<MagicPage />} />
       <Route path="/reset/:token" element={<ResetPage />} />
       <Route path="/accept-invite/:token" element={<AcceptInvitePage />} />
-      <Route path="/dev" element={page(<DevPage />)} />
+      {/* Dev tools: mock mode, or the dev server against a DEV_MODE backend; never in a production build. */}
+      {(API_MODE === "mock" || import.meta.env.DEV) && <Route path="/dev" element={page(<DevPage />)} />}
       <Route path="/new-org" element={<RequireAuth><CreateOrgPage /></RequireAuth>} />
       <Route path="/orgs" element={<RequireAuth><OrgPickerPage /></RequireAuth>} />
       <Route path="/me/*" element={<RequireAuth>{page(<UserPanelPage />)}</RequireAuth>} />

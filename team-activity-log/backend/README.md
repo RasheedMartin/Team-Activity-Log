@@ -49,6 +49,52 @@ In production, either serve the built UI from the API (`FRONTEND_DIST=../fronten
 origin, simplest) or put both behind one reverse proxy that routes `/v1` to the API. Sessions are
 httpOnly cookies, so keep the UI and `/v1` on one origin.
 
+## Deploy on Railway
+
+One service runs everything users touch: the `Dockerfile` in `team-activity-log/` builds the
+React app in live mode and serves it from the API, so the app and `/v1` share one origin.
+Postgres, Elasticsearch, and the bucket are separate Railway services you already have.
+
+| Service | Start command | Settings |
+|---|---|---|
+| Postgres | Railway default (leave empty) | |
+| Elasticsearch | Railway default | |
+| Bucket | n/a | |
+| **App (this repo)** | from `railway.toml`: `tal migrate && tal serve --port $PORT` | Root Directory = `team-activity-log` |
+
+Railway auto-deploys from the repo's `main` branch: changes go live when they are merged to `main`.
+
+1. **New service → GitHub repo** (branch `main`), then in its Settings set **Root Directory** to `team-activity-log`.
+   Railway picks up `railway.toml` and the `Dockerfile` there. (`backend/railway.toml` belongs to
+   the old prototype and is not used by this service.)
+2. **Variables** on the app service, using Railway references so traffic stays on the private network:
+
+   ```dotenv
+   DATABASE_URL=${{Postgres.DATABASE_URL}}
+   ELASTICSEARCH_URL=http://${{Elasticsearch.RAILWAY_PRIVATE_DOMAIN}}:9200
+   ELASTICSEARCH_USERNAME=<reference the Elasticsearch service's username variable>
+   ELASTICSEARCH_PASSWORD=<reference the Elasticsearch service's password variable>
+   STORAGE=s3
+   S3_ENDPOINT=<bucket endpoint>          # references to the bucket service's credentials
+   S3_BUCKET=<bucket name>
+   S3_ACCESS_KEY_ID=<access key>
+   S3_SECRET_ACCESS_KEY=<secret key>
+   S3_REGION=auto
+   ENV=production
+   DEV_MODE=false
+   PUBLIC_APP_URL=https://<your app domain>
+   ```
+
+   No `TAL_ENV_FILE` here: `.env.railway` is only for running commands from your laptop.
+3. **Networking → Generate Domain** on the app service. That URL is the app.
+4. Deploy. Each start runs migrations first (safe to repeat), then serves on Railway's `$PORT`.
+   Railway waits for `/v1/health`; `/v1/health/ready` shows both data stores and the search index lag.
+5. Optional, once the app is live: remove the public TCP proxies on Postgres and Elasticsearch.
+   The app only needs the private network. Keep them if you want to run `tal` from your laptop.
+
+The first person to register creates the first organization. There is no demo data in
+production (`DEV_MODE=false`), and scenario loading is refused unless `DEV_ALLOW_RESET=true`.
+
 ## How it fits together
 
 | Concern | Where |
