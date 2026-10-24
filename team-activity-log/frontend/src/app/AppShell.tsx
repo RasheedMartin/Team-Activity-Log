@@ -9,6 +9,7 @@ import {
   LogoutRounded,
   MenuRounded,
   PersonOutlineRounded,
+  PublicOutlined,
   ScienceOutlined,
   SlideshowOutlined,
   StarRounded,
@@ -43,6 +44,7 @@ import { fromSearchParams, specKey } from "../lib/filterSpec";
 
 const PINS_SHOWN = 10;
 import { UserAvatar } from "../components/ui";
+import { BRAND } from "./brand";
 import { can, useWs, wsPath } from "./session";
 import { useShortcuts } from "./shortcuts";
 import { CommandPalette } from "../features/search/CommandPalette";
@@ -172,6 +174,13 @@ function UserMenu() {
           </MenuItem>
         )}
         <Divider />
+        {/* The public home page (`/` sends signed-in people straight to their workspace). */}
+        <MenuItem onClick={() => go("/about")}>
+          <ListItemIcon>
+            <PublicOutlined fontSize="small" />
+          </ListItemIcon>
+          About {BRAND.name}
+        </MenuItem>
         <MenuItem onClick={() => logout.mutate(undefined, { onSettled: () => navigate("/", { replace: true }) })}>
           <ListItemIcon>
             <LogoutRounded fontSize="small" />
