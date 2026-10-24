@@ -35,6 +35,9 @@ export async function startMockServer() {
   await db.load();
   const scenario = readDevSettings().scenario;
   if (db.isEmpty() || localStorage.getItem(SEEDED_KEY) !== scenario) await loadScenario(scenario);
+  // Warm the search index once the app has rendered (idle time), so the first query is fast.
+  const idle = (window as { requestIdleCallback?: (cb: () => void) => void }).requestIdleCallback ?? ((cb: () => void) => setTimeout(cb, 300));
+  setTimeout(() => idle(() => engine.warm()), 500);
   const worker = setupWorker(...handlers);
   await worker.start({
     onUnhandledRequest: (req, print) => {

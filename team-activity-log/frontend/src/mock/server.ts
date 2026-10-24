@@ -191,7 +191,7 @@ export function imageView(id: ID): ImageView | undefined {
 
 export const engine = new SearchEngine({
   posts: () => db.t.posts.rows.values(),
-  tags: (orgId) => db.t.tags.filter((t) => t.orgId === orgId),
+  tags: (orgId) => (orgId ? db.t.tags.filter((t) => t.orgId === orgId) : db.t.tags.all()),
   images: (post) =>
     post.blocks.flatMap((b) => {
       if (b.type !== "image") return [];

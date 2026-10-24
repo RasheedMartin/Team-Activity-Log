@@ -297,11 +297,21 @@ export type Sort =
   | "mostDiscussed"
   | "recentActivity";
 
+/** Nested boolean filter tree for the advanced builder (owner request; maps to ES bool queries). */
+export interface FilterGroup {
+  op: "and" | "or" | "not"; // "not" = none of the items match
+  items: (Condition | FilterGroup)[];
+}
+export const isFilterGroup = (x: Condition | FilterGroup): x is FilterGroup => "items" in x;
+
 export interface FilterSpec {
+  /** Boolean search text: AND/OR/NOT/-, parentheses, "phrases", prefix*, field scopes (src/lib/query.ts). */
   q?: string;
   all?: Condition[]; // AND
   any?: Condition[]; // OR (one level)
   none?: Condition[]; // NOT
+  /** Advanced filters, ANDed with all/any/none. */
+  where?: FilterGroup;
   sort?: Sort;
   view?: "posts" | "gallery";
   /** `bounds` is the zoomed view window ("Zoom to selection"); it never filters results. */

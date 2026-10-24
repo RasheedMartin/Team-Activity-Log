@@ -107,6 +107,30 @@ describe("text query", () => {
   });
 });
 
+describe("boolean queries and advanced filters", () => {
+  const posts = [
+    post({ title: "Detector B drift", text: "gain drift after cooldown", tagIds: ["t-det"] }),
+    post({ title: "Pump noise", text: "noise from the vacuum pump", tagIds: ["t-noise"] }),
+    post({ title: "Calibration run", text: "drift corrected, pump off", tagIds: ["t-cal"] }),
+  ];
+  const titles = (q: string, extra = {}) => engineFor(posts).search({ q, ...extra }, ctx).hits.map((h) => h.post.title).sort();
+  it("AND / OR / NOT / parentheses", () => {
+    expect(titles("drift AND pump")).toEqual(["Calibration run"]);
+    expect(titles("gain OR noise")).toEqual(["Detector B drift", "Pump noise"]);
+    expect(titles("drift NOT pump")).toEqual(["Detector B drift"]);
+    expect(titles("(gain OR vacuum) -cooldown")).toEqual(["Pump noise"]);
+  });
+  it("field scopes", () => {
+    expect(titles("title:pump")).toEqual(["Pump noise"]);
+    expect(titles("body:pump")).toEqual(["Calibration run", "Pump noise"]);
+    expect(titles('title:"calibration run"')).toEqual(["Calibration run"]);
+  });
+  it("nested where groups", () => {
+    const where = { op: "or" as const, items: [{ field: "tag" as const, op: "in" as const, value: ["t-det"] }, { op: "and" as const, items: [{ field: "tag" as const, op: "in" as const, value: ["t-cal"] }, { op: "not" as const, items: [{ field: "author" as const, op: "in" as const, value: ["marcus"] }] }] }] };
+    expect(titles("", { where })).toEqual(["Calibration run", "Detector B drift"]);
+  });
+});
+
 describe("disjunctive facets (§W4.7)", () => {
   const posts = [
     post({ tagIds: ["t-cal"], authorId: "dana" }),

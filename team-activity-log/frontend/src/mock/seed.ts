@@ -1,4 +1,4 @@
-import { faker } from "@faker-js/faker";
+import { faker } from "@faker-js/faker/locale/en";
 import type { Block, Comment, ID, ImageInstance, ImageType, OrgRole, Post, Shape } from "../api/contract";
 import { addDays, todayISO } from "../lib/dates";
 import { uuidv7 } from "../lib/ids";

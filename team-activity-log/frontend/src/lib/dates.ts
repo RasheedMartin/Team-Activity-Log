@@ -140,3 +140,9 @@ export function timeAgo(iso: string, now = Date.now()): string {
   if (s < 7 * 86400) return `${Math.floor(s / 86400)}d`;
   return formatDay(iso.slice(0, 10), new Date(iso).getUTCFullYear() !== new Date(now).getUTCFullYear());
 }
+
+/** Inclusive date range covered by histogram buckets i..j (bucket `end` is exclusive). */
+export function bucketsToRange(b: { start: string; end: string }[], i: number, j: number) {
+  const [lo, hi] = i <= j ? [i, j] : [j, i];
+  return { from: b[lo].start.slice(0, 10), to: addDays(b[hi].end.slice(0, 10), -1) };
+}

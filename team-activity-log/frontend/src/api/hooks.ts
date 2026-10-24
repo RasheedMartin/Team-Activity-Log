@@ -2,11 +2,12 @@ import {
   keepPreviousData,
   useInfiniteQuery,
   useMutation,
+  useQueries,
   useQuery,
   useQueryClient,
   type QueryClient,
 } from "@tanstack/react-query";
-import { del, get, patch, post, put } from "./client";
+import { api, del, get, patch, post, put } from "./client";
 import type {
   Collection,
   Comment,
@@ -416,6 +417,17 @@ export function useSearch(orgId: ID, wsId: ID, spec: FilterSpec, enabled = true)
     staleTime: 15_000,
   });
 }
+
+/** Result counts for several specs at once (zero-results suggestions). */
+export const useSearchCounts = (orgId: ID, wsId: ID, specs: FilterSpec[], enabled: boolean) =>
+  useQueries({
+    queries: specs.map((s) => ({
+      queryKey: ["org", orgId, "ws", wsId, "search-count", normalize(s)],
+      queryFn: ({ signal }: { signal: AbortSignal }) => api<SearchResponse>("POST", `${W(orgId, wsId)}/search`, { ...normalize(s), limit: 1 }, { signal }).then((r) => r.total),
+      enabled,
+      staleTime: 30_000,
+    })),
+  });
 
 export const useSuggest = (orgId: ID, wsId: ID, q: string) =>
   useQuery({

@@ -30,7 +30,7 @@ export function useShortcuts() {
         return;
       }
       if (!enabled || e.metaKey || e.ctrlKey || e.altKey || isTypingTarget(e.target)) return;
-      if (document.querySelector(".MuiModal-root:not(.MuiPopover-root)")) return; // a dialog owns the keyboard
+      if (document.querySelector(".MuiModal-root:not(.MuiPopover-root):not(.peek-drawer)")) return; // a dialog owns the keyboard
       if (e.key === "c" && can(role, "member") && !ws.archived) {
         e.preventDefault();
         navigate(wsPath(org, ws, "/new"));

@@ -6,7 +6,6 @@ import {
   fromSearchParams,
   getDateFilter,
   includedIds,
-  parseQuery,
   setTagMatchMode,
   toSearchParams,
   toggleFacetValue,
@@ -57,9 +56,6 @@ describe("search operators (§W4.1)", () => {
     expect(includedIds(spec, "author")).toEqual(["u1"]);
     expect(getDateFilter(spec)?.value).toEqual({ from: "2026-03-01" });
     expect(spec.all?.map((c) => c.field)).toEqual(expect.arrayContaining(["hasImages", "unansweredQuestion"]));
-  });
-  it("parses phrases and exclusions", () => {
-    expect(parseQuery('gain "no drift" -cryostat')).toEqual({ terms: ["gain"], phrases: ["no drift"], excluded: ["cryostat"] });
   });
 });
 

@@ -37,3 +37,16 @@ Additions only; nothing in §A7 was removed or renamed.
 - **Vite `base` changed from `./` to `/`**: deep routes (`/o/x/w/y/p/z`) can't load relative asset paths. FastAPI still mounts the build at `/`.
 - **The mock ships in production builds** (`VITE_API_MODE` defaults to `mock`), so the Vercel deploy is a working demo until the backend exists. Set `VITE_API_MODE=live` and `VITE_API_URL` to switch.
 - **Command palette and global shortcuts** communicate through window events (`tal:*`) instead of a context, to avoid re-rendering the shell.
+
+## UI-3 Find It
+
+- **Boolean search language (owner request)** in `FilterSpec.q`: `AND`/`OR`/`NOT`/`-`, parentheses, `"phrases"`, `prefix*`, field scopes `title: body: comment: image: tag:`. Operators are UPPERCASE (like Elasticsearch `query_string`), so "salt and pepper" stays words. Parser: `src/lib/query.ts`, never throws; malformed input shows a quiet hint and still searches. Backend maps the AST to an ES `bool` query (must / should / must_not, `match_phrase`, `prefix`, per-field `multi_match`).
+- **Excluded words are never prefix-expanded** (`-pump` doesn't exclude "pumpkin"); the last *positive* word is (prefix-as-you-type).
+- **`FilterSpec.where`**: nested `{ op: and|or|not, items }` groups from the Advanced filters drawer, ANDed with `all/any/none`. Counts as "other filters" for disjunctive facets (it never excludes its own facet).
+- `tag:name` / `by:name` typed in the search bar become chips when they match a known tag/person; unknown `tag:x` stays text and searches tag names.
+- **Histogram colors** validated with the dataviz skill's contrast check: bars 6.47:1 (light) / 7.20:1 (dark); outside-selection bars 3.18:1 / 3.15:1 (≥ 3:1 non-text). One series, so no legend; table view is the accessible twin.
+- **Zoom** uses `FilterSpec.histogram.bounds` (view window only, never filters results).
+- **Zero-results suggestions** run one count query per active filter (an ES `msearch` in production).
+- **Mock engine performance:** derived docs build eagerly (55 ms for 5,000 posts); the full-text index builds in idle time after first render (≈330 ms) so the feed isn't delayed. Production build on the busy scenario: reload → results 911 ms; searches 3–41 ms; scroll 60 fps.
+- **Peek pane**: inline on ≥ 1536 px screens, a non-modal drawer below that; j/k/Enter keep working while it's open.
+- Bundle: only MUI is vendor-split; the editor and the mock server are lazy chunks (the mock never loads in live mode).

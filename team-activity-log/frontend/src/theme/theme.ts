@@ -6,6 +6,12 @@ export type Density = "compact" | "comfortable";
 export type Mode = "light" | "dark";
 
 const ACCENT = { light: "#3451d1", dark: "#8ea2ff" };
+// Chart steps, validated with the dataviz skill's contrast check against each surface:
+// bar 6.47:1 (light) / 7.20:1 (dark); muted (outside a selection) 3.18:1 / 3.15:1 — both ≥ 3:1.
+const CHART = {
+  light: { bar: "#3451d1", barMuted: "#7f8dcf", wash: "rgba(52,81,209,0.10)", grid: "#e3e6ea" },
+  dark: { bar: "#8ea2ff", barMuted: "#5a669f", wash: "rgba(142,162,255,0.12)", grid: "#2a2f37" },
+};
 
 const SURFACES = {
   light: { default: "#f6f7f9", paper: "#ffffff", raised: "#ffffff", sunken: "#eef0f3", line: "#e3e6ea", text: "#1b1f24", muted: "#5d6672", faint: "#8a929c" },
@@ -21,10 +27,12 @@ export const STATUS = {
 declare module "@mui/material/styles" {
   interface Palette {
     surface: { raised: string; sunken: string; line: string; faint: string };
+    chart: { bar: string; barMuted: string; wash: string; grid: string };
     density: Density;
   }
   interface PaletteOptions {
     surface?: { raised: string; sunken: string; line: string; faint: string };
+    chart?: { bar: string; barMuted: string; wash: string; grid: string };
     density?: Density;
   }
 }
@@ -46,6 +54,7 @@ export function createAppTheme(mode: Mode, density: Density, reducedMotion = fal
       text: { primary: s.text, secondary: s.muted, disabled: s.faint },
       divider: s.line,
       surface: { raised: s.raised, sunken: s.sunken, line: s.line, faint: s.faint },
+      chart: CHART[mode],
       density,
     },
     shape: { borderRadius: 6 },

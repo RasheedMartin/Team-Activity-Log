@@ -9,11 +9,9 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          mui: ["@mui/material", "@emotion/react", "@emotion/styled"],
-          editor: ["@tiptap/react", "@tiptap/starter-kit", "@tiptap/pm"],
-          mock: ["msw", "dexie", "@faker-js/faker", "minisearch"],
-        },
+        // Only vendor-split what every page needs; the editor and the mock server are
+        // dynamically imported, so Vite already gives them their own lazy chunks.
+        manualChunks: { mui: ["@mui/material", "@emotion/react", "@emotion/styled"] },
       },
     },
   },

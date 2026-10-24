@@ -1,9 +1,11 @@
 import MiniSearch from "minisearch";
+import { isFilterGroup } from "../../api/contract";
 import type {
   Asset,
   Comment,
   Condition,
   DateField,
+  FilterGroup,
   DateRangeValue,
   FacetBucket,
   FilterSpec,
@@ -27,7 +29,8 @@ import {
   toISODate,
   type FixedInterval,
 } from "../../lib/dates";
-import { effectiveSort, parseQuery, type ParsedQuery } from "../../lib/filterSpec";
+import { effectiveSort } from "../../lib/filterSpec";
+import { parseBoolean, positiveNeedles, type QueryField, type QueryNode } from "../../lib/query";
 import { docText, mentionedIds } from "../../lib/prosemirror";
 
 // Client-side stand-in for the Elasticsearch query in §B4. It implements the same FilterSpec,
@@ -41,7 +44,8 @@ export interface EngineImage {
 }
 export interface EngineData {
   posts(): Iterable<Post & { indexedAt?: number }>;
-  tags(orgId: ID): Tag[];
+  /** Tags of one org, or of every org when orgId is omitted (index text). */
+  tags(orgId?: ID): Tag[];
   images(post: Post): EngineImage[];
   comments(postId: ID): Comment[];
 }
@@ -101,6 +105,7 @@ export class SearchEngine {
   reset() {
     this.derived.clear();
     this.mini = null;
+    this.built = false;
     this.dirty.clear();
   }
 
@@ -145,22 +150,14 @@ export class SearchEngine {
     return d;
   }
 
-  private ensureIndex(orgId: ID) {
-    this.tagNames = new Map(this.data.tags(orgId).map((t) => [t.id, t.name]));
-    if (!this.mini) {
-      this.mini = new MiniSearch<{ id: ID }>({
-        fields: ["title", "summary", "body", "tagText", "commentText", "imageText", "annotationText"],
-        storeFields: [],
-        searchOptions: { prefix: true, combineWith: "AND" },
-      });
-      const docs: Derived[] = [];
-      for (const p of this.data.posts()) {
-        if (p.status !== "published" || p.deletedAt) continue;
-        const d = this.derive(p);
-        this.derived.set(p.id, d);
-        docs.push(d);
-      }
-      this.mini.addAll(docs.map((d) => ({ id: d.post.id, ...this.fieldsOf(d) })));
+  private built = false;
+
+  /** Derived docs (filters, facets, histogram) are built eagerly; the full-text index lazily. */
+  private ensureIndex() {
+    this.tagNames = new Map(this.data.tags().map((t) => [t.id, t.name]));
+    if (!this.built) {
+      for (const p of this.data.posts()) if (p.status === "published" && !p.deletedAt) this.derived.set(p.id, this.derive(p));
+      this.built = true;
       this.dirty.clear();
       return;
     }
@@ -168,15 +165,34 @@ export class SearchEngine {
     const byId = new Map<ID, Post>();
     for (const p of this.data.posts()) if (this.dirty.has(p.id)) byId.set(p.id, p);
     for (const id of this.dirty) {
-      if (this.mini.has(id)) this.mini.discard(id);
+      if (this.mini?.has(id)) this.mini.discard(id);
       this.derived.delete(id);
       const p = byId.get(id);
       if (!p || p.status !== "published" || p.deletedAt) continue;
       const d = this.derive(p);
       this.derived.set(id, d);
-      this.mini.add({ id, ...this.fieldsOf(d) });
+      this.mini?.add({ id, ...this.fieldsOf(d) });
     }
     this.dirty.clear();
+  }
+
+  /** Build everything ahead of the first query (called in idle time after the app renders). */
+  warm() {
+    this.ensureIndex();
+    this.ensureMini();
+  }
+
+  /** Full-text index, built on the first text query (the plain feed never needs it). */
+  private ensureMini(): MiniSearch<{ id: ID }> {
+    if (!this.mini) {
+      this.mini = new MiniSearch<{ id: ID }>({
+        fields: ["title", "summary", "body", "tagText", "commentText", "imageText", "annotationText"],
+        storeFields: [],
+        searchOptions: { prefix: true, combineWith: "AND" },
+      });
+      this.mini.addAll([...this.derived.values()].map((d) => ({ id: d.post.id, ...this.fieldsOf(d) })));
+    }
+    return this.mini;
   }
 
   private fieldsOf(d: Derived) {
@@ -298,7 +314,15 @@ export class SearchEngine {
     }
   }
 
-  /** For each group: does the post pass that group's conditions? (all ∧ any ∧ ¬none) */
+  private matchGroup(d: Derived, g: FilterGroup, me: ID, now: Date): boolean {
+    const test = (x: Condition | FilterGroup) => (isFilterGroup(x) ? this.matchGroup(d, x, me, now) : this.matchPost(d, x, me, now));
+    if (!g.items.length) return true;
+    if (g.op === "or") return g.items.some(test);
+    if (g.op === "not") return !g.items.some(test);
+    return g.items.every(test);
+  }
+
+  /** For each group: does the post pass that group's conditions? (all ∧ any ∧ ¬none ∧ where) */
   private groupPasses(d: Derived, spec: FilterSpec, me: ID, now: Date): Record<Group, boolean> {
     const pass: Record<Group, boolean> = { text: true, tag: true, author: true, imageType: true, date: true, other: true };
     // Image-level conditions in `all` must hold for the *same* image (nested semantics, §B4).
@@ -316,6 +340,7 @@ export class SearchEngine {
       if (pass[g] && !this.matchPost(d, c, me, now)) pass[g] = false;
     }
     if (spec.any?.length && !spec.any.some((c) => this.matchPost(d, c, me, now))) pass.other = false;
+    if (spec.where && pass.other && !this.matchGroup(d, spec.where, me, now)) pass.other = false;
     for (const c of spec.none ?? []) {
       const g = this.groupOf(c);
       if (pass[g] && this.matchPost(d, c, me, now)) pass[g] = false;
@@ -323,29 +348,64 @@ export class SearchEngine {
     return pass;
   }
 
-  // ---- text ----
+  // ---- text (boolean query, src/lib/query.ts) ----
 
-  private textScores(parsed: ParsedQuery, candidates: Derived[]): Map<ID, number> | null {
-    if (!parsed.terms.length && !parsed.phrases.length && !parsed.excluded.length) return null;
-    const scores = new Map<ID, number>();
-    if (parsed.terms.length) {
-      const res = this.mini!.search(parsed.terms.join(" "), {
-        prefix: true,
-        fuzzy: (term) => (term.length > 4 ? 0.2 : false),
-        combineWith: "AND",
-        boost: { title: 4, tagText: 3, summary: 2, body: 1, commentText: 0.7, imageText: 0.8, annotationText: 0.8 },
-      });
-      for (const r of res) scores.set(r.id as ID, r.score);
-    } else {
-      for (const d of candidates) scores.set(d.post.id, 1);
+  private static FIELD_MAP: Record<QueryField, (keyof ReturnType<SearchEngine["fieldsOf"]>)[]> = {
+    title: ["title"],
+    body: ["summary", "body"],
+    comment: ["commentText"],
+    image: ["imageText", "annotationText"],
+    tag: ["tagText"],
+  };
+
+  private fieldText(d: Derived, field?: QueryField): string {
+    if (!field) return d.all;
+    const f = this.fieldsOf(d);
+    return lower(SearchEngine.FIELD_MAP[field].map((k) => f[k]).join("\n"));
+  }
+
+  /** Evaluate a query AST over the candidate set; returns matching ids with relevance scores. */
+  private evalQuery(n: QueryNode, universe: Map<ID, Derived>): Map<ID, number> {
+    switch (n.type) {
+      case "term": {
+        const out = new Map<ID, number>();
+        const res = this.ensureMini().search(n.value, {
+          fields: n.field ? SearchEngine.FIELD_MAP[n.field] : undefined,
+          prefix: !!n.prefix || n.value.length > 2,
+          fuzzy: n.value.length > 4 ? 0.2 : false,
+          boost: { title: 4, tagText: 3, summary: 2, body: 1, commentText: 0.7, imageText: 0.8, annotationText: 0.8 },
+        });
+        for (const r of res) if (universe.has(r.id as ID)) out.set(r.id as ID, r.score);
+        return out;
+      }
+      case "phrase": {
+        const out = new Map<ID, number>();
+        for (const [id, d] of universe) if (this.fieldText(d, n.field).includes(n.value)) out.set(id, 3 + (lower(d.title).includes(n.value) ? 4 : 0));
+        return out;
+      }
+      case "not": {
+        const ex = this.evalQuery(n.child, universe);
+        const out = new Map<ID, number>();
+        for (const id of universe.keys()) if (!ex.has(id)) out.set(id, 0);
+        return out;
+      }
+      case "and": {
+        let acc: Map<ID, number> | null = null;
+        for (const c of n.children) {
+          const m = this.evalQuery(c, acc ? new Map([...acc.keys()].map((id) => [id, universe.get(id)!])) : universe);
+          const next = new Map<ID, number>();
+          for (const [id, sc] of m) if (!acc || acc.has(id)) next.set(id, (acc?.get(id) ?? 0) + sc);
+          acc = next;
+          if (!acc.size) break;
+        }
+        return acc ?? new Map();
+      }
+      case "or": {
+        const out = new Map<ID, number>();
+        for (const c of n.children) for (const [id, sc] of this.evalQuery(c, universe)) out.set(id, (out.get(id) ?? 0) + sc);
+        return out;
+      }
     }
-    for (const d of candidates) {
-      const s = scores.get(d.post.id);
-      if (s === undefined) continue;
-      if (parsed.phrases.some((ph) => !d.all.includes(ph)) || parsed.excluded.some((x) => d.all.includes(x))) scores.delete(d.post.id);
-      else if (parsed.phrases.length) scores.set(d.post.id, s * 1.5);
-    }
-    return scores;
   }
 
   // ---- main entry ----
@@ -353,7 +413,7 @@ export class SearchEngine {
   search(spec: FilterSpec, ctx: EngineContext): SearchResponse {
     const t0 = performance.now();
     const now = ctx.now ?? new Date();
-    this.ensureIndex(ctx.orgId);
+    this.ensureIndex();
 
     // 1. Security filters, always on.
     const wantHidden = (spec.all ?? []).some((c) => c.field === "visibility" && (c.value === "hidden" || c.value === "any"));
@@ -367,9 +427,10 @@ export class SearchEngine {
       candidates.push(d);
     }
 
-    // 2. Text query.
-    const parsed = parseQuery(spec.q);
-    const scores = this.textScores(parsed, candidates);
+    // 2. Text query (boolean AST).
+    const { ast } = parseBoolean(spec.q);
+    const scores = ast ? this.evalQuery(ast, new Map(candidates.map((d) => [d.post.id, d]))) : null;
+    const needles = positiveNeedles(ast);
 
     // 3. Per-group pass vectors.
     const rows = candidates
@@ -419,7 +480,7 @@ export class SearchEngine {
     }
 
     return {
-      hits: pageHits.map((d) => this.hit(d, parsed, imageConds, now)),
+      hits: pageHits.map((d) => this.hit(d, needles, imageConds, now)),
       images,
       facets,
       histogram,
@@ -544,8 +605,7 @@ export class SearchEngine {
     };
   }
 
-  private hit(d: Derived, parsed: ParsedQuery, imageConds: Condition[], now: Date): SearchHit {
-    const needles = [...parsed.terms, ...parsed.phrases].filter(Boolean);
+  private hit(d: Derived, needles: string[], imageConds: Condition[], now: Date): SearchHit {
     const fields: [string, string, string][] = [
       ["title", "title", d.title],
       ["summary", "body", d.summary],

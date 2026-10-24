@@ -34,6 +34,7 @@ export function normalize(spec: FilterSpec): FilterSpec {
   if (spec.all?.length) out.all = spec.all;
   if (spec.any?.length) out.any = spec.any;
   if (spec.none?.length) out.none = spec.none;
+  if (spec.where?.items.length) out.where = spec.where;
   if (spec.sort && spec.sort !== defaultSortFor(spec)) out.sort = spec.sort;
   if (spec.view && spec.view !== "posts") out.view = spec.view;
   if (spec.histogram && (spec.histogram.field !== "workDate" || spec.histogram.interval !== "auto"))
@@ -149,7 +150,7 @@ export const histogramField = (spec: FilterSpec, fallback: DateField = "workDate
   spec.histogram?.field ?? fallback;
 
 export const isEmptySpec = (spec: FilterSpec) =>
-  !spec.q?.trim() && !spec.all?.length && !spec.any?.length && !spec.none?.length;
+  !spec.q?.trim() && !spec.all?.length && !spec.any?.length && !spec.none?.length && !spec.where?.items.length;
 
 export const clearFilters = (spec: FilterSpec): FilterSpec => ({
   sort: spec.sort,
@@ -206,26 +207,4 @@ export function applyOperators(spec: FilterSpec, text: string, ctx: OperatorCont
     else leftover.push(tok);
   }
   return { spec: s, text: leftover.join(" ") };
-}
-
-// ---- Free-text query parsing (shared by the mock engine; the server does its own) ----
-
-export interface ParsedQuery {
-  terms: string[];
-  phrases: string[];
-  excluded: string[];
-}
-
-export function parseQuery(q: string | undefined): ParsedQuery {
-  const out: ParsedQuery = { terms: [], phrases: [], excluded: [] };
-  if (!q) return out;
-  for (const tok of q.match(/-?"[^"]*"|\S+/g) ?? []) {
-    const neg = tok.startsWith("-") && tok.length > 1;
-    const body = neg ? tok.slice(1) : tok;
-    const phrase = body.startsWith('"') ? body.replace(/^"|"$/g, "").trim() : null;
-    if (neg) out.excluded.push((phrase ?? body).toLowerCase());
-    else if (phrase) out.phrases.push(phrase.toLowerCase());
-    else out.terms.push(body.toLowerCase());
-  }
-  return out;
 }
