@@ -38,6 +38,13 @@ export default function NotebookPage() {
   const posts = loaded.map((d) => d.post);
   const range = posts.length ? { from: posts.reduce((m, p) => (p.workDate < m ? p.workDate : m), posts[0].workDate), to: posts.reduce((m, p) => (p.workDate > m ? p.workDate : m), posts[0].workDate) } : undefined;
 
+  // Returning from a post (#nb-<id>): scroll back to that entry once it has rendered.
+  const hash = window.location.hash;
+  const loadedCount = details.filter((d) => d.data).length;
+  useEffect(() => {
+    if (hash.startsWith("#nb-")) document.getElementById(hash.slice(1))?.scrollIntoView({ block: "start" });
+  }, [hash, loadedCount]);
+
   // Highlight the table-of-contents entry for the section in view.
   useEffect(() => {
     const els = document.querySelectorAll<HTMLElement>("[data-nb-section]");
@@ -111,7 +118,7 @@ export default function NotebookPage() {
           fullWidth
           value={name}
           onChange={(e) => setName(e.target.value)}
-          onBlur={() => name.trim() && name !== nb.name && update.mutate({ id: nb.id, name: name.trim() })}
+          onBlur={() => name.trim() && name !== nb.name && update.mutate({ id: nb.id, name: name.trim() }, { onError: (e) => (setName(nb.name), notify(e.message)) })}
           onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
           inputProps={{ "aria-label": "Notebook title" }}
           sx={{ fontSize: "2rem", fontWeight: 700, letterSpacing: "-0.02em" }}
@@ -133,7 +140,7 @@ export default function NotebookPage() {
                 <Box sx={{ flex: 1, minWidth: 0 }}>
                   <Typography variant="overline" color="primary">{formatDay(p.workDate)}</Typography>
                   <Typography component="h2" variant="h2" sx={{ mb: 0.75 }}>
-                    <Box component={RouterLink} to={wsPath(org, ws, `/p/${p.id}`)} sx={{ color: "inherit", textDecoration: "none", "&:hover": { textDecoration: "underline" } }}>{p.title}</Box>
+                    <Box component={RouterLink} to={wsPath(org, ws, `/p/${p.id}`)} state={{ from: `${window.location.pathname}#nb-${p.id}`, label: nb.name }} sx={{ color: "inherit", textDecoration: "none", "&:hover": { textDecoration: "underline" } }}>{p.title}</Box>
                   </Typography>
                 </Box>
                 {editing && (

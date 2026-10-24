@@ -1,9 +1,10 @@
 import { ArrowDownwardRounded, ArrowUpwardRounded, CloseRounded, CollectionsBookmarkOutlined, MenuBookOutlined, SlideshowRounded } from "@mui/icons-material";
-import { Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, List, ListItem, ListItemText, Paper, Stack, TextField, Typography } from "@mui/material";
+import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, List, ListItem, ListItemText, Paper, Stack, TextField, Typography } from "@mui/material";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ID, Post } from "../../api/contract";
-import { useCreateCollection } from "../../api/hooks";
+import { ApiError } from "../../api/client";
+import { useCollections, useCreateCollection } from "../../api/hooks";
 import { useWs, wsPath } from "../../app/session";
 import { useNotify } from "../../components/notify";
 import { formatDay } from "../../lib/dates";
@@ -19,6 +20,9 @@ function ArrangeDialog({ posts, action, onClose, onDone }: { posts: Post[]; acti
   const create = useCreateCollection(org.id, ws.id);
   const [order, setOrder] = useState(() => (action === "notebook" ? [...posts].sort((a, b) => a.workDate.localeCompare(b.workDate)) : posts));
   const [name, setName] = useState(action === "notebook" ? "Notebook" : "Selection");
+  const { data: collections = [] } = useCollections(org.id, ws.id);
+  // Catch a duplicate notebook name before submitting (the server enforces it too).
+  const clash = action === "notebook" ? collections.find((c) => c.kind === "notebook" && c.name.trim().toLowerCase() === name.trim().toLowerCase()) : undefined;
   const move = (i: number, d: -1 | 1) => setOrder((o) => {
     const n = [...o];
     [n[i], n[i + d]] = [n[i + d], n[i]];
@@ -39,7 +43,7 @@ function ArrangeDialog({ posts, action, onClose, onDone }: { posts: Post[]; acti
           if (action === "notebook") navigate(wsPath(org, ws, `/notebooks/${c.id}`));
           else notify(`Saved “${c.name}” to Collections`);
         },
-        onError: (e) => notify(errorMessage(e)),
+        onError: (e) => notify(e instanceof ApiError && e.code === "name_taken" ? e.message : errorMessage(e)),
       },
     );
   };
@@ -48,7 +52,12 @@ function ArrangeDialog({ posts, action, onClose, onDone }: { posts: Post[]; acti
     <Dialog open onClose={onClose} fullWidth maxWidth="sm">
       <DialogTitle>{title}</DialogTitle>
       <DialogContent>
-        {action !== "present" && <TextField fullWidth label="Name" value={name} onChange={(e) => setName(e.target.value)} sx={{ mt: 1, mb: 2 }} autoFocus />}
+        {action !== "present" && <TextField fullWidth label="Name" value={name} onChange={(e) => setName(e.target.value)} sx={{ mt: 1, mb: 2 }} autoFocus error={!!clash} />}
+        {clash && (
+          <Alert severity="warning" sx={{ mb: 2 }} action={<Button size="small" onClick={() => (onDone(), navigate(wsPath(org, ws, `/notebooks/${clash.id}`)))}>Open it</Button>}>
+            A notebook named “{clash.name}” already exists. Pick another name or open the existing one.
+          </Alert>
+        )}
         <Typography variant="caption" color="text.secondary">
           {action === "notebook" ? "Ordered by work date. Reorder or remove posts; you can change this later." : "Reorder or skip posts."}
         </Typography>
@@ -72,7 +81,7 @@ function ArrangeDialog({ posts, action, onClose, onDone }: { posts: Post[]; acti
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Cancel</Button>
-        <Button variant="contained" disabled={!order.length || (action !== "present" && !name.trim()) || create.isPending} onClick={go}>
+        <Button variant="contained" disabled={!order.length || (action !== "present" && !name.trim()) || !!clash || create.isPending} onClick={go}>
           {action === "present" ? "Start presenting" : action === "notebook" ? "Create notebook" : "Save collection"}
         </Button>
       </DialogActions>

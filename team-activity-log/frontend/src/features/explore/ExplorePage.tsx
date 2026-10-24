@@ -3,7 +3,7 @@ import { Box, Button, ButtonBase, Chip, Skeleton, Stack, Typography } from "@mui
 import { useMemo, useState } from "react";
 import { Link as RouterLink, useNavigate, useSearchParams } from "react-router-dom";
 import type { ExploreShelf, FilterSpec, GalleryImage } from "../../api/contract";
-import { collectPostIds, useCreateCollection, useExplore, usePeople } from "../../api/hooks";
+import { collectPostIds, useCollections, useCreateCollection, useExplore, usePeople } from "../../api/hooks";
 import { useNotify } from "../../components/notify";
 import { errorMessage } from "../../lib/format";
 import { useWs, wsPath } from "../../app/session";
@@ -37,12 +37,17 @@ function Shelf({ shelf, onSlideshow, onImage }: { shelf: ExploreShelf; onSlidesh
   const notify = useNotify();
   const create = useCreateCollection(org.id, ws.id);
   const [making, setMaking] = useState(false);
+  const { data: collections = [] } = useCollections(org.id, ws.id);
+  const notebookName = `${shelf.tag.name} notebook`;
+  const existing = collections.find((c) => c.kind === "notebook" && c.name.toLowerCase() === notebookName.toLowerCase());
   const makeNotebook = async () => {
+    // One notebook per tag: open it if it already exists instead of making a twin.
+    if (existing) return navigate(wsPath(org, ws, `/notebooks/${existing.id}`));
     setMaking(true);
     try {
       // Every post with this tag, oldest work date first: a running notebook of the topic.
       const ids = await collectPostIds(org.id, ws.id, { ...toggleFacetValue({}, "tag", shelf.tag.id, "include"), sort: "workDate" });
-      const c = await create.mutateAsync({ name: `${shelf.tag.name} notebook`, postIds: ids.reverse(), kind: "notebook" });
+      const c = await create.mutateAsync({ name: notebookName, postIds: ids.reverse(), kind: "notebook" });
       navigate(wsPath(org, ws, `/notebooks/${c.id}`));
     } catch (e) {
       notify(errorMessage(e));
@@ -72,7 +77,7 @@ function Shelf({ shelf, onSlideshow, onImage }: { shelf: ExploreShelf; onSlidesh
             <Button size="small" startIcon={<GridViewRounded />} component={RouterLink} to={searchUrl("gallery")}>Gallery</Button>
           </>
         )}
-        <Button size="small" startIcon={<MenuBookOutlined />} onClick={makeNotebook} disabled={making}>Notebook</Button>
+        <Button size="small" startIcon={<MenuBookOutlined />} onClick={makeNotebook} disabled={making}>{existing ? "Open notebook" : "Notebook"}</Button>
         <Button size="small" endIcon={<ArrowForwardRounded />} component={RouterLink} to={searchUrl()}>All posts</Button>
       </Stack>
       <Box sx={{ display: "flex", gap: 1, overflowX: "auto", scrollSnapType: "x mandatory", pb: 0.5 }} role="list">

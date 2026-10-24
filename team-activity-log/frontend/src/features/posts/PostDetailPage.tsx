@@ -35,7 +35,7 @@ import {
 } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
+import { Link as RouterLink, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import type { Block, ImageView, Post, PostRevision, Shape } from "../../api/contract";
 import { patchImageInCaches, useComments, usePeople, usePost, usePostAction, useRevisions, useSaveAnnotation, useTags } from "../../api/hooks";
@@ -187,6 +187,13 @@ function PostView({ post, images }: { post: Post; images: ImageView[] }) {
   const coAuthors = post.coAuthorIds.map((id) => people.find((p) => p.id === id)).filter((u) => !!u);
   const hasActivity = post.counts.comments > 0 || Object.values(post.reactions).some((r) => r.length);
   const base = wsPath(org, ws);
+  // Back returns to where you came from: a labeled origin (e.g. a notebook) if one was passed,
+  // else browser history within the app, else the feed (direct visits / shared links).
+  const location = useLocation();
+  const origin = location.state as { from?: string; label?: string } | null;
+  const canGoBack = (window.history.state as { idx?: number } | null)?.idx ? true : false;
+  const backLabel = origin?.label ? `Back to ${origin.label}` : canGoBack ? "Back" : "Feed";
+  const goBack = () => (origin?.from ? navigate(origin.from) : canGoBack ? navigate(-1) : navigate(base));
 
   const run = (a: Parameters<typeof action.mutate>[0], done?: string, undo?: () => void) =>
     action.mutate(a, { onSuccess: () => done && notify(done, undo), onError: (e) => notify(errorMessage(e)) });
@@ -194,13 +201,13 @@ function PostView({ post, images }: { post: Post; images: ImageView[] }) {
   return (
     <Box sx={{ maxWidth: 860, width: "100%", mx: "auto", px: { xs: 1.5, sm: 3 }, py: 2 }}>
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
-        <Button component={RouterLink} to={base} startIcon={<ArrowBackRounded />} size="small" sx={{ ml: -1 }}>Feed</Button>
+        <Button startIcon={<ArrowBackRounded />} size="small" sx={{ ml: -1 }} onClick={goBack}>{backLabel}</Button>
         <Box sx={{ flex: 1 }} />
         {canEdit && <Button startIcon={<EditOutlined />} onClick={() => navigate(`${base}/p/${post.id}/edit`)}>Edit</Button>}
         {post.status === "published" && <Button startIcon={<SlideshowRounded />} onClick={() => navigate(`${base}/p/${post.id}/present`)}>Present</Button>}
         <IconButton onClick={(e) => setMenu(e.currentTarget)} aria-label="More actions"><MoreHorizRounded /></IconButton>
         <Menu anchorEl={menu} open={!!menu} onClose={() => setMenu(null)}>
-          <MenuItem onClick={() => (setMenu(null), navigator.clipboard?.writeText(location.href).then(() => notify("Link copied")))}><LinkRounded fontSize="small" sx={{ mr: 1 }} /> Copy link</MenuItem>
+          <MenuItem onClick={() => (setMenu(null), navigator.clipboard?.writeText(window.location.href).then(() => notify("Link copied")))}><LinkRounded fontSize="small" sx={{ mr: 1 }} /> Copy link</MenuItem>
           {post.revision > 1 && <MenuItem onClick={() => (setMenu(null), setHistory(true))}><HistoryRounded fontSize="small" sx={{ mr: 1 }} /> Revision history</MenuItem>}
           {canEdit && post.status === "published" && post.visibility === "visible" && (
             <MenuItem onClick={(e) => (setHideAnchor(menu ?? e.currentTarget), setMenu(null))}><VisibilityOffOutlined fontSize="small" sx={{ mr: 1 }} /> Hide…</MenuItem>

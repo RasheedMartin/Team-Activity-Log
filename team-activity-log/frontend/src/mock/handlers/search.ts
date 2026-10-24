@@ -4,6 +4,12 @@ import { uuidv7 } from "../../lib/ids";
 import { db } from "../db";
 import { engine, fail, publicUser, roleAtLeast, route, workspaceCtx } from "../server";
 
+/** Notebook names are unique per workspace (case-insensitive), so "Make notebook" can't create twins. */
+function assertUniqueNotebookName(workspaceId: string, name: string, exceptId?: string) {
+  const clash = db.t.collections.find((c) => c.workspaceId === workspaceId && c.kind === "notebook" && c.id !== exceptId && c.name.trim().toLowerCase() === name.trim().toLowerCase());
+  if (clash) fail(409, "name_taken", `A notebook named “${clash.name}” already exists`, { existingId: clash.id });
+}
+
 export const searchHandlers = [
   http.post(
     "/v1/orgs/:org/workspaces/:ws/search",
@@ -109,6 +115,7 @@ export const searchHandlers = [
       const ctx = workspaceCtx(cookies, params.org as string, params.ws as string, "member");
       const body = (await request.json()) as Pick<Collection, "name" | "postIds" | "kind">;
       if (!body.name?.trim()) fail(422, "invalid", "Name the collection");
+      if (body.kind === "notebook") assertUniqueNotebookName(ctx.ws.id, body.name);
       const c = db.t.collections.put({ id: uuidv7(), workspaceId: ctx.ws.id, name: body.name.trim(), kind: body.kind ?? "manual", postIds: body.postIds ?? [], createdBy: ctx.user.id });
       c.postIds.forEach((pid) => {
         const p = db.t.posts.get(pid);
@@ -126,6 +133,7 @@ export const searchHandlers = [
       if (!c || c.workspaceId !== ctx.ws.id) fail(404, "not_found", "Collection not found");
       const { name } = (await request.json()) as { name?: string };
       if (name !== undefined && !name.trim()) fail(422, "invalid", "Name can't be empty");
+      if (name && c!.kind === "notebook") assertUniqueNotebookName(ctx.ws.id, name, c!.id);
       return HttpResponse.json(db.t.collections.update(c!.id, name ? { name: name.trim() } : {}));
     }),
   ),

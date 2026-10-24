@@ -115,3 +115,31 @@ test("delete a whole import removes its posts", async ({ page }) => {
   await page.getByRole("link", { name: "My drafts" }).click();
   await expect(page.getByText("Slide 8 (no title)")).toHaveCount(0);
 });
+
+test("no duplicate notebooks; back from a post returns to the notebook", async ({ page }) => {
+  await openScenario(page, "small");
+  // Explore: first click makes the tag notebook, the second opens the same one.
+  await page.getByRole("link", { name: "Explore" }).click();
+  const shelf = page.getByRole("region", { name: /^Tag / }).first();
+  await shelf.getByRole("button", { name: "Notebook" }).click();
+  await expect(page).toHaveURL(/\/notebooks\//);
+  const firstUrl = page.url();
+  await page.getByRole("link", { name: "Explore" }).click();
+  await page.getByRole("region", { name: /^Tag / }).first().getByRole("button", { name: "Open notebook" }).click();
+  await expect(page).toHaveURL(firstUrl);
+  // The make-notebook dialog refuses a duplicate name.
+  const name = await page.getByLabel("Notebook title").inputValue();
+  await page.getByRole("link", { name: "Feed" }).click();
+  await page.getByRole("button", { name: "Select posts" }).click();
+  await page.getByRole("checkbox", { name: /^Select / }).first().check();
+  await page.getByRole("button", { name: "Make notebook" }).click();
+  await page.getByRole("dialog").getByLabel("Name").fill(name.toUpperCase());
+  await expect(page.getByText(/already exists/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create notebook" })).toBeDisabled();
+  await page.getByRole("button", { name: "Open it" }).click();
+  await expect(page).toHaveURL(firstUrl);
+  // Back from a post goes to the notebook, not the feed.
+  await page.locator("[data-nb-section] h2 a").first().click();
+  await page.getByRole("button", { name: `Back to ${name}` }).click();
+  await expect(page).toHaveURL(new RegExp(`${firstUrl.split("/").pop()}#nb-`));
+});
