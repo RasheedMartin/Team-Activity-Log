@@ -1,10 +1,12 @@
 import type { ApiErrorBody } from "./contract";
 
-// In mock mode MSW answers same-origin /v1 requests; in live mode this points at FastAPI.
+// Mock mode: MSW answers same-origin /v1 requests in the browser. Live mode: the same /v1 calls
+// go to the FastAPI backend, through the Vite proxy in development (same origin, so session cookies
+// stay first-party) or the API serving the built app in production. Set VITE_API_URL only if the
+// API lives on another origin.
 export const API_MODE: "mock" | "live" =
   import.meta.env.VITE_API_MODE === "live" ? "live" : "mock";
-export const API_BASE_URL =
-  API_MODE === "live" ? (import.meta.env.VITE_API_URL ?? "http://localhost:8000/v1") : "/v1";
+export const API_BASE_URL = API_MODE === "live" ? (import.meta.env.VITE_API_URL ?? "/v1") : "/v1";
 
 export class ApiError extends Error {
   readonly status: number;

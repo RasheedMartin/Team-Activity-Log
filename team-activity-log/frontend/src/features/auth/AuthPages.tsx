@@ -3,6 +3,9 @@ import { Alert, Box, Button, Divider, InputAdornment, Link, List, ListItemButton
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link as RouterLink, Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import { API_MODE } from "../../api/client";
+
+// Persona picker and dev-outbox shortcuts: mock mode, or the dev server against a DEV_MODE backend.
+const DEV_TOOLS = API_MODE === "mock" || import.meta.env.DEV;
 import {
   useCreateOrg,
   useForgotPassword,
@@ -86,8 +89,8 @@ export function SignInPage() {
     <AuthLayout title="Sign in" sub="Your team's work log: write it up, find it later.">
       {sent ? (
         <Stack spacing={2}>
-          <Alert severity="success">Check {email} for a link.{API_MODE === "mock" && " (Mock mode: open it from the dev panel's outbox.)"}</Alert>
-          {API_MODE === "mock" && <Button component={RouterLink} to="/dev">Open dev outbox</Button>}
+          <Alert severity="success">Check {email} for a link.{DEV_TOOLS && " (Dev: open it from the dev panel's outbox.)"}</Alert>
+          {DEV_TOOLS && <Button component={RouterLink} to="/dev">Open dev outbox</Button>}
           <Button onClick={() => (setSent(false), setMode("password"))}>Back to sign in</Button>
         </Stack>
       ) : (
@@ -122,7 +125,7 @@ export function SignInPage() {
           </Button>
         </Stack>
       )}
-      {API_MODE === "mock" && <PersonaPicker />}
+      {DEV_TOOLS && <PersonaPicker />}
     </AuthLayout>
   );
 }
@@ -201,7 +204,7 @@ export function VerifySentPage() {
         <Button variant="contained" component={RouterLink} to="/new-org">
           Set up organization
         </Button>
-        {API_MODE === "mock" && (
+        {DEV_TOOLS && (
           <Button component={RouterLink} to="/dev">
             Open dev outbox
           </Button>
