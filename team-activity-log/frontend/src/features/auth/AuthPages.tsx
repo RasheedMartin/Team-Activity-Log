@@ -1,12 +1,13 @@
-import { ArrowBackRounded } from "@mui/icons-material";
+import { ArrowBackRounded, Google } from "@mui/icons-material";
 import { Alert, Box, Button, Divider, InputAdornment, Link, List, ListItemButton, ListItemAvatar, ListItemText, Paper, Stack, TextField, Typography } from "@mui/material";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link as RouterLink, Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
-import { API_MODE } from "../../api/client";
+import { API_BASE_URL, API_MODE } from "../../api/client";
 
 // Persona picker and dev-outbox shortcuts: mock mode, or the dev server against a DEV_MODE backend.
 const DEV_TOOLS = API_MODE === "mock" || import.meta.env.DEV;
 import {
+  useAuthProviders,
   useCreateOrg,
   useForgotPassword,
   useLogin,
@@ -60,6 +61,31 @@ function useAfterAuth() {
   return (me: Parameters<typeof homePath>[0]) => navigate(from && from !== "/" ? from : homePath(me), { replace: true });
 }
 
+// ---- sign in with Google ----
+
+const SIGN_IN_ERRORS: Record<string, string> = {
+  google_cancelled: "Google sign-in was cancelled.",
+  google_expired: "That sign-in took too long or was opened in another browser. Try again.",
+  google_unverified: "Your Google account's email isn't verified, so it can't be used to sign in.",
+  google_failed: "Google sign-in didn't work. Try again, or use your email and password.",
+  google_unavailable: "Google sign-in isn't set up on this server yet.",
+  deactivated: "This account has been deactivated.",
+};
+
+/** Shown only when the server has Google configured. A full-page redirect (OAuth), not a fetch. */
+function GoogleButton({ next }: { next?: string }) {
+  const { data } = useAuthProviders();
+  if (!data?.google) return null;
+  return (
+    <>
+      <Divider>or</Divider>
+      <Button variant="outlined" startIcon={<Google />} href={`${API_BASE_URL}/auth/google/start?next=${encodeURIComponent(next && next.startsWith("/") ? next : "/")}`}>
+        Continue with Google
+      </Button>
+    </>
+  );
+}
+
 // ---- sign in ----
 
 export function SignInPage() {
@@ -73,6 +99,7 @@ export function SignInPage() {
   const forgot = useForgotPassword();
   const location = useLocation();
   const [sent, setSent] = useState(false);
+  const signInError = SIGN_IN_ERRORS[new URLSearchParams(location.search).get("error") ?? ""];
 
   if (me) return <Navigate to={(location.state as { from?: string } | null)?.from ?? homePath(me)} replace />;
 
@@ -95,6 +122,7 @@ export function SignInPage() {
         </Stack>
       ) : (
         <Stack component="form" spacing={2} onSubmit={submit} noValidate>
+          {signInError && <Alert severity="warning">{signInError}</Alert>}
           <TextField label="Email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus required />
           {mode === "password" && (
             <TextField
@@ -119,10 +147,7 @@ export function SignInPage() {
               Create account
             </Link>
           </Stack>
-          <Divider>or</Divider>
-          <Button variant="outlined" disabled title="Connects when the auth provider is set up (backend B-1)">
-            Continue with Google
-          </Button>
+          <GoogleButton next={(location.state as { from?: string } | null)?.from} />
         </Stack>
       )}
       {DEV_TOOLS && <PersonaPicker />}
@@ -185,6 +210,7 @@ export function RegisterPage() {
         <Button type="submit" variant="contained" disabled={register.isPending}>
           Create account
         </Button>
+        <GoogleButton />
         <Typography variant="body2" color="text.secondary">
           Already have an account? <Link component={RouterLink} to="/signin">Sign in</Link>
         </Typography>

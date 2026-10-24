@@ -73,6 +73,8 @@ async def _check() -> int:
     except Exception as e:  # noqa: BLE001
         ok = False
         print(f"Image storage  FAIL {type(e).__name__}: {e}")
+    print(f"Email          {s.email_provider if s.email_provider != 'log' else 'not sent (EMAIL_PROVIDER=log)'}; from {s.email_from}")
+    print(f"Google sign-in {'on' if s.google_enabled else 'off (set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)'}")
     print(f"Environment    {s.env}; dev mode {'on' if s.dev_mode else 'off'}; index prefix '{s.elasticsearch_index_prefix}'")
     return 0 if ok else 1
 
@@ -97,10 +99,12 @@ async def _reindex(org: str | None, new_version: int | None) -> None:
 
 
 async def _worker() -> None:
+    from .mailer import run_mailer
     from .search.indexer import ensure_index, run_indexer
 
     await ensure_index()
-    await run_indexer(asyncio.Event())
+    stop = asyncio.Event()
+    await asyncio.gather(run_indexer(stop), run_mailer(stop))
 
 
 def main(argv: list[str] | None = None) -> int:

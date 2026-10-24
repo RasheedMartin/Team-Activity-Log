@@ -63,6 +63,16 @@ class Settings(BaseSettings):
     s3_addressing_style: Literal["auto", "virtual", "path"] = "auto"
     s3_prefix: str = Field(default="tal", description="Key prefix, so several environments can share a bucket.")
 
+    # ---- Email: queued in Postgres, delivered by the mailer ----
+    email_provider: Literal["log", "resend", "postmark"] = Field(default="log", description="log = don't send (development); messages stay visible on /dev.")
+    email_api_key: str | None = None
+    email_from: str = "Team Activity Log <onboarding@resend.dev>"
+    email_reply_to: str | None = None
+
+    # ---- Sign in with Google (OpenID Connect) ----
+    google_client_id: str | None = None
+    google_client_secret: str | None = None
+
     # ---- App ----
     env: Literal["development", "test", "production"] = "development"
     dev_mode: bool = Field(default=False, description="Enables /v1/dev/* (persona sign-in, scenario loading). Never in production.")
@@ -84,9 +94,15 @@ class Settings(BaseSettings):
             raise ValueError("DEV_MODE must be off in production")
         if not (self.elasticsearch_url or self.elasticsearch_cloud_id):
             raise ValueError("Set ELASTICSEARCH_URL or ELASTICSEARCH_CLOUD_ID")
+        if self.email_provider != "log" and not self.email_api_key:
+            raise ValueError(f"EMAIL_PROVIDER={self.email_provider} needs EMAIL_API_KEY")
         if self.storage == "s3" and not (self.s3_bucket and self.s3_access_key_id and self.s3_secret_access_key):
             raise ValueError("STORAGE=s3 needs S3_BUCKET, S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY")
         return self
+
+    @property
+    def google_enabled(self) -> bool:
+        return bool(self.google_client_id and self.google_client_secret)
 
     @property
     def secure_cookies(self) -> bool:

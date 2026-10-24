@@ -22,7 +22,7 @@ export default defineConfig({
           cwd: "../backend",
           url: "http://localhost:8010/v1/health",
           // Its own database and index, so a test run never touches your local dev data.
-          env: { DATABASE_URL: process.env.E2E_DATABASE_URL ?? "postgresql://tal:tal@localhost:5433/tal_e2e", DEV_MODE: "true", DEV_ALLOW_RESET: "true", ELASTICSEARCH_REFRESH: "wait_for", ELASTICSEARCH_INDEX_PREFIX: "tal_e2e" },
+          env: { DATABASE_URL: process.env.E2E_DATABASE_URL ?? "postgresql://tal:tal@localhost:5433/tal_e2e", DEV_MODE: "true", DEV_ALLOW_RESET: "true", EMAIL_PROVIDER: "log", ELASTICSEARCH_REFRESH: "wait_for", ELASTICSEARCH_INDEX_PREFIX: "tal_e2e" },
           reuseExistingServer: !process.env.CI,
           timeout: 60_000,
         },
