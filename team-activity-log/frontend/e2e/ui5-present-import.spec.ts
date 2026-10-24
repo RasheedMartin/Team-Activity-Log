@@ -58,7 +58,7 @@ test("select posts → notebook → reorder → present", async ({ page }) => {
   await boxes.nth(1).check();
   await boxes.nth(2).check();
   await expect(page.getByText("3 selected")).toBeVisible();
-  await page.getByRole("button", { name: "Make notebook" }).click();
+  await page.getByRole("button", { name: "New notebook" }).click();
   await page.getByRole("dialog").getByLabel("Name").fill("Cooldown notebook");
   await page.getByRole("button", { name: "Create notebook" }).click();
   await expect(page).toHaveURL(/\/notebooks\//);
@@ -152,7 +152,7 @@ test("no duplicate notebooks; back from a post returns to the notebook", async (
   await page.getByRole("link", { name: "Search", exact: true }).click();
   await page.getByRole("button", { name: "Select posts" }).click();
   await page.getByRole("checkbox", { name: /^Select / }).first().check();
-  await page.getByRole("button", { name: "Make notebook" }).click();
+  await page.getByRole("button", { name: "New notebook" }).click();
   await page.getByRole("dialog").getByLabel("Name").fill(name.toUpperCase());
   await expect(page.getByText(/already exists/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Create notebook" })).toBeDisabled();

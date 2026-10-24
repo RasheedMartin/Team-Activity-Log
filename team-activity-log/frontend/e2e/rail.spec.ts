@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { openScenario } from "./helpers";
 
-test("only the clicked saved view or collection is highlighted", async ({ page }) => {
+test("only the clicked saved search or collection is highlighted", async ({ page }) => {
   await openScenario(page, "small");
   const rail = page.getByRole("complementary").first();
   const views = rail.getByRole("link", { name: /Open questions|Calibration, last 90 days/ });
@@ -16,6 +16,6 @@ test("only the clicked saved view or collection is highlighted", async ({ page }
   await page.getByRole("button", { name: "Add filter" }).click();
   await page.getByRole("menuitem", { name: "Has images" }).click();
   await expect(rail.getByRole("link", { name: "Lab_Notes_2022.pptx" })).not.toHaveAttribute("aria-current", "page");
-  // With an ad-hoc search (no pinned item matches), Search is the current item.
+  // With an ad-hoc search (no favorite matches), Search is the current item.
   await expect(rail.getByRole("link", { name: "Search", exact: true })).toHaveAttribute("aria-current", "page");
 });

@@ -1,12 +1,7 @@
 import {
-  BookmarkBorderRounded,
-  CollectionsBookmarkOutlined,
   DeleteOutlineRounded,
   DriveFileRenameOutlineRounded,
-  MenuBookOutlined,
   MoreHorizRounded,
-  PushPin,
-  PushPinOutlined,
   SearchRounded,
 } from "@mui/icons-material";
 import {
@@ -32,27 +27,24 @@ import {
   Tabs,
   TextField,
   ToggleButton,
-  Tooltip,
   Typography,
 } from "@mui/material";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link as RouterLink, useSearchParams } from "react-router-dom";
 import type { LibraryItem, LibraryKind } from "../../api/contract";
-import { useCreateCollection, useDeleteCollection, useDeleteView, useLibrary, usePeople, useSaveView, useTogglePin, useUpdateCollection } from "../../api/hooks";
+import { useCreateCollection, useDeleteCollection, useDeleteView, useLibrary, usePeople, useSaveView, useUpdateCollection } from "../../api/hooks";
 import { can, useWs, wsPath } from "../../app/session";
 import { useNotify } from "../../components/notify";
 import { EmptyState, ErrorState, PageHeader } from "../../components/ui";
 import { timeAgo } from "../../lib/dates";
 import { errorMessage } from "../../lib/format";
+import { KINDS } from "./concepts";
+import { FavoriteButton } from "./FavoriteButton";
 import { libraryHref } from "./libraryLinks";
 
-const KIND_LABEL: Record<LibraryKind, string> = { view: "Saved view", notebook: "Notebook", collection: "Collection" };
-const KIND_ICON: Record<LibraryKind, ReactNode> = { view: <BookmarkBorderRounded />, notebook: <MenuBookOutlined />, collection: <CollectionsBookmarkOutlined /> };
 const TABS: { value: LibraryKind | "all"; label: string }[] = [
   { value: "all", label: "All" },
-  { value: "view", label: "Saved views" },
-  { value: "notebook", label: "Notebooks" },
-  { value: "collection", label: "Collections" },
+  ...(["view", "collection", "notebook"] as const).map((k) => ({ value: k, label: KINDS[k].plural })),
 ];
 
 function RenameDialog({ item, onClose }: { item: LibraryItem; onClose: () => void }) {
@@ -68,7 +60,7 @@ function RenameDialog({ item, onClose }: { item: LibraryItem; onClose: () => voi
   };
   return (
     <Dialog open onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle>Rename {KIND_LABEL[item.kind].toLowerCase()}</DialogTitle>
+      <DialogTitle>Rename {KINDS[item.kind].label.toLowerCase()}</DialogTitle>
       <DialogContent>
         <TextField fullWidth autoFocus label="Name" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && name.trim() && save()} error={!!error} helperText={error ?? " "} sx={{ mt: 1 }} />
       </DialogContent>
@@ -83,7 +75,6 @@ function RenameDialog({ item, onClose }: { item: LibraryItem; onClose: () => voi
 function Row({ item, ownerName }: { item: LibraryItem; ownerName?: string }) {
   const { org, ws, me, role } = useWs();
   const notify = useNotify();
-  const pin = useTogglePin(org.id, ws.id);
   const delView = useDeleteView(org.id, ws.id);
   const delCollection = useDeleteCollection(org.id, ws.id);
   const restoreView = useSaveView(org.id, ws.id);
@@ -107,7 +98,7 @@ function Row({ item, ownerName }: { item: LibraryItem; ownerName?: string }) {
       });
   };
   const meta = [
-    KIND_LABEL[item.kind],
+    KINDS[item.kind].label,
     item.postCount !== undefined ? `${item.postCount} post${item.postCount === 1 ? "" : "s"}` : null,
     `updated ${timeAgo(item.updatedAt)}`,
     ownerName ? `by ${mine ? "you" : ownerName}` : null,
@@ -119,11 +110,7 @@ function Row({ item, ownerName }: { item: LibraryItem; ownerName?: string }) {
       divider
       secondaryAction={
         <Stack direction="row" spacing={0.25}>
-          <Tooltip title={item.pinned ? "Unpin from sidebar" : "Pin to sidebar"}>
-            <IconButton aria-label={item.pinned ? `Unpin ${item.name}` : `Pin ${item.name}`} aria-pressed={item.pinned} onClick={() => pin.mutate({ item, pinned: !item.pinned })} sx={{ color: item.pinned ? "primary.main" : "text.disabled" }}>
-              {item.pinned ? <PushPin fontSize="small" /> : <PushPinOutlined fontSize="small" />}
-            </IconButton>
-          </Tooltip>
+          <FavoriteButton kind={item.kind} id={item.id} name={item.name} />
           {(canEdit || canDelete) && (
             <IconButton aria-label={`More actions for ${item.name}`} onClick={(e) => setMenu(e.currentTarget)}>
               <MoreHorizRounded fontSize="small" />
@@ -146,7 +133,7 @@ function Row({ item, ownerName }: { item: LibraryItem; ownerName?: string }) {
       }
     >
       <ListItemButton component={RouterLink} to={libraryHref(wsPath(org, ws), item)} sx={{ pr: 12 }}>
-        <ListItemIcon sx={{ minWidth: 36, color: "text.secondary" }}>{KIND_ICON[item.kind]}</ListItemIcon>
+        <ListItemIcon sx={{ minWidth: 36, color: "text.secondary" }}>{KINDS[item.kind].icon}</ListItemIcon>
         <ListItemText primary={item.name} secondary={meta.join(" · ")} slotProps={{ primary: { noWrap: true, fontWeight: 500 }, secondary: { noWrap: true } }} />
       </ListItemButton>
     </ListItem>
@@ -154,8 +141,8 @@ function Row({ item, ownerName }: { item: LibraryItem; ownerName?: string }) {
 }
 
 /**
- * Library (scale): every saved view, notebook, and collection in the workspace — searchable,
- * filterable, sorted, and paged from the server. The rail only shows what you pin.
+ * Library (scale): every saved search, collection, and notebook in the workspace — searchable,
+ * filterable, sorted, and paged from the server. The rail only shows your Favorites.
  */
 export default function LibraryPage() {
   const { org, ws } = useWs();
@@ -183,12 +170,18 @@ export default function LibraryPage() {
 
   return (
     <Box sx={{ maxWidth: 960, width: "100%", mx: "auto", px: { xs: 1.5, sm: 3 }, py: 3 }}>
-      <PageHeader title="Library" sub={`Saved views, notebooks, and collections in ${ws.name}. Pin the ones you use to the sidebar.`} />
+      <PageHeader title="Library" />
       <Tabs value={kind ?? "all"} onChange={(_, v) => set({ kind: v === "all" ? null : v })} sx={{ mb: 1.5, minHeight: 40, "& .MuiTab-root": { minHeight: 40, textTransform: "none" } }} variant="scrollable">
         {TABS.map((t) => (
           <Tab key={t.value} value={t.value} label={countFor(t.value) === undefined ? t.label : `${t.label} (${countFor(t.value)})`} />
         ))}
       </Tabs>
+      {kind && (
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5, color: "text.secondary", "& svg": { fontSize: 18 } }}>
+          {KINDS[kind].icon}
+          <Typography variant="body2">{KINDS[kind].blurb}</Typography>
+        </Stack>
+      )}
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mb: 2 }}>
         <TextField
           placeholder="Search by name"
@@ -213,7 +206,7 @@ export default function LibraryPage() {
       ) : !items.length ? (
         <EmptyState
           title={debounced || mine ? "Nothing matches" : "Nothing saved yet"}
-          body={debounced || mine ? "Try a different name or clear the filters." : "Save a search as a view, or select posts in search to make a notebook or collection."}
+          body={debounced || mine ? "Try a different name or clear the filters." : "Save a search, or select posts in Search to make a collection or notebook."}
         />
       ) : (
         <Paper variant="outlined" sx={{ opacity: lib.isPlaceholderData ? 0.6 : 1 }}>

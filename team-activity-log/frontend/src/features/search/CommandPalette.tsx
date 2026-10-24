@@ -1,4 +1,4 @@
-import { AddRounded, ArticleOutlined, BookmarkBorderRounded, SearchRounded, SlideshowOutlined, SwapHorizRounded } from "@mui/icons-material";
+import { AddRounded, ArticleOutlined, SavedSearchRounded, SearchRounded, SlideshowOutlined, SwapHorizRounded } from "@mui/icons-material";
 import { Box, Dialog, InputBase, List, ListItemButton, ListItemIcon, ListItemText, ListSubheader, Typography } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
@@ -17,7 +17,7 @@ interface Item {
   run: () => void;
 }
 
-/** §W4.12 Ctrl/Cmd+K: jump to a post, apply a saved view, toggle a tag, switch workspace, new post. */
+/** §W4.12 Ctrl/Cmd+K: jump to a post, apply a saved search, toggle a tag, switch workspace, new post. */
 export function CommandPalette() {
   const { me, org, ws, role } = useWs();
   const navigate = useNavigate();
@@ -52,7 +52,7 @@ export function CommandPalette() {
     if (needle) out.push({ id: "search", group: "Actions", label: `Search for “${q.trim()}”`, icon: <SearchRounded />, run: () => navigate(`${base}/search?${toSearchParams({ q: q.trim() })}`) });
     for (const p of suggest?.posts ?? []) out.push({ id: `p-${p.id}`, group: "Posts", label: p.title, icon: <ArticleOutlined />, run: () => navigate(`${base}/p/${p.id}`) });
     for (const v of (views ?? []).slice(0, 5))
-      out.push({ id: `v-${v.id}`, group: "Saved views", label: v.name, icon: <BookmarkBorderRounded />, run: () => navigate(`${base}/search?${toSearchParams(v.filterSpec ?? {})}&view=${v.id}`) });
+      out.push({ id: `v-${v.id}`, group: "Saved searches", label: v.name, icon: <SavedSearchRounded />, run: () => navigate(`${base}/search?${toSearchParams(v.filterSpec ?? {})}&view=${v.id}`) });
     if (needle)
       for (const t of (tags?.tags ?? []).filter((t) => match(t.name)).slice(0, 5))
         out.push({ id: `t-${t.id}`, group: "Filter by tag", label: t.name, icon: <TagDot color={t.color} />, run: () => navigate(`${base}/search?${toSearchParams(toggleFacetValue({}, "tag", t.id, "include"))}`) });

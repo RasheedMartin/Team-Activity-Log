@@ -29,6 +29,7 @@ import { describeCondition, type DescribeCtx } from "./fields";
 import { FilterSidebar } from "./FilterSidebar";
 import { Histogram, HistogramTable } from "./Histogram";
 import { OnboardingChecklist } from "./Onboarding";
+import { FavoriteButton } from "../collections/FavoriteButton";
 import { GalleryGrid, GalleryViewer, PeekPane, ResultsList } from "./Results";
 import { SearchBar } from "./SearchBar";
 
@@ -317,12 +318,19 @@ export function SearchPage() {
           </Box>
         )}
         <Box sx={{ minWidth: 0, px: { xs: 1.5, md: 2 }, pb: 6 }}>
-          <Typography component="h1" variant="h3" sx={{ pt: 1.5 }}>
-            {activeView?.name ?? onlyCollection?.name ?? (isEmptySpec(spec) ? "All posts" : "Search results")}
-            {isEmptySpec(spec) && !activeView && (
-              <Typography component="span" variant="body2" color="text.secondary"> · {SORTS.find(([s]) => s === effectiveSort(spec))?.[1].toLowerCase()} first</Typography>
-            )}
-          </Typography>
+          <Stack direction="row" alignItems="center" spacing={0.5} sx={{ pt: 1.5 }}>
+            <Typography component="h1" variant="h3">
+              {activeView?.name ?? onlyCollection?.name ?? (isEmptySpec(spec) ? "All posts" : "Search results")}
+              {isEmptySpec(spec) && !activeView && (
+                <Typography component="span" variant="body2" color="text.secondary"> · {SORTS.find(([s]) => s === effectiveSort(spec))?.[1].toLowerCase()} first</Typography>
+              )}
+            </Typography>
+            {activeView ? (
+              <FavoriteButton kind="view" id={activeView.id} name={activeView.name} size="small" />
+            ) : onlyCollection ? (
+              <FavoriteButton kind={onlyCollection.kind === "notebook" ? "notebook" : "collection"} id={onlyCollection.id} name={onlyCollection.name} size="small" />
+            ) : null}
+          </Stack>
           {/* Histogram strip */}
           <Box sx={{ pt: 1, pb: 0.5 }}>
             <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5, minHeight: 28 }}>

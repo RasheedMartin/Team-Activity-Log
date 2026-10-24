@@ -56,8 +56,8 @@ test("v4 Find It end to end", async ({ page }) => {
   await page.getByRole("button", { name: "Images" }).click();
   await expect(page.getByText(/^[\d,]+ images?/)).toBeVisible();
 
-  // Save the view, reload from the URL → identical state.
-  await page.getByRole("button", { name: "Save view" }).click();
+  // Save the search, reload from the URL → identical state.
+  await page.getByRole("button", { name: "Save search" }).click();
   await page.getByLabel("Name").fill("Drift, focused");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText("Saved “Drift, focused”")).toBeVisible();
@@ -67,7 +67,7 @@ test("v4 Find It end to end", async ({ page }) => {
   await expect(page.getByRole("combobox", { name: "Search" })).toHaveValue("drift");
   await expect(page.getByRole("button", { name: /Filter: Not tagged/ })).toBeVisible();
   await expect.poll(() => count(page)).toBe(before);
-  await expect(page.getByRole("link", { name: "Drift, focused" })).toBeVisible(); // pinned in the rail
+  await expect(page.getByRole("list", { name: "Favorites" }).getByRole("link", { name: "Drift, focused" })).toBeVisible();
 });
 
 test("keyboard: / focuses search, j/k move, Space peeks, Enter opens", async ({ page }) => {

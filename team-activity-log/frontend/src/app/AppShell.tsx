@@ -1,11 +1,8 @@
 import {
   AddRounded,
   AdminPanelSettingsOutlined,
-  BookmarkBorderRounded,
-  CollectionsBookmarkOutlined,
   HomeOutlined,
   SearchRounded,
-  MenuBookOutlined,
   ExpandMoreRounded,
   NotificationsNoneRounded,
   LibraryBooksOutlined,
@@ -14,6 +11,7 @@ import {
   PersonOutlineRounded,
   ScienceOutlined,
   SlideshowOutlined,
+  StarRounded,
 } from "@mui/icons-material";
 import {
   Badge,
@@ -40,10 +38,10 @@ import { Link as RouterLink, NavLink, Outlet, useLocation, useNavigate } from "r
 import { API_MODE } from "../api/client";
 import { useLogout, useNotifications, usePins, useRememberWorkspace } from "../api/hooks";
 import { collectionParams, libraryHref } from "../features/collections/libraryLinks";
+import { KINDS, favoriteDomId } from "../features/collections/concepts";
 import { fromSearchParams, specKey } from "../lib/filterSpec";
 
 const PINS_SHOWN = 10;
-const PIN_ICONS = { view: <BookmarkBorderRounded />, notebook: <MenuBookOutlined />, collection: <CollectionsBookmarkOutlined /> };
 import { UserAvatar } from "../components/ui";
 import { can, useWs, wsPath } from "./session";
 import { useShortcuts } from "./shortcuts";
@@ -57,7 +55,7 @@ const RAIL_WIDTH = 232;
  * Rail link. NavLink matches on the path only, so links that differ only by query string (saved
  * views, collections — all `/search?…`) pass `active` explicitly instead.
  */
-function NavItem({ to, icon, label, end, badge, onClick, active }: { to: string; icon: ReactNode; label: string; end?: boolean; badge?: boolean; onClick?: () => void; active?: boolean }) {
+function NavItem({ to, icon, label, end, badge, onClick, active, id }: { to: string; icon: ReactNode; label: string; end?: boolean; badge?: boolean; onClick?: () => void; active?: boolean; id?: string }) {
   const sx = { py: 0.5, mb: 0.25, "&.active, &[aria-current=page]": { bgcolor: "action.selected", fontWeight: 600 } };
   const content = (
     <>
@@ -70,11 +68,11 @@ function NavItem({ to, icon, label, end, badge, onClick, active }: { to: string;
     </>
   );
   return active === undefined ? (
-    <ListItemButton component={NavLink} to={to} end={end} onClick={onClick} sx={sx}>
+    <ListItemButton id={id} component={NavLink} to={to} end={end} onClick={onClick} sx={sx}>
       {content}
     </ListItemButton>
   ) : (
-    <ListItemButton component={RouterLink} to={to} onClick={onClick} aria-current={active ? "page" : undefined} sx={sx}>
+    <ListItemButton id={id} component={RouterLink} to={to} onClick={onClick} aria-current={active ? "page" : undefined} sx={sx}>
       {content}
     </ListItemButton>
   );
@@ -207,7 +205,7 @@ function Rail({ onNavigate }: { onNavigate?: () => void }) {
         <WorkspaceSwitcher />
       </Box>
       {can(role, "member") && !ws.archived && (
-        <Box sx={{ px: 1.5, py: 1 }}>
+        <Box sx={{ px: 1.5, pt: 1.5, pb: 2, mb: 1, borderBottom: 1, borderColor: "divider" }}>
           <Button
             fullWidth
             variant="contained"
@@ -230,30 +228,38 @@ function Rail({ onNavigate }: { onNavigate?: () => void }) {
           {/* Search is the all-posts list; it's "current" unless a pinned view/collection is. */}
           <NavItem to={`${base}/search`} icon={<SearchRounded />} label="Search" active={onSearch && !pinActive} onClick={onNavigate} />
           <NavItem to={`${base}/activity`} icon={<NotificationsNoneRounded />} label="Activity" badge={unread} onClick={onNavigate} />
+          <NavItem to={`${base}/library`} icon={<LibraryBooksOutlined />} label="Library" onClick={onNavigate} />
         </List>
-        <List
-          dense
-          disablePadding
-          aria-label="Pinned"
-          subheader={<ListSubheader sx={{ bgcolor: "transparent", lineHeight: "28px", fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>Pinned</ListSubheader>}
-        >
-          {shownPins.map((item) => (
-            <NavItem
-              key={`${item.kind}-${item.id}`}
-              to={libraryHref(base, item)}
-              active={item.kind === "notebook" ? undefined : pinIsActive(item)}
-              icon={PIN_ICONS[item.kind]}
-              label={item.name}
-              onClick={onNavigate}
-            />
-          ))}
-          {!pins.length && (
-            <Typography variant="caption" color="text.disabled" sx={{ display: "block", px: 2, py: 0.5 }}>
-              Pin views, notebooks, and collections from the Library.
-            </Typography>
-          )}
-          <NavItem to={`${base}/library`} icon={<LibraryBooksOutlined />} label={pins.length > PINS_SHOWN ? `Library (+${pins.length - PINS_SHOWN} pinned)` : "Library"} onClick={onNavigate} />
-        </List>
+        {/* Favorites: what *you* starred (the API calls them pins). Hidden until there's one. */}
+        {pins.length > 0 && (
+          <List
+            dense
+            disablePadding
+            aria-label="Favorites"
+            subheader={
+              <ListSubheader sx={{ bgcolor: "transparent", lineHeight: "28px", mt: 1, fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.06em", display: "flex", alignItems: "center", gap: 0.5 }}>
+                <StarRounded sx={{ fontSize: 13 }} /> Favorites
+              </ListSubheader>
+            }
+          >
+            {shownPins.map((item) => (
+              <NavItem
+                key={`${item.kind}-${item.id}`}
+                id={favoriteDomId(item.kind, item.id)}
+                to={libraryHref(base, item)}
+                active={item.kind === "notebook" ? undefined : pinIsActive(item)}
+                icon={KINDS[item.kind].icon}
+                label={item.name}
+                onClick={onNavigate}
+              />
+            ))}
+            {pins.length > PINS_SHOWN && (
+              <Typography component={RouterLink} to={`${base}/library`} onClick={onNavigate} variant="caption" color="text.secondary" sx={{ display: "block", px: 2, py: 0.5 }}>
+                {pins.length - PINS_SHOWN} more in Library
+              </Typography>
+            )}
+          </List>
+        )}
       </Box>
       <Divider sx={{ mx: 1, mb: 0.5 }} />
       <Box sx={{ px: 1 }}>

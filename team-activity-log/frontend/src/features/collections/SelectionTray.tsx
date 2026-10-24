@@ -7,6 +7,7 @@ import { ApiError } from "../../api/client";
 import { useCreateCollection, useLibrary } from "../../api/hooks";
 import { useWs, wsPath } from "../../app/session";
 import { useNotify } from "../../components/notify";
+import { KINDS } from "./concepts";
 import { formatDay } from "../../lib/dates";
 import { errorMessage } from "../../lib/format";
 
@@ -47,7 +48,7 @@ function ArrangeDialog({ posts, action, onClose, onDone }: { posts: Post[]; acti
       },
     );
   };
-  const title = { present: "Present selection", collection: "Save as collection", notebook: "Make a notebook" }[action];
+  const title = { present: "Present selection", collection: "New collection", notebook: "New notebook" }[action];
   return (
     <Dialog open onClose={onClose} fullWidth maxWidth="sm">
       <DialogTitle>{title}</DialogTitle>
@@ -59,7 +60,7 @@ function ArrangeDialog({ posts, action, onClose, onDone }: { posts: Post[]; acti
           </Alert>
         )}
         <Typography variant="caption" color="text.secondary">
-          {action === "notebook" ? "Ordered by work date. Reorder or remove posts; you can change this later." : "Reorder or skip posts."}
+          {action === "present" ? "Reorder or skip posts." : `${KINDS[action].blurb} Reorder or skip posts below.`}
         </Typography>
         <List dense sx={{ maxHeight: 360, overflow: "auto" }}>
           {order.map((p, i) => (
@@ -103,8 +104,8 @@ export function SelectionTray({ selected, posts, onClear }: { selected: ID[]; po
       >
         <Typography variant="body2" sx={{ fontWeight: 600, mr: 1 }}>{selected.length} selected</Typography>
         <Button size="small" variant="contained" startIcon={<SlideshowRounded />} onClick={() => setAction("present")}>Present</Button>
-        <Button size="small" startIcon={<CollectionsBookmarkOutlined />} onClick={() => setAction("collection")}>Save collection</Button>
-        <Button size="small" startIcon={<MenuBookOutlined />} onClick={() => setAction("notebook")}>Make notebook</Button>
+        <Button size="small" startIcon={<CollectionsBookmarkOutlined />} onClick={() => setAction("collection")}>New collection</Button>
+        <Button size="small" startIcon={<MenuBookOutlined />} onClick={() => setAction("notebook")}>New notebook</Button>
         <Box sx={{ flex: 1 }} />
         <Button size="small" color="inherit" onClick={onClear}>Clear</Button>
       </Paper>

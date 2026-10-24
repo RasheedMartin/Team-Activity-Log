@@ -41,6 +41,7 @@ import { RichText } from "../../components/RichText";
 import { EmptyState, TagChip, UserAvatar } from "../../components/ui";
 import { formatDay, formatRange } from "../../lib/dates";
 import { AnnotatedImage } from "../posts/editor/ImageBlock";
+import { FavoriteButton } from "./FavoriteButton";
 
 /** One notebook entry, rendered like a document section. */
 function Entry({ detail, people, tags, origin, pageBreak }: { detail: PostDetail; people: Map<ID, User>; tags: Map<ID, Tag>; origin: Origin; pageBreak?: boolean }) {
@@ -228,7 +229,9 @@ export default function NotebookPage() {
       <Box sx={{ maxWidth: 860, width: "100%", mx: "auto", px: { xs: 1.5, sm: 4 }, py: 3 }}>
         <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5, flexWrap: "wrap", rowGap: 1 }} data-print-hide>
           <MenuBookOutlined sx={{ color: "text.secondary" }} />
-          <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>Notebook</Typography>
+          <Typography variant="overline" color="text.secondary">Notebook</Typography>
+          <FavoriteButton kind="notebook" id={nb.id} name={nb.name} size="small" />
+          <Box sx={{ flex: 1 }} />
           <ToggleButtonGroup size="small" exclusive value={continuous ? "continuous" : "reader"} onChange={(_, v) => v && setParam({ view: v === "continuous" ? "continuous" : null })} aria-label="Notebook layout" sx={{ "& .MuiToggleButton-root": { textTransform: "none", py: 0.25 } }}>
             <ToggleButton value="reader">One entry</ToggleButton>
             <ToggleButton value="continuous">Continuous</ToggleButton>

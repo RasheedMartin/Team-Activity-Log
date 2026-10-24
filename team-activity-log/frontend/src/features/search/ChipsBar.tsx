@@ -1,4 +1,4 @@
-import { AccountTreeOutlined, AddRounded, BookmarkAddOutlined, BookmarkBorderRounded, CheckRounded, ExpandMoreRounded, PushPin, PushPinOutlined } from "@mui/icons-material";
+import { AccountTreeOutlined, AddRounded, CheckRounded, ExpandMoreRounded, SavedSearchRounded } from "@mui/icons-material";
 import {
   Box,
   Button,
@@ -9,7 +9,6 @@ import {
   DialogTitle,
   Divider,
   FormControlLabel,
-  IconButton,
   ListItemIcon,
   ListItemText,
   ListSubheader,
@@ -24,7 +23,9 @@ import {
 import { useEffect, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import type { Condition, FilterSpec, LibraryItem, SavedView } from "../../api/contract";
-import { useLibrary, useSaveView, useTogglePin } from "../../api/hooks";
+import { useLibrary, useSaveView } from "../../api/hooks";
+import { KINDS } from "../collections/concepts";
+import { FavoriteButton } from "../collections/FavoriteButton";
 import { can, useWs, wsPath } from "../../app/session";
 import { formatRange } from "../../lib/dates";
 import { clearFilters, isEmptySpec, normalize, specKey } from "../../lib/filterSpec";
@@ -117,13 +118,13 @@ export function SaveViewDialog({ open, onClose, spec, existing, onSaved }: { ope
   const [pinned, setPinned] = useState(existing?.pinned ?? true);
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle>{existing ? "Update saved view" : "Save view"}</DialogTitle>
+      <DialogTitle>{existing ? "Update saved search" : "Save search"}</DialogTitle>
       <DialogContent>
         <Stack spacing={1.5} sx={{ pt: 1 }}>
           <TextField label="Name" value={name} onChange={(e) => setName(e.target.value)} autoFocus placeholder="Calibration, this quarter" />
-          <FormControlLabel control={<Switch checked={pinned} onChange={(e) => setPinned(e.target.checked)} />} label="Pin to the sidebar" />
+          <Typography variant="body2" color="text.secondary">{KINDS.view.blurb}</Typography>
+          <FormControlLabel control={<Switch checked={pinned} onChange={(e) => setPinned(e.target.checked)} />} label="Add to Favorites in the sidebar" />
           <FormControlLabel control={<Switch checked={shared} onChange={(e) => setShared(e.target.checked)} />} label={`Share with everyone in ${ws.name}`} />
-          <Typography variant="caption" color="text.secondary">Relative dates (like “last 30 days”) stay relative, so the view stays fresh.</Typography>
           {save.error && <Typography color="error" variant="body2">{errorMessage(save.error)}</Typography>}
         </Stack>
       </DialogContent>
@@ -137,7 +138,7 @@ export function SaveViewDialog({ open, onClose, spec, existing, onSaved }: { ope
   );
 }
 
-/** The Saved menu searches views on the server (a workspace may have hundreds). */
+/** The saved-searches menu searches them on the server (a workspace may have hundreds). */
 export function SavedViewsMenu({ activeId, onApply }: { activeId?: string | null; onApply: (v: LibraryItem) => void }) {
   const { org, ws } = useWs();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
@@ -148,32 +149,29 @@ export function SavedViewsMenu({ activeId, onApply }: { activeId?: string | null
     return () => clearTimeout(t);
   }, [q]);
   const lib = useLibrary(org.id, ws.id, { kind: "view", q: debounced, limit: 15 }, !!anchor);
-  const pin = useTogglePin(org.id, ws.id);
   const views = lib.data?.pages[0]?.items ?? [];
   const total = lib.data?.pages[0]?.total ?? 0;
   return (
     <>
-      <Button size="small" color="inherit" endIcon={<ExpandMoreRounded />} startIcon={<BookmarkBorderRounded />} onClick={(e) => setAnchor(e.currentTarget)} aria-haspopup="menu" sx={{ whiteSpace: "nowrap" }}>
-        Saved
+      <Button size="small" color="inherit" endIcon={<ExpandMoreRounded />} startIcon={<SavedSearchRounded />} onClick={(e) => setAnchor(e.currentTarget)} aria-haspopup="menu" sx={{ whiteSpace: "nowrap" }}>
+        Saved searches
       </Button>
       <Menu anchorEl={anchor} open={!!anchor} onClose={() => setAnchor(null)} slotProps={{ paper: { sx: { width: 340 } } }} autoFocus={false}>
         <Box sx={{ px: 1.5, pb: 1 }} onKeyDown={(e) => e.stopPropagation()}>
-          <TextField size="small" fullWidth autoFocus placeholder="Find a saved view" value={q} onChange={(e) => setQ(e.target.value)} inputProps={{ "aria-label": "Find a saved view" }} />
+          <TextField size="small" fullWidth autoFocus placeholder="Find a saved search" value={q} onChange={(e) => setQ(e.target.value)} inputProps={{ "aria-label": "Find a saved search" }} />
         </Box>
         {lib.isPending && <MenuItem disabled>Loading…</MenuItem>}
-        {!lib.isPending && !views.length && <MenuItem disabled>{debounced ? "No views match" : "No saved views yet"}</MenuItem>}
+        {!lib.isPending && !views.length && <MenuItem disabled>{debounced ? "No saved searches match" : "No saved searches yet"}</MenuItem>}
         {views.map((v) => (
           <MenuItem key={v.id} selected={v.id === activeId} onClick={() => (setAnchor(null), onApply(v))}>
             <ListItemIcon>{v.id === activeId ? <CheckRounded fontSize="small" /> : null}</ListItemIcon>
             <ListItemText primary={v.name} secondary={v.shared ? "Shared" : "Only you"} slotProps={{ primary: { noWrap: true } }} />
-            <IconButton size="small" aria-label={v.pinned ? `Unpin ${v.name}` : `Pin ${v.name}`} onClick={(e) => (e.stopPropagation(), pin.mutate({ item: v, pinned: !v.pinned }))} sx={{ ml: 1, color: v.pinned ? "primary.main" : "text.disabled" }}>
-              {v.pinned ? <PushPin fontSize="small" /> : <PushPinOutlined fontSize="small" />}
-            </IconButton>
+            <FavoriteButton kind="view" id={v.id} name={v.name} size="small" />
           </MenuItem>
         ))}
         <Divider />
         <MenuItem component={RouterLink} to={`${wsPath(org, ws, "/library")}?kind=view`} onClick={() => setAnchor(null)}>
-          <ListItemText primary={total > views.length ? `All ${total} saved views in the Library` : "Manage in the Library"} slotProps={{ primary: { color: "primary", fontSize: "0.85rem" } }} />
+          <ListItemText primary={total > views.length ? `All ${total} saved searches in the Library` : "Manage in the Library"} slotProps={{ primary: { color: "primary", fontSize: "0.85rem" } }} />
         </MenuItem>
       </Menu>
     </>
@@ -236,8 +234,8 @@ export function ChipsBar({ spec, setSpec, total, view, rangeLabel, ctx, activeVi
         </Button>
       )}
       {(!empty || viewChanged) && (
-        <Button size="small" startIcon={<BookmarkAddOutlined />} onClick={onSave}>
-          {activeView ? (viewChanged ? `Update “${activeView.name}”` : "Saved") : "Save view"}
+        <Button size="small" startIcon={<SavedSearchRounded />} onClick={onSave}>
+          {activeView ? (viewChanged ? `Update “${activeView.name}”` : "Saved") : "Save search"}
         </Button>
       )}
       <Divider flexItem orientation="vertical" sx={{ display: "none" }} />
