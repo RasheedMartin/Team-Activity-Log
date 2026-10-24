@@ -32,7 +32,7 @@ from ..outbox import enqueue
 from ..pptx import ParsedDeck, ParsedSlide, PptxError, parse_pptx
 from ..prosemirror import doc, empty_doc, heading
 from ..timeutil import now, today
-from ..views import import_job_view
+from ..views import block_image_ids, import_job_view
 from .posts import set_tags as set_post_tags
 
 router = APIRouter()
@@ -191,6 +191,8 @@ async def start(org: str, ws: str, body: dict = Body(...), u: m.User = Depends(r
             "baseDate": clean.iso_date(defaults["baseDate"], "baseDate").isoformat() if defaults.get("baseDate") else None,
             "guessDates": defaults.get("guessDates", True) is not False,
             "collectionName": clean.text(defaults.get("collectionName"), "collectionName", 300) or "",
+            # "auto": slides whose layout carries meaning stay designed, text slides become post text
+            "slideDesign": defaults.get("slideDesign") if defaults.get("slideDesign") in SLIDE_DESIGN_MODES else "auto",
         },
         items=[],
     )
@@ -240,11 +242,36 @@ async def patch_job(org: str, job_id: str, body: dict = Body(...), u: m.User = D
     return import_job_view(j)
 
 
-async def blocks_for(db: AsyncSession, ctx: OrgCtx, post_id: uuid.UUID, slides: list[ParsedSlide]) -> list[dict]:
-    """Per slide: a break (with presenter notes), a heading when several slides, then text and
-    images in the slide's reading order."""
+SLIDE_DESIGN_MODES = ("auto", "slides", "text")
+
+
+def keeps_design(sl: ParsedSlide, mode: str) -> bool:
+    return bool(sl.design and sl.design["elements"]) and (mode == "slides" or (mode == "auto" and sl.rich))
+
+
+async def _design_block(db: AsyncSession, ctx: OrgCtx, post_id: uuid.UUID, sl: ParsedSlide) -> dict:
+    """The slide as a designed-slide block: its pictures become image instances of the post."""
+    elements = []
+    for e in sl.design["elements"]:  # type: ignore[index]
+        if e["kind"] == "image":
+            img = sl.design_images[e["image"]]
+            asset, _ = await create_asset(db, ctx.org.id, img.data, img.name, "pptx_import", ctx.user.id)
+            inst = m.ImageInstance(id=uuid7(), org_id=ctx.org.id, asset_id=asset.id, post_id=post_id, tags=[], custom_fields={}, caption=None if e.get("decorative") else f"Slide {sl.n}")
+            db.add(inst)
+            e = {k: v for k, v in e.items() if k != "image"} | {"imageInstanceId": str(inst.id)}
+        elements.append(e)
+    design = clean.slide_design({**sl.design, "elements": elements})  # type: ignore[dict-item]
+    return {"id": str(uuid7()), "type": "slide", "design": design, **({"notes": sl.notes} if sl.notes else {})}
+
+
+async def blocks_for(db: AsyncSession, ctx: OrgCtx, post_id: uuid.UUID, slides: list[ParsedSlide], design_mode: str = "auto") -> list[dict]:
+    """Per slide: a designed-slide block when its layout is kept, otherwise a break (with presenter
+    notes), a heading when several slides, then text and images in the slide's reading order."""
     blocks: list[dict] = []
     for k, sl in enumerate(slides):
+        if keeps_design(sl, design_mode):
+            blocks.append(await _design_block(db, ctx, post_id, sl))
+            continue
         if k > 0 or sl.notes:
             blocks.append({"id": str(uuid7()), "type": "slide_break", **({"notes": sl.notes} if sl.notes else {})})
         parts = list(sl.parts)
@@ -305,9 +332,9 @@ async def commit(org: str, job_id: str, u: m.User = Depends(require_user), db: A
         )
         db.add(p)
         await db.flush()
-        blocks = await blocks_for(db, ctx, post_id, slides)
+        blocks = await blocks_for(db, ctx, post_id, slides, j.defaults.get("slideDesign") or "auto")
         p.blocks = blocks or [{"id": str(uuid7()), "type": "text", "doc": empty_doc()}]
-        p.image_count = sum(1 for b in blocks if b["type"] == "image")
+        p.image_count = len(block_image_ids(blocks, content_only=True))
         await set_post_tags(db, ctx, p, j.defaults.get("tagIds") or [])
         db.add(m.CollectionPost(collection_id=coll.id, post_id=post_id, position=created))
         created += 1

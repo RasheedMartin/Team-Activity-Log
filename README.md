@@ -15,13 +15,12 @@ into a notebook or presented as slides.
 - **Search.** Boolean queries (`AND`, `OR`, `NOT`, parentheses, `field:value`), faceted filters, a
   date histogram, an image gallery, and saved searches. Search reads image captions, annotation
   text, and comments as well as post text.
-- **Import slides.** Drop in a `.pptx` and get posts that keep the deck's formatting, in reading
-  order:
-  - text formatting: colors, highlight, numbered and nested lists, links, and headings;
-  - images, tables, and speaker notes;
-  - charts become tables of their data, and SmartArt becomes a list.
-
-  You review and publish the posts; nothing publishes on its own.
+- **Import slides.** Drop in a `.pptx`. Slides whose layout matters stay **designed slides**: text
+  boxes, shapes, pictures, and the template, positioned as in PowerPoint. Text-only slides become
+  post text that keeps its formatting (colors, highlight, lists, links, headings). Charts come in
+  as tables of their data. You review and publish; nothing publishes on its own.
+- **Designed slides.** Lay out a slide right in a post: move and resize, edit text in place, and
+  add shapes and pictures. Slide text is searchable like any post text.
 - **Explore, collections, and notebooks.** Browse by tag. A collection is posts you pick; a
   notebook is posts in reading order. Present any post, selection, or notebook full-screen.
 - **Discussion.** Threaded comments, @mentions, questions with accepted answers, reactions, and

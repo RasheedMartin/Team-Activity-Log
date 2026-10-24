@@ -134,3 +134,28 @@ Step 1 of the slides plan. Step 2 is a "designed slide" block (a positioned canv
 - **Saved view → Saved search.** Each of saved search / collection / notebook has one icon and
   one-line definition everywhere (`concepts.tsx`). Glossary and the documentation backlog:
   `docs/CONCEPTS.md`.
+
+## Designed slides (slides steps 2 and 3, Oct 2026)
+
+- **Model.** A `slide` block holds a `SlideDesign`: a canvas size in points (960×540 is 16:9), a background, theme fonts, and positioned elements:
+  - `text`: a ProseMirror doc, a box font size, color, vertical alignment, and fill/outline;
+  - `shape`: rect, roundRect, ellipse, triangle, line, or arrow, with optional text;
+  - `image`: an image instance.
+
+  It is the only place its content lives. A slide block is one slide when presenting, and it carries its own presenter notes.
+- **Search stays whole.** `blockDocs`/`blockImageIds` (frontend `lib/blocks.ts`; backend `views.block_docs`/`block_image_ids`) are the single answer to "where is this post's text and pictures". Search, excerpts, mentions, counts, publish checks, and image permissions all use them. Template art (`decorative`: a master's logo, color bar, or footer text) renders but is left out of search, galleries, and counts, so a logo isn't indexed once per slide.
+- **Rendering.** `SlideCanvas` draws the design at its own size and scales it with a CSS transform, so a slide looks the same in a post column, on a phone, and in Present. Slides keep their own colors in dark mode, like a picture. Font sizes inside text use `textStyle.fontSize` (`NNpx`, where 1 px = 1 pt on the canvas). The sanitizer accepts only that form and only `#rrggbb` colors.
+- **Import.** A third choice in the wizard: *Automatic* (default), *Keep the design*, or *Text only*. Automatic keeps the design for slides whose layout carries meaning, meaning pictures, shapes, groups, charts, SmartArt, or two or more text boxes. Plain title-and-bullets slides become post text.
+  - **Geometry:** placeholders inherit position, anchor, size, and color from the layout, the master, and then the master's `txStyles`, falling back to PowerPoint's default boxes. Groups map through `chOff`/`chExt`. The master's `clrMap` is honored, so dark themes work.
+  - **Template art:** master and layout art is included unless `showMasterSp="0"`.
+  - **SmartArt** uses PowerPoint's saved drawing (`dsp:drawing`), with a fallback to a list.
+  - **Not yet:** charts are a data table, not a drawn chart. Gradients use their first stop, and pictures aren't cropped.
+- **Editing (step 3).** `SlideEditor` in the composer:
+  - select, drag (snaps to the edges and center), resize with handles (picture corners keep their proportions), and nudge with arrow keys (Shift: 10 pt);
+  - Enter or double-click edits text in place with the post editor's tools; Delete removes; bring to front and send to back;
+  - fill, outline, text color, font size, and vertical alignment; add a text box, shape, or picture; slide background.
+
+  Pointer events cover touch. Drags are drafted locally and saved on release.
+- **Getting in and out.** *Designed slide* in the add bar (Title and text, Title slide, Two columns, Blank). *Design this slide* on a slide break turns that section into a slide: its heading becomes the title, its text sits beside its first picture, and any further pictures stay as image blocks. *Convert to post text* turns a slide back into a break, a text block, and its pictures, in reading order.
+- **Fixed on the way:** a text block's toolbar collapsed as soon as the block lost focus, which shifted the page under the pointer, so clicking a button below a text block (Slide break, Designed slide) could miss. It now collapses after the click completes.
+- **Still to do (step 4):** themes for automatic slides, export to .pptx, drawn charts, and "Customize this slide" directly from Present.

@@ -33,7 +33,7 @@ import {
 } from "@mui/material";
 import { useEffect, useRef, useState } from "react";
 import { Link as RouterLink, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import type { ImportItem, ImportJob, ImportMode } from "../../api/contract";
+import type { ImportItem, ImportJob, ImportMode, SlideDesignMode } from "../../api/contract";
 import { useImportAction, useImportJob, useStartImport } from "../../api/hooks";
 import { can, useWs, wsPath } from "../../app/session";
 import { useNotify } from "../../components/notify";
@@ -43,6 +43,12 @@ import { todayISO } from "../../lib/dates";
 import { toSearchParams } from "../../lib/filterSpec";
 import { errorMessage } from "../../lib/format";
 import { uuidv7 } from "../../lib/ids";
+
+const DESIGNS: { id: SlideDesignMode; title: string; body: string }[] = [
+  { id: "auto", title: "Automatic", body: "Slides with pictures, shapes, or columns keep their design. Text slides become post text." },
+  { id: "slides", title: "Keep the design", body: "Every slide looks like it does in PowerPoint." },
+  { id: "text", title: "Text only", body: "Every slide becomes post text and images." },
+];
 
 const MODES: { id: ImportMode; title: string; body: string }[] = [
   { id: "per_slide", title: "One post per slide", body: "Best for dated lab logs where each slide is an entry." },
@@ -60,6 +66,7 @@ function StartStep({ onStarted }: { onStarted: (job: ImportJob) => void }) {
   const dropped = (useLocation().state as { file?: File } | null)?.file ?? null;
   const [file, setFile] = useState<File | null>(dropped);
   const [mode, setMode] = useState<ImportMode>("per_slide");
+  const [slideDesign, setSlideDesign] = useState<SlideDesignMode>("auto");
   const [tagIds, setTagIds] = useState<string[]>([]);
   const [guessDates, setGuessDates] = useState(true);
   const [baseDate, setBaseDate] = useState(todayISO());
@@ -110,6 +117,18 @@ function StartStep({ onStarted }: { onStarted: (job: ImportJob) => void }) {
         </Box>
       </Box>
 
+      <Box>
+        <Typography variant="h4" sx={{ mb: 1 }}>Keep the slide design?</Typography>
+        <Box role="radiogroup" aria-label="Slide design" sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" }, gap: 1.5 }}>
+          {DESIGNS.map((m) => (
+            <ButtonBase key={m.id} role="radio" aria-checked={slideDesign === m.id} onClick={() => setSlideDesign(m.id)} sx={{ display: "block", textAlign: "left", p: 2, border: 2, borderColor: slideDesign === m.id ? "primary.main" : "divider", borderRadius: 1.5, bgcolor: "background.paper" }}>
+              <Typography sx={{ fontWeight: 600 }}>{m.title}</Typography>
+              <Typography variant="body2" color="text.secondary">{m.body}</Typography>
+            </ButtonBase>
+          ))}
+        </Box>
+      </Box>
+
       <Paper variant="outlined" sx={{ p: 2 }}>
         <Typography variant="h4" sx={{ mb: 1.5 }}>Defaults</Typography>
         <Stack spacing={2}>
@@ -134,7 +153,7 @@ function StartStep({ onStarted }: { onStarted: (job: ImportJob) => void }) {
           variant="contained"
           size="large"
           disabled={!file || start.isPending}
-          onClick={() => file && start.mutate({ file, mode, defaults: { tagIds, baseDate, guessDates, collectionName: collectionName || file.name } }, { onSuccess: onStarted })}
+          onClick={() => file && start.mutate({ file, mode, defaults: { tagIds, baseDate, guessDates, collectionName: collectionName || file.name, slideDesign } }, { onSuccess: onStarted })}
         >
           Start import
         </Button>

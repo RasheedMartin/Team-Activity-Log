@@ -103,7 +103,41 @@ export type Block =
   | { id: ID; type: "text"; doc: unknown /* ProseMirror JSON */ }
   | { id: ID; type: "image"; imageInstanceId: ID }
   | { id: ID; type: "table"; doc: unknown }
-  | { id: ID; type: "slide_break"; notes?: string };
+  | { id: ID; type: "slide_break"; notes?: string }
+  | { id: ID; type: "slide"; design: SlideDesign; notes?: string };
+
+/**
+ * A designed slide: elements placed on a fixed canvas (units are points; 960×540 is 16:9), the
+ * way PowerPoint lays one out. Text elements hold ProseMirror docs, so their text is indexed like
+ * any other post text; image elements reference image instances, so search and comments work.
+ */
+export interface SlideDesign {
+  size: { w: number; h: number };
+  background?: string; // #rrggbb
+  fonts?: { heading?: string; body?: string };
+  elements: SlideElement[];
+}
+interface SlideElementBase {
+  id: ID;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  rotation?: number; // degrees
+  decorative?: boolean; // template art from the master/layout (logos, bars, footers): not searched
+}
+export type SlideShape = "rect" | "roundRect" | "ellipse" | "triangle" | "line" | "arrow";
+export interface SlideBox {
+  doc?: unknown; // ProseMirror JSON
+  fontSize?: number; // points; runs inherit it
+  color?: string; // default text color
+  valign?: "top" | "middle" | "bottom";
+  role?: "title" | "body"; // title uses the heading font
+}
+export type SlideElement =
+  | (SlideElementBase & SlideBox & { kind: "text"; fill?: string; line?: string })
+  | (SlideElementBase & SlideBox & { kind: "shape"; shape: SlideShape; fill?: string; line?: string; lineWidth?: number; flipH?: boolean; flipV?: boolean })
+  | (SlideElementBase & { kind: "image"; imageInstanceId: ID });
 
 export interface PostSource {
   kind: "import";
@@ -513,6 +547,8 @@ export interface CollectionEntry {
 // ---- Import (v5) ----
 
 export type ImportMode = "per_slide" | "whole_deck" | "by_section";
+/** auto: slides whose layout carries meaning (pictures, shapes, columns) stay designed; text slides become post text. */
+export type SlideDesignMode = "auto" | "slides" | "text";
 export interface ImportItem {
   id: ID;
   slideNumbers: number[];
@@ -533,7 +569,7 @@ export interface ImportJob {
   sourceFilename: string;
   sourceBytes: number;
   slideCount: number;
-  defaults: { tagIds: ID[]; baseDate?: ISODate; guessDates: boolean; collectionName: string };
+  defaults: { tagIds: ID[]; baseDate?: ISODate; guessDates: boolean; collectionName: string; slideDesign?: SlideDesignMode };
   items: ImportItem[];
   collectionId?: ID;
   error?: string;

@@ -1,5 +1,6 @@
 import { http, HttpResponse } from "msw";
-import type { Block, ImportItem, ImportJob, ImportMode } from "../../api/contract";
+import type { Block, ImportItem, ImportJob, ImportMode, SlideDesign, SlideDesignMode } from "../../api/contract";
+import { blockImageIds } from "../../lib/blocks";
 import { uuidv7 } from "../../lib/ids";
 import { doc, heading } from "../../lib/prosemirror";
 import { createAsset } from "../assets";
@@ -89,11 +90,36 @@ async function parseJob(jobId: string) {
   await db.flush();
 }
 
-/** Blocks for one post: per slide a break (with presenter notes), heading when several slides,
- *  then text and images in the slide's reading order. */
-async function blocksFor(orgId: string, postId: string, slides: ParsedSlide[]): Promise<Block[]> {
+const keepsDesign = (sl: ParsedSlide, mode: SlideDesignMode) => !!sl.design?.elements.length && (mode === "slides" || (mode === "auto" && sl.rich));
+
+/** The slide as a designed-slide block: its pictures become image instances of the post. */
+async function designBlock(orgId: string, postId: string, sl: ParsedSlide): Promise<Block> {
+  const elements = [];
+  for (const e of sl.design!.elements) {
+    if (e.kind !== "image") {
+      elements.push(e);
+      continue;
+    }
+    const img = sl.designImages[e.image as number];
+    const { asset } = await createAsset(orgId, img.blob, img.name, "pptx_import");
+    const inst = db.t.images.put({ id: uuidv7(), assetId: asset.id, postId, tags: [], customFields: {}, caption: e.decorative ? undefined : `Slide ${sl.n}` });
+    const { image: _i, ...rest } = e;
+    void _i;
+    elements.push({ ...rest, imageInstanceId: inst.id });
+  }
+  return { id: uuidv7(), type: "slide", design: { ...sl.design!, elements } as unknown as SlideDesign, ...(sl.notes ? { notes: sl.notes } : {}) };
+}
+
+/** Blocks for one post: per slide a designed-slide block when its layout is kept, otherwise a
+ *  break (with presenter notes), heading when several slides, then text and images in the slide's
+ *  reading order. */
+async function blocksFor(orgId: string, postId: string, slides: ParsedSlide[], designMode: SlideDesignMode = "auto"): Promise<Block[]> {
   const blocks: Block[] = [];
   for (const [k, sl] of slides.entries()) {
+    if (keepsDesign(sl, designMode)) {
+      blocks.push(await designBlock(orgId, postId, sl));
+      continue;
+    }
     if (k > 0 || sl.notes) blocks.push({ id: uuidv7(), type: "slide_break", notes: sl.notes || undefined });
     let parts = sl.parts;
     if (slides.length > 1 && sl.title) {
@@ -193,7 +219,7 @@ export const importHandlers = [
         }
         const postId = uuidv7();
         const slides = item.slideNumbers.map((n) => bySlide.get(n)).filter((x): x is ParsedSlide => !!x);
-        const blocks = await blocksFor(ctx.org.id, postId, slides);
+        const blocks = await blocksFor(ctx.org.id, postId, slides, j!.defaults.slideDesign ?? "auto");
         const t = now();
         db.t.posts.put({
           id: postId,
@@ -212,7 +238,7 @@ export const importHandlers = [
           version: 1,
           createdAt: t,
           updatedAt: t,
-          counts: { comments: 0, reactions: 0, images: blocks.filter((b) => b.type === "image").length },
+          counts: { comments: 0, reactions: 0, images: blockImageIds(blocks, "content").length },
           reactions: {},
           collectionIds: [coll.id],
           source: { kind: "import", importJobId: j!.id, fileName: j!.sourceFilename, fileSha256: fileSha, slide: item.slideNumbers[0], slideCount: j!.slideCount },

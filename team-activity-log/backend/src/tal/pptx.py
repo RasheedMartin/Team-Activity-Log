@@ -88,6 +88,10 @@ class ParsedSlide:
     section: str | None = None
     # Reading order: ("text", [nodes]) and ("image", index into images), adjacent text merged.
     parts: list[tuple[str, list[PMNode] | int]] = field(default_factory=list)
+    # The slide as designed (SlideDesign; image elements carry {"image": index into design_images}).
+    design: dict | None = None
+    design_images: list[ParsedImage] = field(default_factory=list)
+    rich: bool = False  # layout carries meaning (pictures, shapes, columns): keep it designed in "auto"
 
 
 @dataclass
@@ -176,6 +180,11 @@ def _theme_colors(pkg: _Package, slide_part: str) -> dict[str, str]:
         val = (v.get("val") if v is not None and v.tag == q("a:srgbClr") else v.get("lastClr") if v is not None else None) or ""
         if _HEX.match(val):
             out[name] = val
+    # The master's color map says which scheme colors text and background use (dark themes swap them).
+    cmap = _first(pkg.xml(master), "p:clrMap") if pkg.has(master) else None
+    for k, v in (cmap.attrib if cmap is not None else _SCHEME_ALIAS).items():
+        if v in out:
+            out[k] = out[v]
     return out
 
 
@@ -186,7 +195,7 @@ def _color(fill: ET.Element | None, theme: dict[str, str]) -> str | None:
             base = c.get("val", "")
         elif c.tag == q("a:schemeClr"):
             v = c.get("val", "")
-            base = theme.get(_SCHEME_ALIAS.get(v, v), "")
+            base = theme.get(v) or theme.get(_SCHEME_ALIAS.get(v, v), "")
         elif c.tag == q("a:sysClr"):
             base = c.get("lastClr", "")
         else:
@@ -224,6 +233,10 @@ class _Ctx:
 
     theme: dict[str, str] = field(default_factory=dict)
     links: dict[str, str] = field(default_factory=dict)
+    keep_colors: bool = False  # designed slides keep every color; flowing text only clear ones
+    headings: bool = True  # large text / subtitles become headings (flowing text only)
+    base_size: float | None = None  # a designed text box's size: runs that differ keep theirs
+    font_scale: float = 1.0  # normAutofit shrink
 
 
 _SAFE_HREF = re.compile(r"^(https?://|mailto:)", re.I)
@@ -255,9 +268,15 @@ def _runs(p: ET.Element, ctx: _Ctx | None = None) -> list[PMNode]:
                 href = ctx.links.get(link.get(q("r:id"), "")) if link is not None else None
                 if href and _SAFE_HREF.match(href):
                     marks.append({"type": "link", "attrs": {"href": href}})
+                style: dict[str, str] = {}
                 color = _color(pr.find(q("a:solidFill")), ctx.theme)
-                if color and _distinct(color):
-                    marks.append({"type": "textStyle", "attrs": {"color": color}})
+                if color and (ctx.keep_colors or _distinct(color)):
+                    style["color"] = color
+                sz = pr.get("sz", "")
+                if ctx.base_size and sz.isdigit() and abs(int(sz) / 100 - ctx.base_size) >= 0.5:
+                    style["fontSize"] = f"{round(int(sz) / 100 * ctx.font_scale, 1):g}px"  # 1 px = 1 pt on a slide
+                if style:
+                    marks.append({"type": "textStyle", "attrs": style})
                 hl = _color(pr.find(q("a:highlight")), ctx.theme)
                 if hl:
                     marks.append({"type": "highlight", "attrs": {"color": hl}})
@@ -329,7 +348,7 @@ def _text_body(body: ET.Element, bulleted: bool, ctx: _Ctx | None = None, subtit
             stack[-1][2]["content"].append({"type": "listItem", "content": [_block("paragraph", content, align)]})
         else:
             stack = []
-            heading = subtitle or (_large(p) and len(_plain(content)) <= 120)
+            heading = (ctx is None or ctx.headings) and (subtitle or (_large(p) and len(_plain(content)) <= 120))
             out.append(_block("heading", content, align, 3) if heading else _block("paragraph", content, align))
     return out
 
@@ -427,6 +446,393 @@ def guess_date(text: str) -> str | None:
     return None
 
 
+# ---- designed slides ----
+#
+# The same slide as positioned elements (contract.ts SlideDesign), in points (1 pt = 12700 EMU).
+# Shapes come from the master and layout (template art, unless showMasterSp="0"), then the slide.
+# Placeholders inherit position, anchor, font size and color from the layout, then the master,
+# then the master's text styles. Groups map child coordinates through chOff/chExt.
+
+EMU_PER_PT = 12_700
+_PRESET = {"rect": "rect", "roundRect": "roundRect", "snipRoundRect": "roundRect", "ellipse": "ellipse", "triangle": "triangle", "line": "line", "straightConnector1": "line"}
+_ANCHOR = {"ctr": "middle", "b": "bottom", "t": "top"}
+# Where PowerPoint's default template puts placeholders (fractions of the slide), used when neither
+# the slide, its layout, nor its master says.
+_DEFAULT_BOX = {
+    "title": (0.069, 0.053, 0.862, 0.193),
+    "ctrTitle": (0.125, 0.164, 0.75, 0.349),
+    "subTitle": (0.125, 0.526, 0.75, 0.242),
+    "body": (0.069, 0.266, 0.862, 0.635),
+}
+_STYLE_FOR = {"title": "titleStyle", "ctrTitle": "titleStyle", "body": "bodyStyle", "obj": "bodyStyle", "subTitle": "bodyStyle"}
+
+
+def _local(el: ET.Element) -> str:
+    return el.tag.rsplit("}", 1)[-1]
+
+
+def _kid(el: ET.Element | None, name: str) -> ET.Element | None:
+    """Direct child by local name, any namespace (slides use p:, SmartArt drawings dsp:)."""
+    return next((c for c in el if _local(c) == name), None) if el is not None else None
+
+
+def _pt(v: float) -> float:
+    return round(v / EMU_PER_PT, 2)
+
+
+@dataclass
+class _Xf:
+    """Maps a group's child coordinates (EMU) to slide coordinates."""
+
+    ox: float = 0
+    oy: float = 0
+    sx: float = 1
+    sy: float = 1
+
+    def box(self, x: float, y: float, w: float, h: float) -> tuple[float, float, float, float]:
+        return self.ox + x * self.sx, self.oy + y * self.sy, w * self.sx, h * self.sy
+
+
+def _xfrm(el: ET.Element) -> ET.Element | None:
+    if _local(el) == "graphicFrame":
+        return _kid(el, "xfrm")
+    pr = _kid(el, "spPr")
+    return _kid(pr if pr is not None else _kid(el, "grpSpPr"), "xfrm")
+
+
+def _geom(xfrm: ET.Element | None) -> tuple[int, int, int, int] | None:
+    off, ext = _kid(xfrm, "off"), _kid(xfrm, "ext")
+    try:
+        return (int(off.get("x", "")), int(off.get("y", "")), int(ext.get("cx", "")), int(ext.get("cy", ""))) if off is not None and ext is not None else None
+    except ValueError:
+        return None
+
+
+def _theme_fonts(pkg: _Package, slide_part: str) -> dict[str, str]:
+    layout = pkg.rel(slide_part, "slideLayout")
+    master = pkg.rel(layout, "slideMaster") if layout else None
+    theme = pkg.rel(master, "theme") if master else None
+    if not theme or not pkg.has(theme):
+        return {}
+    root = pkg.xml(theme)
+    out = {}
+    for key, tag in (("heading", "a:majorFont"), ("body", "a:minorFont")):
+        f = _first(root, tag)
+        latin = f.find(q("a:latin")) if f is not None else None
+        name = latin.get("typeface", "") if latin is not None else ""
+        if re.fullmatch(r"[\w .-]{1,64}", name):
+            out[key] = name
+    return out
+
+
+def _fill(sp: ET.Element, theme: dict[str, str]) -> tuple[str | None, str | None, float | None]:
+    """(fill, line color, line width pt) from spPr, falling back to the shape's theme style refs."""
+    pr = _kid(sp, "spPr")
+    style = _kid(sp, "style")
+    fill = line = None
+    width = None
+    if pr is not None and _kid(pr, "noFill") is None:
+        if (solid := _kid(pr, "solidFill")) is not None:
+            fill = _color(solid, theme)
+        elif (grad := _kid(pr, "gradFill")) is not None:
+            stop = next(grad.iter(q("a:gs")), None)
+            fill = _color(stop, theme)
+        elif style is not None and (ref := _kid(style, "fillRef")) is not None and ref.get("idx", "0") != "0":
+            fill = _color(ref, theme)
+    ln = _kid(pr, "ln")
+    if ln is not None and ln.get("w", "").isdigit():
+        width = _pt(int(ln.get("w", "0")))
+    if ln is None or _kid(ln, "noFill") is None:
+        if ln is not None and (solid := _kid(ln, "solidFill")) is not None:
+            line = _color(solid, theme)
+        elif style is not None and (ref := _kid(style, "lnRef")) is not None and ref.get("idx", "0") != "0":
+            line = _color(ref, theme)
+            width = width or 0.75
+    return fill, line, width
+
+
+def _box_style(chain: list[ET.Element], txstyle: ET.Element | None, theme: dict[str, str]) -> tuple[float | None, str | None, str | None]:
+    """(font size pt, text color, vertical anchor) for a text shape: its own lstStyle/bodyPr, then
+    the inherited placeholders' (layout, master), then the master text style."""
+    size = color = anchor = None
+    for sp in chain:
+        body = _kid(sp, "txBody")
+        bpr = _kid(body, "bodyPr")
+        if anchor is None and bpr is not None and bpr.get("anchor") in _ANCHOR:
+            anchor = _ANCHOR[bpr.get("anchor", "")]
+        lvl1 = _kid(_kid(body, "lstStyle"), "lvl1pPr")
+        dr = _kid(lvl1, "defRPr")
+        if dr is not None:
+            if size is None and dr.get("sz", "").isdigit():
+                size = int(dr.get("sz", "0")) / 100
+            if color is None and (solid := _kid(dr, "solidFill")) is not None:
+                color = _color(solid, theme)
+    dr = _kid(_kid(txstyle, "lvl1pPr"), "defRPr")
+    if dr is not None:
+        if size is None and dr.get("sz", "").isdigit():
+            size = int(dr.get("sz", "0")) / 100
+        if color is None and (solid := _kid(dr, "solidFill")) is not None:
+            color = _color(solid, theme)
+    return size, color, anchor
+
+
+def _dominant_size(body: ET.Element) -> float | None:
+    sizes: dict[str, int] = {}
+    for r in body.iter(q("a:rPr")):
+        if r.get("sz", "").isdigit():
+            sizes[r.get("sz", "")] = sizes.get(r.get("sz", ""), 0) + 1
+    return int(max(sizes, key=lambda k: (sizes[k], int(k)))) / 100 if sizes else None
+
+
+class _Design:
+    """Builds one slide's SlideDesign. Image elements carry {"image": index into self.images}."""
+
+    def __init__(self, pkg: _Package, part: str, size: tuple[int, int], ctx: _Ctx):
+        self.pkg, self.part, self.ctx = pkg, part, ctx
+        self.w, self.h = size
+        self.images: list[ParsedImage] = []
+        self.elements: list[dict] = []
+        self.rich = False  # the slide itself has pictures, shapes, groups, charts, or several text boxes
+        self.text_boxes = 0
+        self.layout = pkg.rel(part, "slideLayout")
+        self.master = pkg.rel(self.layout, "slideMaster") if self.layout else None
+        self.master_root = pkg.xml(self.master) if self.master and pkg.has(self.master) else None
+        self.inherit = [self._placeholders(self.layout), self._placeholders(self.master)]
+        self.n = 0
+
+    def _placeholders(self, part: str | None) -> dict[str, ET.Element]:
+        out: dict[str, ET.Element] = {}
+        if not part or not self.pkg.has(part):
+            return out
+        for sp in _els(self.pkg.xml(part), "p:sp"):
+            ph = _first(sp, "p:ph")
+            if ph is None:
+                continue
+            if ph.get("idx"):
+                out.setdefault(f"idx:{ph.get('idx')}", sp)
+            out.setdefault(f"type:{ph.get('type') or 'body'}", sp)
+        return out
+
+    def _inherited(self, ph: ET.Element) -> list[ET.Element]:
+        keys = ([f"idx:{ph.get('idx')}"] if ph.get("idx") else []) + [f"type:{ph.get('type') or 'body'}"]
+        out = []
+        for src in self.inherit:
+            sp = next((src[k] for k in keys if k in src), None)
+            if sp is not None:
+                out.append(sp)
+        return out
+
+    def _id(self) -> str:
+        self.n += 1
+        return f"e{self.n}"
+
+    def background(self) -> str | None:
+        """Slide, then layout, then master background: a color, or a picture added as template art."""
+        for part in (self.part, self.layout, self.master):
+            if not part or not self.pkg.has(part):
+                continue
+            bg = _first(self.pkg.xml(part), "p:bg")
+            if bg is None:
+                continue
+            pr, ref = _kid(bg, "bgPr"), _kid(bg, "bgRef")
+            if pr is not None:
+                if (solid := _kid(pr, "solidFill")) is not None:
+                    return _color(solid, self.ctx.theme)
+                if (grad := _kid(pr, "gradFill")) is not None:
+                    return _color(next(grad.iter(q("a:gs")), None), self.ctx.theme)
+                if (blip := _first(pr, "a:blip")) is not None:
+                    self._picture(blip.get(q("r:embed"), ""), part, (0, 0, self.w, self.h), decorative=True)
+                    return None
+            if ref is not None:
+                return _color(ref, self.ctx.theme)
+        lt1 = self.ctx.theme.get("bg1") or self.ctx.theme.get("lt1")
+        return f"#{lt1.lower()}" if lt1 else None
+
+    def build(self) -> dict:
+        background = self.background()
+        sld = self.pkg.xml(self.part)
+        layout_root = self.pkg.xml(self.layout) if self.layout and self.pkg.has(self.layout) else None
+        show_master = sld.get("showMasterSp") != "0"
+        if show_master and self.master_root is not None and (layout_root is None or layout_root.get("showMasterSp") != "0"):
+            self.walk(_first(self.master_root, "p:spTree"), self.master, _Xf(), template=True)
+        if show_master and layout_root is not None:
+            self.walk(_first(layout_root, "p:spTree"), self.layout, _Xf(), template=True)
+        self.walk(_first(sld, "p:spTree"), self.part, _Xf(), template=False)
+        self.rich = self.rich or self.text_boxes >= 2
+        out: dict = {"size": {"w": _pt(self.w), "h": _pt(self.h)}, "elements": self.elements}
+        if background:
+            out["background"] = background
+        return out
+
+    def walk(self, tree: ET.Element | None, part: str | None, xf: _Xf, template: bool) -> None:
+        if tree is None or not part:
+            return
+        for el in list(tree):
+            kind = _local(el)
+            if kind == "grpSp":
+                g = _geom(_xfrm(el))
+                ch = _xfrm(el)
+                choff, chext = _kid(ch, "chOff"), _kid(ch, "chExt")
+                inner = xf
+                if g and choff is not None and chext is not None:
+                    x, y, w, h = xf.box(*g)
+                    cw, chh = int(chext.get("cx", "0") or 0), int(chext.get("cy", "0") or 0)
+                    sx, sy = (w / cw if cw else 1), (h / chh if chh else 1)
+                    inner = _Xf(x - int(choff.get("x", "0")) * sx, y - int(choff.get("y", "0")) * sy, sx, sy)
+                self.rich = self.rich or not template
+                self.walk(el, part, inner, template)
+            elif kind in ("sp", "cxnSp"):
+                self.shape(el, part, xf, template)
+            elif kind == "pic":
+                g = _geom(_xfrm(el))
+                blip = _first(el, "a:blip")
+                if g and blip is not None and _first(el, "a:videoFile") is None and _first(el, "p14:media") is None:
+                    self.rich = self.rich or not template
+                    self._picture(blip.get(q("r:embed"), ""), part, xf.box(*g), decorative=template, rot=self._rotation(el))
+            elif kind == "graphicFrame":
+                self.frame(el, part, xf, template)
+
+    def _rotation(self, el: ET.Element) -> float | None:
+        x = _xfrm(el)
+        r = x.get("rot", "") if x is not None else ""
+        return round(int(r) / 60000, 2) if r.lstrip("-").isdigit() and int(r) else None
+
+    def _picture(self, rid: str, part: str, box: tuple[float, float, float, float], decorative: bool, rot: float | None = None) -> None:
+        target = next((r["target"] for r in self.pkg.rels(part) if r["id"] == rid), None)
+        mime = MIME.get(target.rsplit(".", 1)[-1].lower()) if target else None
+        if not target or not mime or not self.pkg.has(target):
+            return
+        self.images.append(ParsedImage(name=f"slide-{posixpath.basename(target)}", data=self.pkg.bytes(target), mime=mime))
+        el = {"id": self._id(), "kind": "image", **self._box(box), "image": len(self.images) - 1}
+        if rot:
+            el["rotation"] = rot
+        if decorative:
+            el["decorative"] = True
+        self.elements.append(el)
+
+    def _box(self, box: tuple[float, float, float, float]) -> dict:
+        x, y, w, h = box
+        return {"x": _pt(x), "y": _pt(y), "w": _pt(w), "h": _pt(h)}
+
+    def shape(self, sp: ET.Element, part: str, xf: _Xf, template: bool) -> None:
+        ph = _first(sp, "p:ph")
+        typ = (ph.get("type") or "body") if ph is not None else None
+        if template and ph is not None:
+            return  # placeholders on the master/layout only define what slides inherit
+        if typ in ("sldNum", "dt", "ftr"):
+            return
+        chain = [sp, *(self._inherited(ph) if ph is not None else [])]
+        g = next((g for g in (_geom(_xfrm(s)) for s in chain) if g), None)
+        if not g and ph is not None:
+            fx, fy, fw, fh = _DEFAULT_BOX.get(typ or "body", _DEFAULT_BOX["body"])
+            g = (int(fx * self.w), int(fy * self.h), int(fw * self.w), int(fh * self.h))
+        if not g:
+            return
+        body = _kid(sp, "txBody")
+        style_name = _STYLE_FOR.get(typ or "", "otherStyle") if ph is not None else "otherStyle"
+        txstyle = _first(self.master_root, f"p:{style_name}") if self.master_root is not None else None
+        size, color, anchor = _box_style(chain, txstyle, self.ctx.theme)
+        bpr = _kid(body, "bodyPr")
+        scale = 1.0
+        fit = _kid(bpr, "normAutofit")
+        if fit is not None and fit.get("fontScale", "").isdigit():
+            scale = int(fit.get("fontScale", "100000")) / 100_000
+        base = (_dominant_size(body) if body is not None else None) or size or (40.0 if typ in ("title", "ctrTitle") else 18.0)
+        ctx = _Ctx(theme=self.ctx.theme, links=self._links(part), keep_colors=True, headings=False, base_size=base, font_scale=scale)
+        nodes = _text_body(body, typ in ("body", "obj"), ctx) if body is not None else []
+        geom = _kid(_kid(sp, "spPr"), "prstGeom")
+        prst = geom.get("prst", "rect") if geom is not None else ("line" if _local(sp) == "cxnSp" else "rect")
+        fill, line, lw = _fill(sp, self.ctx.theme)
+        if not nodes and not fill and not line:
+            return
+        el: dict = {"id": self._id(), **self._box(xf.box(*g))}
+        x = _xfrm(sp)
+        if rot := self._rotation(sp):
+            el["rotation"] = rot
+        if prst == "rect" and not (fill or line) or (ph is not None and prst == "rect"):
+            el["kind"] = "text"
+            if fill:
+                el["fill"] = fill
+            if line:
+                el["line"] = line
+        else:
+            shape = _PRESET.get(prst, "rect")
+            ln = _kid(_kid(sp, "spPr"), "ln")
+            if shape == "line" and ln is not None and any((e := _kid(ln, t)) is not None and e.get("type", "none") != "none" for t in ("tailEnd", "headEnd")):
+                shape = "arrow"
+            el.update(kind="shape", shape=shape)
+            if fill and shape not in ("line", "arrow"):
+                el["fill"] = fill
+            if line:
+                el["line"] = line
+            if lw is not None:
+                el["lineWidth"] = lw
+            for f in ("flipH", "flipV"):
+                if x is not None and x.get(f) == "1":
+                    el[f] = True
+        if nodes:
+            el["doc"] = {"type": "doc", "content": nodes}
+            el["fontSize"] = round(base * scale, 1)
+            el["color"] = color or "#000000"
+            if anchor and anchor != "top":
+                el["valign"] = anchor
+            if typ in ("title", "ctrTitle"):
+                el["role"] = "title"
+        if template:
+            el["decorative"] = True
+        else:
+            if typ not in ("title", "ctrTitle") and nodes:
+                self.text_boxes += 1
+            if el["kind"] == "shape" or el.get("fill") or el.get("line"):
+                self.rich = True
+        self.elements.append(el)
+
+    def _links(self, part: str) -> dict[str, str]:
+        return {r["id"]: r["target"] for r in self.pkg.rels(part) if r["type"].endswith("/hyperlink")}
+
+    def frame(self, el: ET.Element, part: str, xf: _Xf, template: bool) -> None:
+        g = _geom(_xfrm(el))
+        if not g or template:
+            return
+        box = xf.box(*g)
+        rels = {r["id"]: r for r in self.pkg.rels(part)}
+        tbl = _first(el, "a:tbl")
+        nodes: list[PMNode] = []
+        size = 18.0
+        if tbl is not None:
+            nodes = [_table(tbl, _Ctx(theme=self.ctx.theme, links=self._links(part), keep_colors=True, headings=False))]
+            size = _dominant_size(tbl) or 18.0
+        elif (ref := _first(el, "c:chart")) is not None:
+            target = rels.get(ref.get(q("r:id"), ""), {}).get("target")
+            nodes = _chart(self.pkg, target) if target and self.pkg.has(target) else []
+            size = 12.0
+        elif (ids := _first(el, "dgm:relIds")) is not None:
+            if self.smartart(ids, part, box):
+                self.rich = True
+                return
+            target = rels.get(ids.get(q("r:dm"), ""), {}).get("target")
+            nodes = _smartart(self.pkg, target) if target and self.pkg.has(target) else []
+        if nodes:
+            self.rich = True
+            self.elements.append({"id": self._id(), "kind": "text", **self._box(box), "doc": {"type": "doc", "content": nodes}, "fontSize": size, "color": "#000000"})
+
+    def smartart(self, ids: ET.Element, part: str, box: tuple[float, float, float, float]) -> bool:
+        """SmartArt as drawn: PowerPoint caches the layout in a drawing part (dsp:drawing),
+        linked from the data part's dataModelExt relId. Shapes there are relative to the frame."""
+        rels = {r["id"]: r for r in self.pkg.rels(part)}
+        data = rels.get(ids.get(q("r:dm"), ""), {}).get("target")
+        if not data or not self.pkg.has(data):
+            return False
+        ext = next((e for e in self.pkg.xml(data).iter() if _local(e) == "dataModelExt"), None)
+        drawing = rels.get(ext.get("relId", ""), {}).get("target") if ext is not None else None
+        if not drawing or not self.pkg.has(drawing):
+            return False
+        tree = next((e for e in self.pkg.xml(drawing).iter() if _local(e) == "spTree"), None)
+        before = len(self.elements)
+        self.walk(tree, part, _Xf(box[0], box[1], 1, 1), template=False)
+        return len(self.elements) > before
+
+
 # ---- slides ----
 
 
@@ -460,7 +866,8 @@ def _placeholder_offsets(pkg: _Package, part: str | None) -> dict[str, tuple[int
     return out
 
 
-def _parse_slide(pkg: _Package, part: str, n: int, slide_height: int = 6_858_000) -> ParsedSlide:
+def _parse_slide(pkg: _Package, part: str, n: int, size: tuple[int, int] = (12_192_000, 6_858_000)) -> ParsedSlide:
+    slide_height = size[1]
     root = pkg.xml(part)
     slide_rels = pkg.rels(part)
     by_id = {r["id"]: r for r in slide_rels}
@@ -575,8 +982,16 @@ def _parse_slide(pkg: _Package, part: str, n: int, slide_height: int = 6_858_000
 
     is_header = bool(layout and pkg.has(layout) and pkg.xml(layout).get("type") == "secHead")
 
+    designer = _Design(pkg, part, size, ctx)
+    design = designer.build()
+    if fonts := _theme_fonts(pkg, part):
+        design["fonts"] = fonts
+
     text_all = f"{title}\n{doc_text({'type': 'doc', 'content': content})}".strip()
-    return ParsedSlide(n=n, title=title, is_section_header=is_header, content=content, images=images, notes=notes, text=text_all, date=guess_date(text_all), warnings=warnings, parts=parts)
+    return ParsedSlide(
+        n=n, title=title, is_section_header=is_header, content=content, images=images, notes=notes, text=text_all, date=guess_date(text_all), warnings=warnings, parts=parts,
+        design=design, design_images=designer.images, rich=designer.rich,
+    )  # fmt: skip
 
 
 def parse_pptx(data: bytes, on_progress: Callable[[float], None] | None = None) -> ParsedDeck:
@@ -592,14 +1007,15 @@ def parse_pptx(data: bytes, on_progress: Callable[[float], None] | None = None) 
         for sec in _els(pres, "p14:section"):
             for sid in _els(sec, "p14:sldId"):
                 section_of[sid.get("id", "")] = sec.get("name", "")
-        size = _first(pres, "p:sldSz")
-        height = int(size.get("cy", "")) if size is not None and size.get("cy", "").isdigit() else 6_858_000
+        sz = _first(pres, "p:sldSz")
+        width = int(sz.get("cx", "")) if sz is not None and sz.get("cx", "").isdigit() else 12_192_000
+        height = int(sz.get("cy", "")) if sz is not None and sz.get("cy", "").isdigit() else 6_858_000
         deck = ParsedDeck(has_sections=bool(section_of))
         for i, o in enumerate(order):
             t = o["target"]
             if not t or not pkg.has(t):
                 continue
-            s = _parse_slide(pkg, t, i + 1, height)
+            s = _parse_slide(pkg, t, i + 1, (width, height))
             s.section = section_of.get(o["id"]) or None
             deck.slides.append(s)
             if on_progress:

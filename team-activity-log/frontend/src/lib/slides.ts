@@ -1,13 +1,17 @@
-import type { Block, ID, ImageView, Post } from "../api/contract";
+import type { Block, ID, ImageView, Post, SlideDesign } from "../api/contract";
 import { docText, type PMNode } from "./prosemirror";
 
 // §W5.1 slide derivation [DECISION]: a title slide, then slides from blocks. Explicit slide-break
 // blocks win; otherwise each image becomes a slide with its adjacent text as caption, and long
 // text is chunked. Imported decks keep their original breaks (they arrive as slide_break blocks).
+// A designed slide block is always exactly one slide, shown as designed.
 
 export type Slide =
   | { kind: "title"; postId: ID; title: string; summary?: string; workDate: string; authorId: ID; tagIds: ID[]; notes?: string }
-  | { kind: "content"; postId: ID; heading?: string; text: PMNode[]; image?: ImageView; notes?: string };
+  | { kind: "content"; postId: ID; heading?: string; text: PMNode[]; image?: ImageView; notes?: string }
+  | { kind: "designed"; postId: ID; design: SlideDesign; images: Map<ID, ImageView>; notes?: string };
+
+const designed = (postId: ID, b: Extract<Block, { type: "slide" }>, images: Map<ID, ImageView>): Slide => ({ kind: "designed", postId, design: b.design, images, notes: b.notes });
 
 const TEXT_BUDGET = 650; // characters of body text that comfortably fit beside nothing else
 const CAPTION_BUDGET = 260; // text that fits as a caption under an image
@@ -82,6 +86,9 @@ function contentSlides(postId: ID, blocks: Block[], images: Map<ID, ImageView>, 
       slides.push({ kind: "content", postId, heading, text: rest, image });
     } else if (b.type === "text" || b.type === "table") {
       pendingText.push(...topNodes(b));
+    } else if (b.type === "slide") {
+      flushText();
+      slides.push(designed(postId, b, images));
     }
   }
   flushText();
@@ -95,13 +102,18 @@ export function deriveSlides(post: Post, images: ImageView[]): Slide[] {
   const hasBreaks = post.blocks.some((b) => b.type === "slide_break");
   if (!hasBreaks) return [title, ...contentSlides(post.id, post.blocks, imgs)];
   // Explicit breaks: each section is one slide (images and text together), chunked only if huge.
-  const sections: { blocks: Block[]; notes?: string }[] = [{ blocks: [] }];
+  const sections: { blocks: Block[]; notes?: string; slide?: Extract<Block, { type: "slide" }> }[] = [{ blocks: [] }];
   for (const b of post.blocks) {
     if (b.type === "slide_break") sections.push({ blocks: [], notes: b.notes });
+    else if (b.type === "slide") sections.push({ blocks: [], slide: b }, { blocks: [] });
     else sections[sections.length - 1].blocks.push(b);
   }
   const out: Slide[] = [title];
   for (const s of sections) {
+    if (s.slide) {
+      out.push(designed(post.id, s.slide, imgs));
+      continue;
+    }
     const imageBlocks = s.blocks.filter((b): b is Extract<Block, { type: "image" }> => b.type === "image");
     const text = s.blocks.flatMap(topNodes);
     if (!imageBlocks.length && isBlank(text)) continue;

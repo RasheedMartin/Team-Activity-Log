@@ -47,6 +47,10 @@ export interface ParsedSlide {
   date?: ISODate;
   warnings: string[];
   parts: SlidePart[];
+  /** The slide as designed (SlideDesign; image elements carry { image: index into designImages }). */
+  design?: Record<string, unknown> & { elements: (Record<string, unknown> & { kind: string })[] };
+  designImages: ParsedImage[];
+  rich: boolean; // layout carries meaning (pictures, shapes, columns): keep it designed in "auto"
 }
 export interface ParsedDeck {
   slides: ParsedSlide[];
@@ -105,6 +109,11 @@ async function themeColors(zip: JSZip, slidePart: string): Promise<Theme> {
     const val = (v?.tagName === "a:srgbClr" ? v.getAttribute("val") : v?.getAttribute("lastClr")) ?? "";
     if (HEX.test(val)) out[c.tagName.split(":").pop()!] = val;
   }
+  // The master's color map says which scheme colors text and background use (dark themes swap them).
+  const mf = master ? zip.file(master) : null;
+  const cmap = mf ? first(xml(await mf.async("string")), "p:clrMap") : undefined;
+  const pairs = cmap ? Array.from(cmap.attributes).map((a) => [a.name, a.value]) : Object.entries(SCHEME_ALIAS);
+  for (const [k, v] of pairs) if (v in out) out[k] = out[v];
   return out;
 }
 
@@ -142,7 +151,7 @@ function color(fill: Element | undefined, theme: Theme): string | undefined {
     if (c.tagName === "a:srgbClr") base = c.getAttribute("val") ?? "";
     else if (c.tagName === "a:schemeClr") {
       const v = c.getAttribute("val") ?? "";
-      base = theme[SCHEME_ALIAS[v] ?? v] ?? "";
+      base = theme[v] ?? theme[SCHEME_ALIAS[v] ?? v] ?? "";
     } else if (c.tagName === "a:sysClr") base = c.getAttribute("lastClr") ?? "";
     else continue;
     if (!HEX.test(base)) return undefined;
@@ -171,6 +180,10 @@ function distinct(c: string): boolean {
 interface Ctx {
   theme: Theme;
   links: Record<string, string>;
+  keepColors?: boolean; // designed slides keep every color; flowing text only clear ones
+  headings?: boolean; // large text / subtitles become headings (flowing text only; default true)
+  baseSize?: number; // a designed text box's size: runs that differ keep theirs
+  fontScale?: number; // normAutofit shrink
 }
 const NO_CTX: Ctx = { theme: {}, links: {} };
 const SAFE_HREF = /^(https?:\/\/|mailto:)/i;
@@ -193,8 +206,12 @@ function runs(p: Element, ctx: Ctx = NO_CTX): PMNode[] {
         if (["sngStrike", "dblStrike"].includes(pr.getAttribute("strike") ?? "")) marks.push({ type: "strike" });
         const href = ctx.links[children(pr, "a:hlinkClick")[0]?.getAttribute("r:id") ?? ""];
         if (href && SAFE_HREF.test(href)) marks.push({ type: "link", attrs: { href } });
+        const style: Record<string, string> = {};
         const fg = color(children(pr, "a:solidFill")[0], ctx.theme);
-        if (fg && distinct(fg)) marks.push({ type: "textStyle", attrs: { color: fg } });
+        if (fg && (ctx.keepColors || distinct(fg))) style.color = fg;
+        const sz = pr.getAttribute("sz") ?? "";
+        if (ctx.baseSize && /^\d+$/.test(sz) && Math.abs(+sz / 100 - ctx.baseSize) >= 0.5) style.fontSize = `${Math.round((+sz / 100) * (ctx.fontScale ?? 1) * 10) / 10}px`; // 1 px = 1 pt on a slide
+        if (Object.keys(style).length) marks.push({ type: "textStyle", attrs: style });
         const hl = color(children(pr, "a:highlight")[0], ctx.theme);
         if (hl) marks.push({ type: "highlight", attrs: { color: hl } });
       }
@@ -253,7 +270,7 @@ function textBody(body: Element, bulleted: boolean, ctx: Ctx = NO_CTX, subtitle 
       stack[stack.length - 1].node.content!.push({ type: "listItem", content: [block("paragraph", content, align(p))] });
     } else {
       stack = [];
-      const heading = subtitle || (large(p) && plain(content).length <= 120);
+      const heading = ctx.headings !== false && (subtitle || (large(p) && plain(content).length <= 120));
       out.push(heading ? block("heading", content, align(p), 3) : block("paragraph", content, align(p)));
     }
   }
@@ -354,6 +371,410 @@ export function guessDate(text: string): ISODate | undefined {
   return undefined;
 }
 
+// ---- designed slides ----
+//
+// The same slide as positioned elements (contract.ts SlideDesign), in points (1 pt = 12700 EMU).
+// Shapes come from the master and layout (template art, unless showMasterSp="0"), then the slide.
+// Placeholders inherit position, anchor, font size and color from the layout, then the master,
+// then the master's text styles. Groups map child coordinates through chOff/chExt.
+
+const EMU_PER_PT = 12_700;
+const PRESET: Record<string, string> = { rect: "rect", roundRect: "roundRect", snipRoundRect: "roundRect", ellipse: "ellipse", triangle: "triangle", line: "line", straightConnector1: "line" };
+const ANCHOR: Record<string, string> = { ctr: "middle", b: "bottom", t: "top" };
+// Where PowerPoint's default template puts placeholders (fractions of the slide), used when neither
+// the slide, its layout, nor its master says.
+const DEFAULT_BOX: Record<string, [number, number, number, number]> = {
+  title: [0.069, 0.053, 0.862, 0.193],
+  ctrTitle: [0.125, 0.164, 0.75, 0.349],
+  subTitle: [0.125, 0.526, 0.75, 0.242],
+  body: [0.069, 0.266, 0.862, 0.635],
+};
+const STYLE_FOR: Record<string, string> = { title: "titleStyle", ctrTitle: "titleStyle", body: "bodyStyle", obj: "bodyStyle", subTitle: "bodyStyle" };
+
+/** Direct child by local name, any namespace (slides use p:, SmartArt drawings dsp:). */
+const kid = (el: Element | undefined | null, name: string) => (el ? Array.from(el.children).find((c) => c.localName === name) : undefined);
+const pt = (v: number) => Math.round((v / EMU_PER_PT) * 100) / 100;
+const round1 = (v: number) => Math.round(v * 10) / 10;
+const digits = (v: string | null | undefined) => /^\d+$/.test(v ?? "");
+
+type Box = [number, number, number, number];
+/** Maps a group's child coordinates (EMU) to slide coordinates. */
+class Xf {
+  readonly ox: number;
+  readonly oy: number;
+  readonly sx: number;
+  readonly sy: number;
+  constructor(ox = 0, oy = 0, sx = 1, sy = 1) {
+    this.ox = ox;
+    this.oy = oy;
+    this.sx = sx;
+    this.sy = sy;
+  }
+  box(x: number, y: number, w: number, h: number): Box {
+    return [this.ox + x * this.sx, this.oy + y * this.sy, w * this.sx, h * this.sy];
+  }
+}
+
+function xfrmOf(el: Element): Element | undefined {
+  if (el.localName === "graphicFrame") return kid(el, "xfrm");
+  return kid(kid(el, "spPr") ?? kid(el, "grpSpPr"), "xfrm");
+}
+
+function geom(xfrm: Element | undefined): Box | undefined {
+  const off = kid(xfrm, "off");
+  const ext = kid(xfrm, "ext");
+  if (!off || !ext) return undefined;
+  const v = [off.getAttribute("x"), off.getAttribute("y"), ext.getAttribute("cx"), ext.getAttribute("cy")];
+  return v.every((x) => /^-?\d+$/.test(x ?? "")) ? (v.map(Number) as Box) : undefined;
+}
+
+async function themeFonts(zip: JSZip, slidePart: string): Promise<{ heading?: string; body?: string }> {
+  const layout = await relOf(zip, slidePart, "slideLayout");
+  const master = await relOf(zip, layout, "slideMaster");
+  const theme = await relOf(zip, master, "theme");
+  const f = theme ? zip.file(theme) : null;
+  if (!f) return {};
+  const root = xml(await f.async("string"));
+  const out: { heading?: string; body?: string } = {};
+  for (const [key, tag] of [["heading", "a:majorFont"], ["body", "a:minorFont"]] as const) {
+    const font = first(root, tag);
+    const name = (font && children(font, "a:latin")[0]?.getAttribute("typeface")) ?? "";
+    if (/^[\w .-]{1,64}$/.test(name)) out[key] = name;
+  }
+  return out;
+}
+
+/** [fill, line color, line width pt] from spPr, falling back to the shape's theme style refs. */
+function fillOf(sp: Element, theme: Theme): [string | undefined, string | undefined, number | undefined] {
+  const pr = kid(sp, "spPr");
+  const style = kid(sp, "style");
+  let fill: string | undefined;
+  let line: string | undefined;
+  let width: number | undefined;
+  if (pr && !kid(pr, "noFill")) {
+    const solid = kid(pr, "solidFill");
+    const grad = kid(pr, "gradFill");
+    const ref = kid(style, "fillRef");
+    if (solid) fill = color(solid, theme);
+    else if (grad) fill = color(els(grad, "a:gs")[0], theme);
+    else if (ref && (ref.getAttribute("idx") ?? "0") !== "0") fill = color(ref, theme);
+  }
+  const ln = kid(pr, "ln");
+  if (ln && digits(ln.getAttribute("w"))) width = pt(+ln.getAttribute("w")!);
+  if (!ln || !kid(ln, "noFill")) {
+    const solid = kid(ln, "solidFill");
+    const ref = kid(style, "lnRef");
+    if (ln && solid) line = color(solid, theme);
+    else if (ref && (ref.getAttribute("idx") ?? "0") !== "0") {
+      line = color(ref, theme);
+      width = width || 0.75;
+    }
+  }
+  return [fill, line, width];
+}
+
+/** [font size pt, text color, vertical anchor] for a text shape: its own lstStyle/bodyPr, then the
+ *  inherited placeholders' (layout, master), then the master text style. */
+function boxStyle(chain: Element[], txstyle: Element | undefined, theme: Theme): [number | undefined, string | undefined, string | undefined] {
+  let size: number | undefined;
+  let col: string | undefined;
+  let anchor: string | undefined;
+  for (const sp of chain) {
+    const body = kid(sp, "txBody");
+    const bpr = kid(body, "bodyPr");
+    const a = bpr?.getAttribute("anchor") ?? "";
+    if (anchor === undefined && ANCHOR[a]) anchor = ANCHOR[a];
+    const dr = kid(kid(kid(body, "lstStyle"), "lvl1pPr"), "defRPr");
+    if (dr) {
+      if (size === undefined && digits(dr.getAttribute("sz"))) size = +dr.getAttribute("sz")! / 100;
+      const solid = kid(dr, "solidFill");
+      if (col === undefined && solid) col = color(solid, theme);
+    }
+  }
+  const dr = kid(kid(txstyle, "lvl1pPr"), "defRPr");
+  if (dr) {
+    if (size === undefined && digits(dr.getAttribute("sz"))) size = +dr.getAttribute("sz")! / 100;
+    const solid = kid(dr, "solidFill");
+    if (col === undefined && solid) col = color(solid, theme);
+  }
+  return [size, col, anchor];
+}
+
+function dominantSize(body: Element): number | undefined {
+  const sizes = new Map<string, number>();
+  for (const r of els(body, "a:rPr")) {
+    const sz = r.getAttribute("sz");
+    if (digits(sz)) sizes.set(sz!, (sizes.get(sz!) ?? 0) + 1);
+  }
+  if (!sizes.size) return undefined;
+  const best = [...sizes.entries()].reduce((a, b) => (b[1] > a[1] || (b[1] === a[1] && +b[0] > +a[0]) ? b : a));
+  return +best[0] / 100;
+}
+
+type DesignElement = Record<string, unknown> & { kind: string };
+
+/** Builds one slide's SlideDesign. Image elements carry { image: index into `images` }. */
+class Designer {
+  images: ParsedImage[] = [];
+  elements: DesignElement[] = [];
+  rich = false; // the slide itself has pictures, shapes, groups, charts, or several text boxes
+  private textBoxes = 0;
+  private n = 0;
+  private layout?: string;
+  private master?: string;
+  private masterRoot?: Document;
+  private inherit: Map<string, Element>[] = [];
+  private relsCache = new Map<string, Awaited<ReturnType<typeof rels>>>();
+
+  private zip: JSZip;
+  private part: string;
+  private w: number;
+  private h: number;
+  private ctx: Ctx;
+
+  constructor(zip: JSZip, part: string, w: number, h: number, ctx: Ctx) {
+    this.zip = zip;
+    this.part = part;
+    this.w = w;
+    this.h = h;
+    this.ctx = ctx;
+  }
+
+  private async rels(part: string) {
+    if (!this.relsCache.has(part)) this.relsCache.set(part, await rels(this.zip, part));
+    return this.relsCache.get(part)!;
+  }
+  private async doc(part?: string) {
+    const f = part ? this.zip.file(part) : null;
+    return f ? xml(await f.async("string")) : undefined;
+  }
+
+  private async placeholders(part?: string) {
+    const out = new Map<string, Element>();
+    const d = await this.doc(part);
+    for (const sp of d ? els(d, "p:sp") : []) {
+      const ph = first(sp, "p:ph");
+      if (!ph) continue;
+      const idx = ph.getAttribute("idx");
+      if (idx && !out.has(`idx:${idx}`)) out.set(`idx:${idx}`, sp);
+      const t = `type:${ph.getAttribute("type") ?? "body"}`;
+      if (!out.has(t)) out.set(t, sp);
+    }
+    return out;
+  }
+
+  private inherited(ph: Element) {
+    const keys = [...(ph.getAttribute("idx") ? [`idx:${ph.getAttribute("idx")}`] : []), `type:${ph.getAttribute("type") ?? "body"}`];
+    return this.inherit.flatMap((src) => {
+      const k = keys.find((x) => src.has(x));
+      return k ? [src.get(k)!] : [];
+    });
+  }
+
+  private id() {
+    this.n += 1;
+    return `e${this.n}`;
+  }
+
+  private boxOf([x, y, w, h]: Box) {
+    return { x: pt(x), y: pt(y), w: pt(w), h: pt(h) };
+  }
+
+  /** Slide, then layout, then master background: a color, or a picture added as template art. */
+  private async background(): Promise<string | undefined> {
+    for (const part of [this.part, this.layout, this.master]) {
+      const d = await this.doc(part);
+      const bg = d ? first(d, "p:bg") : undefined;
+      if (!bg) continue;
+      const pr = kid(bg, "bgPr");
+      const ref = kid(bg, "bgRef");
+      if (pr) {
+        const solid = kid(pr, "solidFill");
+        const grad = kid(pr, "gradFill");
+        const blip = first(pr, "a:blip");
+        if (solid) return color(solid, this.ctx.theme);
+        if (grad) return color(els(grad, "a:gs")[0], this.ctx.theme);
+        if (blip) {
+          await this.picture(blip.getAttribute("r:embed") ?? "", part!, [0, 0, this.w, this.h], true);
+          return undefined;
+        }
+      }
+      if (ref) return color(ref, this.ctx.theme);
+    }
+    const lt1 = this.ctx.theme.bg1 ?? this.ctx.theme.lt1;
+    return lt1 ? `#${lt1.toLowerCase()}` : undefined;
+  }
+
+  async build() {
+    this.layout = await relOf(this.zip, this.part, "slideLayout");
+    this.master = await relOf(this.zip, this.layout, "slideMaster");
+    this.masterRoot = await this.doc(this.master);
+    this.inherit = [await this.placeholders(this.layout), await this.placeholders(this.master)];
+    const background = await this.background();
+    const sld = (await this.doc(this.part))!;
+    const layoutRoot = await this.doc(this.layout);
+    const showMaster = sld.documentElement.getAttribute("showMasterSp") !== "0";
+    if (showMaster && this.masterRoot && layoutRoot?.documentElement.getAttribute("showMasterSp") !== "0") await this.walk(first(this.masterRoot, "p:spTree"), this.master, new Xf(), true);
+    if (showMaster && layoutRoot) await this.walk(first(layoutRoot, "p:spTree"), this.layout, new Xf(), true);
+    await this.walk(first(sld, "p:spTree"), this.part, new Xf(), false);
+    this.rich = this.rich || this.textBoxes >= 2;
+    return { size: { w: pt(this.w), h: pt(this.h) }, elements: this.elements, ...(background ? { background } : {}) } as Record<string, unknown>;
+  }
+
+  private async walk(tree: Element | undefined, part: string | undefined, xf: Xf, template: boolean): Promise<void> {
+    if (!tree || !part) return;
+    for (const el of Array.from(tree.children)) {
+      const kind = el.localName;
+      if (kind === "grpSp") {
+        const g = geom(xfrmOf(el));
+        const ch = xfrmOf(el);
+        const choff = kid(ch, "chOff");
+        const chext = kid(ch, "chExt");
+        let inner = xf;
+        if (g && choff && chext) {
+          const [x, y, w, h] = xf.box(...g);
+          const cw = +(chext.getAttribute("cx") || 0);
+          const chh = +(chext.getAttribute("cy") || 0);
+          const sx = cw ? w / cw : 1;
+          const sy = chh ? h / chh : 1;
+          inner = new Xf(x - +(choff.getAttribute("x") ?? 0) * sx, y - +(choff.getAttribute("y") ?? 0) * sy, sx, sy);
+        }
+        this.rich = this.rich || !template;
+        await this.walk(el, part, inner, template);
+      } else if (kind === "sp" || kind === "cxnSp") await this.shape(el, part, xf, template);
+      else if (kind === "pic") {
+        const g = geom(xfrmOf(el));
+        const blip = first(el, "a:blip");
+        if (g && blip && !first(el, "a:videoFile") && !first(el, "p14:media")) {
+          this.rich = this.rich || !template;
+          await this.picture(blip.getAttribute("r:embed") ?? "", part, xf.box(...g), template, this.rotation(el));
+        }
+      } else if (kind === "graphicFrame") await this.frame(el, part, xf, template);
+    }
+  }
+
+  private rotation(el: Element) {
+    const r = xfrmOf(el)?.getAttribute("rot") ?? "";
+    return /^-?\d+$/.test(r) && +r ? Math.round((+r / 60000) * 100) / 100 : undefined;
+  }
+
+  private async picture(rid: string, part: string, box: Box, decorative: boolean, rot?: number) {
+    const target = (await this.rels(part)).find((r) => r.id === rid)?.target;
+    const mime = target ? MIME[target.split(".").pop()!.toLowerCase()] : undefined;
+    const f = target ? this.zip.file(target) : null;
+    if (!target || !mime || !f) return;
+    this.images.push({ name: `slide-${target.split("/").pop()}`, blob: new Blob([await f.async("uint8array")], { type: mime }) });
+    this.elements.push({ id: this.id(), kind: "image", ...this.boxOf(box), image: this.images.length - 1, ...(rot ? { rotation: rot } : {}), ...(decorative ? { decorative: true } : {}) });
+  }
+
+  private async links(part: string) {
+    return Object.fromEntries((await this.rels(part)).filter((r) => r.type.endsWith("/hyperlink")).map((r) => [r.id, r.target]));
+  }
+
+  private async shape(sp: Element, part: string, xf: Xf, template: boolean) {
+    const ph = first(sp, "p:ph");
+    const typ = ph ? (ph.getAttribute("type") ?? "body") : undefined;
+    if (template && ph) return; // placeholders on the master/layout only define what slides inherit
+    if (typ === "sldNum" || typ === "dt" || typ === "ftr") return;
+    const chain = [sp, ...(ph ? this.inherited(ph) : [])];
+    let g = chain.map((s) => geom(xfrmOf(s))).find(Boolean);
+    if (!g && ph) {
+      const [fx, fy, fw, fh] = DEFAULT_BOX[typ ?? "body"] ?? DEFAULT_BOX.body;
+      g = [Math.trunc(fx * this.w), Math.trunc(fy * this.h), Math.trunc(fw * this.w), Math.trunc(fh * this.h)];
+    }
+    if (!g) return;
+    const body = kid(sp, "txBody");
+    const styleName = ph ? (STYLE_FOR[typ ?? ""] ?? "otherStyle") : "otherStyle";
+    const txstyle = this.masterRoot ? first(this.masterRoot, `p:${styleName}`) : undefined;
+    const [size, col, anchor] = boxStyle(chain, txstyle, this.ctx.theme);
+    const fit = kid(kid(body, "bodyPr"), "normAutofit");
+    const scale = fit && digits(fit.getAttribute("fontScale")) ? +fit.getAttribute("fontScale")! / 100_000 : 1;
+    const base = (body ? dominantSize(body) : undefined) ?? size ?? (typ === "title" || typ === "ctrTitle" ? 40 : 18);
+    const ctx: Ctx = { theme: this.ctx.theme, links: await this.links(part), keepColors: true, headings: false, baseSize: base, fontScale: scale };
+    const nodes = body ? textBody(body, typ === "body" || typ === "obj", ctx) : [];
+    const pg = kid(kid(sp, "spPr"), "prstGeom");
+    const prst = pg ? (pg.getAttribute("prst") ?? "rect") : sp.localName === "cxnSp" ? "line" : "rect";
+    const [fill, line, lw] = fillOf(sp, this.ctx.theme);
+    if (!nodes.length && !fill && !line) return;
+    const el: DesignElement = { id: this.id(), kind: "text", ...this.boxOf(xf.box(...g)) };
+    const x = xfrmOf(sp);
+    const rot = this.rotation(sp);
+    if (rot) el.rotation = rot;
+    if ((prst === "rect" && !(fill || line)) || (ph && prst === "rect")) {
+      el.kind = "text";
+      if (fill) el.fill = fill;
+      if (line) el.line = line;
+    } else {
+      let shape = PRESET[prst] ?? "rect";
+      const ln = kid(kid(sp, "spPr"), "ln");
+      if (shape === "line" && ln && ["tailEnd", "headEnd"].some((t) => kid(ln, t) && (kid(ln, t)!.getAttribute("type") ?? "none") !== "none")) shape = "arrow";
+      el.kind = "shape";
+      el.shape = shape;
+      if (fill && shape !== "line" && shape !== "arrow") el.fill = fill;
+      if (line) el.line = line;
+      if (lw !== undefined) el.lineWidth = lw;
+      for (const f of ["flipH", "flipV"]) if (x?.getAttribute(f) === "1") el[f] = true;
+    }
+    if (nodes.length) {
+      el.doc = { type: "doc", content: nodes };
+      el.fontSize = round1(base * scale);
+      el.color = col ?? "#000000";
+      if (anchor && anchor !== "top") el.valign = anchor;
+      if (typ === "title" || typ === "ctrTitle") el.role = "title";
+    }
+    if (template) el.decorative = true;
+    else {
+      if (typ !== "title" && typ !== "ctrTitle" && nodes.length) this.textBoxes += 1;
+      if (el.kind === "shape" || el.fill || el.line) this.rich = true;
+    }
+    this.elements.push(el);
+  }
+
+  private async frame(el: Element, part: string, xf: Xf, template: boolean) {
+    const g = geom(xfrmOf(el));
+    if (!g || template) return;
+    const box = xf.box(...g);
+    const relMap = new Map((await this.rels(part)).map((r) => [r.id, r]));
+    const tbl = first(el, "a:tbl");
+    let nodes: PMNode[] = [];
+    let size = 18;
+    const chartRef = first(el, "c:chart");
+    const ids = first(el, "dgm:relIds");
+    if (tbl) {
+      nodes = [table(tbl, { theme: this.ctx.theme, links: await this.links(part), keepColors: true, headings: false })];
+      size = dominantSize(tbl) ?? 18;
+    } else if (chartRef) {
+      const cd = await this.doc(relMap.get(chartRef.getAttribute("r:id") ?? "")?.target);
+      nodes = cd ? chartTable(cd) : [];
+      size = 12;
+    } else if (ids) {
+      if (await this.smartArt(ids, part, box)) {
+        this.rich = true;
+        return;
+      }
+      const dd = await this.doc(relMap.get(ids.getAttribute("r:dm") ?? "")?.target);
+      nodes = dd ? smartArt(dd) : [];
+    }
+    if (nodes.length) {
+      this.rich = true;
+      this.elements.push({ id: this.id(), kind: "text", ...this.boxOf(box), doc: { type: "doc", content: nodes }, fontSize: size, color: "#000000" });
+    }
+  }
+
+  /** SmartArt as drawn: PowerPoint caches the layout in a drawing part (dsp:drawing), linked from
+   *  the data part's dataModelExt relId. Shapes there are relative to the frame. */
+  private async smartArt(ids: Element, part: string, box: Box) {
+    const relMap = new Map((await this.rels(part)).map((r) => [r.id, r]));
+    const data = await this.doc(relMap.get(ids.getAttribute("r:dm") ?? "")?.target);
+    const ext = data ? Array.from(data.getElementsByTagName("*")).find((e) => e.localName === "dataModelExt") : undefined;
+    const drawing = await this.doc(relMap.get(ext?.getAttribute("relId") ?? "")?.target);
+    const tree = drawing ? Array.from(drawing.getElementsByTagName("*")).find((e) => e.localName === "spTree") : undefined;
+    const before = this.elements.length;
+    await this.walk(tree, part, new Xf(box[0], box[1], 1, 1), false);
+    return this.elements.length > before;
+  }
+}
+
 // ---- slides ----
 
 type Pos = [number, number]; // (y, x) in EMU
@@ -384,7 +805,8 @@ async function placeholderOffsets(zip: JSZip, part: string | undefined): Promise
   return out;
 }
 
-async function parseSlide(zip: JSZip, part: string, n: number, slideHeight = 6_858_000): Promise<ParsedSlide> {
+async function parseSlide(zip: JSZip, part: string, n: number, size: [number, number] = [12_192_000, 6_858_000]): Promise<ParsedSlide> {
+  const slideHeight = size[1];
   const doc = xml(await zip.file(part)!.async("string"));
   const slideRels = await rels(zip, part);
   const byId = new Map(slideRels.map((r) => [r.id, r]));
@@ -490,8 +912,13 @@ async function parseSlide(zip: JSZip, part: string, n: number, slideHeight = 6_8
   }
   const ld = await partXml(layout);
   const isSectionHeader = ld?.documentElement.getAttribute("type") === "secHead";
+  const designer = new Designer(zip, part, size[0], size[1], ctx);
+  const design = (await designer.build()) as NonNullable<ParsedSlide["design"]>;
+  const fonts = await themeFonts(zip, part);
+  if (Object.keys(fonts).length) design.fonts = fonts;
+
   const textAll = `${title}\n${docText({ type: "doc", content })}`.trim();
-  return { n, title, isSectionHeader, content, images, notes, text: textAll, date: guessDate(textAll), warnings, parts };
+  return { n, title, isSectionHeader, content, images, notes, text: textAll, date: guessDate(textAll), warnings, parts, design, designImages: designer.images, rich: designer.rich };
 }
 
 /** Parse a .pptx. Throws a readable Error if it isn't one. `onProgress` gets 0..1 per slide. */
@@ -507,7 +934,9 @@ export async function parsePptx(input: Blob | Uint8Array, onProgress?: (f: numbe
   const pres = xml(await presFile.async("string"));
   const presRels = await rels(zip, "ppt/presentation.xml");
   const order = els(pres, "p:sldId").map((s) => ({ id: s.getAttribute("id") ?? "", target: presRels.find((r) => r.id === s.getAttribute("r:id"))?.target }));
+  const cx = first(pres, "p:sldSz")?.getAttribute("cx") ?? "";
   const cy = first(pres, "p:sldSz")?.getAttribute("cy") ?? "";
+  const width = /^\d+$/.test(cx) ? +cx : 12_192_000;
   const height = /^\d+$/.test(cy) ? +cy : 6_858_000;
   const sectionOf = new Map<string, string>();
   for (const sec of els(pres, "p14:section")) for (const sid of els(sec, "p14:sldId")) sectionOf.set(sid.getAttribute("id") ?? "", sec.getAttribute("name") ?? "");
@@ -515,7 +944,7 @@ export async function parsePptx(input: Blob | Uint8Array, onProgress?: (f: numbe
   for (let i = 0; i < order.length; i++) {
     const t = order[i].target;
     if (!t || !zip.file(t)) continue;
-    const s = await parseSlide(zip, t, i + 1, height);
+    const s = await parseSlide(zip, t, i + 1, [width, height]);
     s.section = sectionOf.get(order[i].id) || undefined;
     slides.push(s);
     onProgress?.((i + 1) / order.length);

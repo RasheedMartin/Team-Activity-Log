@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .. import models as m
 from ..prosemirror import doc_text, mentioned_ids
 from ..timeutil import iso
-from ..views import block_image_ids
+from ..views import block_docs, block_image_ids
 
 
 def image_search_fields(inst: m.ImageInstance, asset: m.Asset) -> dict:
@@ -62,7 +62,7 @@ async def build_documents(db: AsyncSession, post_ids: Sequence[uuid.UUID]) -> tu
     comments: dict[uuid.UUID, list[m.CommentRow]] = defaultdict(list)
     for c in (await db.execute(select(m.CommentRow).where(m.CommentRow.post_id.in_(ids), m.CommentRow.deleted_at.is_(None), m.CommentRow.hidden.is_(False)))).scalars():
         comments[c.post_id].append(c)
-    inst_ids = [i for p in live for i in block_image_ids(p.blocks)]
+    inst_ids = [i for p in live for i in block_image_ids(p.blocks, content_only=True)]
     images: dict[uuid.UUID, tuple[m.ImageInstance, m.Asset]] = {}
     if inst_ids:
         for inst, asset in await db.execute(select(m.ImageInstance, m.Asset).join(m.Asset, m.Asset.id == m.ImageInstance.asset_id).where(m.ImageInstance.id.in_(inst_ids))):
@@ -71,8 +71,8 @@ async def build_documents(db: AsyncSession, post_ids: Sequence[uuid.UUID]) -> tu
     docs: dict[uuid.UUID, dict] = {}
     for p in live:
         blocks = p.blocks or []
-        body = "\n".join(doc_text(b.get("doc")) for b in blocks if b.get("type") in ("text", "table"))
-        imgs = [images[i] for i in block_image_ids(blocks) if i in images and images[i][0].org_id == p.org_id and images[i][1].org_id == p.org_id]
+        body = "\n".join(doc_text(d) for d in block_docs(blocks))
+        imgs = [images[i] for i in block_image_ids(blocks, content_only=True) if i in images and images[i][0].org_id == p.org_id and images[i][1].org_id == p.org_id]
         cs = comments[p.id]
         img_fields = [image_search_fields(inst, asset) for inst, asset in imgs]
         image_text = "\n".join(
@@ -82,7 +82,7 @@ async def build_documents(db: AsyncSession, post_ids: Sequence[uuid.UUID]) -> tu
         reactors = {u for users in (p.reactions or {}).values() for u in users}
         for c in cs:
             reactors |= {u for users in (c.reactions or {}).values() for u in users}
-        mentioned = set(mentioned_ids({"type": "doc", "content": [b["doc"] for b in blocks if b.get("doc")]}))
+        mentioned = set(mentioned_ids({"type": "doc", "content": block_docs(blocks)}))
         for c in cs:
             mentioned |= set(mentioned_ids(c.doc))
         questions = [c for c in cs if c.is_question]

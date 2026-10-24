@@ -102,14 +102,33 @@ async def image_views(db: AsyncSession, instance_ids: Sequence[uuid.UUID], org_i
     return {inst.id: {**instance_view(inst), "asset": asset_view(asset)} for inst, asset in rows}
 
 
-def block_image_ids(blocks: Iterable[dict]) -> list[uuid.UUID]:
-    out = []
+def block_image_ids(blocks: Iterable[dict], content_only: bool = False) -> list[uuid.UUID]:
+    """Image instances a post shows: image blocks and images on designed slides. `content_only`
+    drops slide template art (a logo on every slide), which search and counts leave out."""
+    raw: list = []
     for b in blocks or []:
         if b.get("type") == "image":
-            try:
-                out.append(uuid.UUID(b["imageInstanceId"]))
-            except (KeyError, ValueError):
-                continue
+            raw.append(b.get("imageInstanceId"))
+        elif b.get("type") == "slide":
+            raw += [e.get("imageInstanceId") for e in (b.get("design") or {}).get("elements") or [] if e.get("kind") == "image" and not (content_only and e.get("decorative"))]
+    out = []
+    for x in raw:
+        try:
+            out.append(uuid.UUID(x))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def block_docs(blocks: Iterable[dict]) -> list[dict]:
+    """ProseMirror docs in reading order: text/table blocks and text on designed slides, except
+    template text repeated on every slide (mirrors frontend/src/lib/blocks.ts)."""
+    out: list[dict] = []
+    for b in blocks or []:
+        if b.get("type") in ("text", "table") and b.get("doc"):
+            out.append(b["doc"])
+        elif b.get("type") == "slide":
+            out += [e["doc"] for e in (b.get("design") or {}).get("elements") or [] if e.get("kind") != "image" and e.get("doc") and not e.get("decorative")]
     return out
 
 

@@ -8,6 +8,7 @@ import { proseSx } from "../theme/prose";
 
 const SAFE_HREF = /^(https?:|mailto:)/i;
 const HEX = /^#[0-9a-f]{6}$/i; // colors are only ever plain hex (the backend enforces it too)
+const FONT_SIZE = /^\d{1,3}(\.\d)?px$/; // designed slides only, where 1 px = 1 pt
 const ALIGN = new Set(["left", "center", "right", "justify"]);
 const align = (node: PMNode) => (ALIGN.has(String(node.attrs?.textAlign)) ? { textAlign: node.attrs!.textAlign as "center" } : undefined);
 
@@ -27,8 +28,10 @@ function marks(node: PMNode, child: ReactNode, key: number): ReactNode {
         return <code key={k}>{acc}</code>;
       case "textStyle": {
         const color = String(m.attrs?.color ?? "");
-        return HEX.test(color) ? (
-          <span key={k} data-tc="" style={{ "--tc": color } as CSSProperties}>
+        const size = String(m.attrs?.fontSize ?? "");
+        const style = { ...(HEX.test(color) ? { "--tc": color } : {}), ...(FONT_SIZE.test(size) ? { fontSize: size } : {}) } as CSSProperties;
+        return Object.keys(style).length ? (
+          <span key={k} {...(HEX.test(color) ? { "data-tc": "" } : {})} style={style}>
             {acc}
           </span>
         ) : (

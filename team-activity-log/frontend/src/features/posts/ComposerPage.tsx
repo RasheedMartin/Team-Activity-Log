@@ -5,6 +5,7 @@ import {
   ArrowUpwardRounded,
   CheckCircleRounded,
   CloseRounded,
+  DashboardCustomizeOutlined,
   DeleteOutlineRounded,
   NotesRounded,
   RadioButtonUncheckedRounded,
@@ -12,7 +13,7 @@ import {
   ViewCarouselOutlined,
   WarningAmberRounded,
 } from "@mui/icons-material";
-import { Alert, Box, Button, Divider, IconButton, InputBase, LinearProgress, Paper, Skeleton, Stack, TextField, Tooltip, Typography } from "@mui/material";
+import { Alert, Box, Button, Divider, IconButton, InputBase, LinearProgress, Menu, MenuItem, Paper, Skeleton, Stack, TextField, Tooltip, Typography } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useBlocker, useNavigate, useParams } from "react-router-dom";
@@ -24,12 +25,15 @@ import { useNotify } from "../../components/notify";
 import { PeoplePicker, TagPicker } from "../../components/Pickers";
 import { ErrorState, Kbd, StatusPill } from "../../components/ui";
 import { timeAgo, todayISO } from "../../lib/dates";
+import { blockImageIds, hasContent as blocksHaveContent } from "../../lib/blocks";
 import { errorMessage } from "../../lib/format";
 import { uuidv7 } from "../../lib/ids";
 import { hasTable, isDocEmpty } from "../../lib/prosemirror";
+import { designToBlocks, LAYOUTS, newDesign, sectionToDesign, type SlideLayout } from "../../lib/slideLayouts";
 import { Annotator } from "./Annotator";
 import { ImageBlock, UploadingBlock, type UploadState } from "./editor/ImageBlock";
 import { emptyTable } from "./editor/emptyTable";
+import { SlideEditor } from "./editor/SlideEditor";
 import { TextBlockEditor } from "./editor/TextBlockEditor";
 import { ImageMetadataDrawer } from "./ImageMetadataDrawer";
 
@@ -194,6 +198,31 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
     });
     if (block && block.type !== "uploading" && !(block.type === "text" && isDocEmpty(block.doc))) notify("Block removed", () => insertAt(index, block));
   };
+  const [focusBlock, setFocusBlock] = useState<string | null>(null);
+  const replaceBlocks = (index: number, count: number, blocks: LocalBlock[]) => change((cur) => ({ blocks: [...cur.blocks.slice(0, index), ...blocks, ...cur.blocks.slice(index + count)] }));
+  /** Blocks after a slide break, up to the next break or designed slide. */
+  const sectionLength = (breakIndex: number) => {
+    const next = f.blocks.findIndex((b, j) => j > breakIndex && (b.type === "slide_break" || b.type === "slide"));
+    return (next < 0 ? f.blocks.length : next) - breakIndex - 1;
+  };
+  const designSection = (breakIndex: number) => {
+    const brk = f.blocks[breakIndex] as Extract<Block, { type: "slide_break" }>;
+    const n = sectionLength(breakIndex);
+    const section = f.blocks.slice(breakIndex + 1, breakIndex + 1 + n).filter((b): b is Block => b.type !== "uploading");
+    const { design, rest } = sectionToDesign(section, images);
+    replaceBlocks(breakIndex, n + 1, [{ id: uuidv7(), type: "slide", design, ...(brk.notes ? { notes: brk.notes } : {}) }, ...rest]);
+  };
+  const uploadForSlide = async (file: File) => {
+    try {
+      const asset = await uploadImage(orgId, file);
+      const img = await createImageInstance(orgId, { assetId: asset.id, postId: post.id });
+      setExtraImages((m) => ({ ...m, [img.id]: img }));
+      return img;
+    } catch (e) {
+      notify(`Couldn't add the picture: ${errorMessage(e)}`);
+      throw e;
+    }
+  };
   const move = (index: number, dir: -1 | 1) =>
     change((cur) => {
       const j = index + dir;
@@ -247,8 +276,8 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
   // ---- publish / update ----
   const pendingUploads = Object.keys(uploads).length;
   const failedUploads = Object.values(uploads).filter((u) => u.error).length;
-  const hasContent = f.blocks.some((b) => b.type === "image" || ((b.type === "text" || b.type === "table") && !isDocEmpty(b.doc)));
-  const imagesInPost = f.blocks.filter((b): b is Extract<Block, { type: "image" }> => b.type === "image").map((b) => images.get(b.imageInstanceId)).filter((x): x is ImageView => !!x);
+  const hasContent = blocksHaveContent(f.blocks.filter((b): b is Block => b.type !== "uploading"));
+  const imagesInPost = blockImageIds(f.blocks.filter((b): b is Block => b.type !== "uploading"), "content").map((id) => images.get(id)).filter((x): x is ImageView => !!x);
   const missingAlt = imagesInPost.filter((i) => !i.altText).length;
   const checklist: { ok: boolean; label: string; blocking: boolean }[] = [
     { ok: !!f.title.trim(), label: "Title", blocking: true },
@@ -429,7 +458,7 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
                         label={b.type === "table" ? "Table" : `Text block ${i + 1}`}
                         doc={b.doc}
                         table={b.type === "table" || hasTable(b.doc)} // imported slides keep tables (and chart data) inside text blocks
-                        autoFocus={i === 0 && !!f.title && isDocEmpty(b.doc)}
+                        autoFocus={(i === 0 && !!f.title && isDocEmpty(b.doc)) || b.id === focusBlock}
                         placeholder={i === 0 ? "What did you do, find, or decide? Paste screenshots right here." : "Keep writing…"}
                         onChange={(doc) => setBlock(b.id, { doc } as Partial<Block>)}
                         onBlur={() => isDraft && void save()}
@@ -453,16 +482,37 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
                     uploads[b.id] ? (
                       <UploadingBlock u={uploads[b.id]} onRetry={() => startUpload(uploads[b.id])} onRemove={() => (setUploads(({ [b.id]: _x, ...rest }) => (void _x, rest)), removeBlock(b.id))} />
                     ) : null
+                  ) : b.type === "slide" ? (
+                    <Box>
+                      <SlideEditor
+                        design={b.design}
+                        images={images}
+                        label={`Slide ${i + 1}`}
+                        onChange={(design) => setBlock(b.id, { design } as Partial<Block>)}
+                        onUploadImage={uploadForSlide}
+                        onConvertToText={() => replaceBlocks(i, 1, designToBlocks(b))}
+                      />
+                      <SlideNotes notes={b.notes ?? ""} onNotes={(notes) => setBlock(b.id, { notes } as Partial<Block>)} />
+                    </Box>
                   ) : (
-                    <SlideBreak notes={b.notes ?? ""} onNotes={(notes) => setBlock(b.id, { notes } as Partial<Block>)} />
+                    <SlideBreak notes={b.notes ?? ""} onNotes={(notes) => setBlock(b.id, { notes } as Partial<Block>)} onDesign={sectionLength(i) > 0 ? () => designSection(i) : undefined} />
                   )}
                 </BlockFrame>
               ))}
             </Stack>
             <AddBar
-              onText={() => insertAt(f.blocks.length, emptyText())}
-              onTable={() => insertAt(f.blocks.length, { id: uuidv7(), type: "table", doc: emptyTable })}
+              onText={() => {
+                const b = emptyText();
+                setFocusBlock(b.id); // typing goes into the block just added
+                insertAt(f.blocks.length, b);
+              }}
+              onTable={() => {
+                const id = uuidv7();
+                setFocusBlock(id);
+                insertAt(f.blocks.length, { id, type: "table", doc: emptyTable });
+              }}
               onSlide={() => insertAt(f.blocks.length, { id: uuidv7(), type: "slide_break" })}
+              onDesigned={(layout) => insertAt(f.blocks.length, { id: uuidv7(), type: "slide", design: newDesign(layout) })}
               onFiles={(files) => addFiles(files)}
             />
           </Paper>
@@ -532,13 +582,27 @@ function BlockFrame({ children, index, count, onMove, onRemove }: { children: Re
   );
 }
 
-function SlideBreak({ notes, onNotes }: { notes: string; onNotes: (n: string) => void }) {
+function SlideNotes({ notes, onNotes }: { notes: string; onNotes: (n: string) => void }) {
+  const [open, setOpen] = useState(!!notes);
+  return open ? (
+    <TextField fullWidth multiline minRows={2} size="small" label="Presenter notes" placeholder="Notes only you see while presenting" value={notes} onChange={(e) => onNotes(e.target.value)} sx={{ mt: 1 }} />
+  ) : (
+    <Button size="small" startIcon={<NotesRounded />} onClick={() => setOpen(true)} sx={{ mt: 0.5 }}>Presenter notes</Button>
+  );
+}
+
+function SlideBreak({ notes, onNotes, onDesign }: { notes: string; onNotes: (n: string) => void; onDesign?: () => void }) {
   const [open, setOpen] = useState(!!notes);
   return (
     <Box sx={{ borderTop: "2px dashed", borderColor: "divider", pt: 0.75 }}>
-      <Stack direction="row" alignItems="center" spacing={1}>
+      <Stack direction="row" alignItems="center" spacing={1} useFlexGap sx={{ flexWrap: "wrap" }}>
         <ViewCarouselOutlined fontSize="small" sx={{ color: "text.disabled" }} />
-        <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>Slide break: a new slide starts here when presenting</Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ flex: 1, minWidth: 180 }}>Slide break: a new slide starts here when presenting</Typography>
+        {onDesign && (
+          <Tooltip describeChild title="Turn the content below into a slide you can lay out">
+            <Button size="small" startIcon={<DashboardCustomizeOutlined />} onClick={onDesign}>Design this slide</Button>
+          </Tooltip>
+        )}
         {!open && <Button size="small" startIcon={<NotesRounded />} onClick={() => setOpen(true)}>Presenter notes</Button>}
       </Stack>
       {open && <TextField fullWidth multiline minRows={2} size="small" placeholder="Notes only you see while presenting" value={notes} onChange={(e) => onNotes(e.target.value)} sx={{ mt: 1 }} />}
@@ -546,7 +610,8 @@ function SlideBreak({ notes, onNotes }: { notes: string; onNotes: (n: string) =>
   );
 }
 
-function AddBar({ onText, onTable, onSlide, onFiles }: { onText: () => void; onTable: () => void; onSlide: () => void; onFiles: (files: File[]) => void }) {
+function AddBar({ onText, onTable, onSlide, onDesigned, onFiles }: { onText: () => void; onTable: () => void; onSlide: () => void; onDesigned: (layout: SlideLayout) => void; onFiles: (files: File[]) => void }) {
+  const [menu, setMenu] = useState<HTMLElement | null>(null);
   return (
     <Stack direction="row" spacing={1} sx={{ mt: 2, pt: 1.5, borderTop: 1, borderColor: "divider", flexWrap: "wrap", rowGap: 1 }}>
       <Button size="small" startIcon={<NotesRounded />} onClick={onText}>Text</Button>
@@ -556,6 +621,14 @@ function AddBar({ onText, onTable, onSlide, onFiles }: { onText: () => void; onT
       </Button>
       <Button size="small" startIcon={<TableChartOutlined />} onClick={onTable}>Table</Button>
       <Button size="small" startIcon={<ViewCarouselOutlined />} onClick={onSlide}>Slide break</Button>
+      <Button size="small" startIcon={<DashboardCustomizeOutlined />} onClick={(e) => setMenu(e.currentTarget)} aria-haspopup="menu">Designed slide</Button>
+      <Menu anchorEl={menu} open={!!menu} onClose={() => setMenu(null)}>
+        {LAYOUTS.map((l) => (
+          <MenuItem key={l.id} onClick={() => (setMenu(null), onDesigned(l.id))}>
+            {l.label}
+          </MenuItem>
+        ))}
+      </Menu>
     </Stack>
   );
 }

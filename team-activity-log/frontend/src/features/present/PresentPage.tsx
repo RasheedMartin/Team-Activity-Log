@@ -13,7 +13,7 @@ import { useCollection, usePeople, usePostDetails, useTags } from "../../api/hoo
 import { useWs, wsPath } from "../../app/session";
 import { EmptyState } from "../../components/ui";
 import { deriveSlides, type Slide } from "../../lib/slides";
-import { ScaledSlide, SlideBody } from "./SlideView";
+import { SlideFrame } from "./SlideView";
 
 type Msg = { type: "go"; index: number } | { type: "hello" };
 
@@ -173,9 +173,7 @@ export default function PresentPage() {
       <Box sx={{ position: "absolute", inset: { xs: 8, md: 24 }, bottom: { xs: 56, md: 64 } }} aria-live="polite" aria-atomic>
         {slide && (
           <Box key={index} sx={{ width: "100%", height: "100%", animation: reduced ? "none" : "tal-slide-in 160ms ease-out", "@keyframes tal-slide-in": { from: { opacity: 0 }, to: { opacity: 1 } } }}>
-            <ScaledSlide>
-              <SlideBody slide={slide} people={people} tags={tags} interactive />
-            </ScaledSlide>
+            <SlideFrame slide={slide} people={people} tags={tags} interactive />
           </Box>
         )}
       </Box>
@@ -233,9 +231,7 @@ export default function PresentPage() {
                 }
               }} sx={{ cursor: "pointer", outline: i === index ? "3px solid #8ea2ff" : "none", borderRadius: 0.5 }}>
               <Box sx={{ aspectRatio: "16 / 9" }}>
-                <ScaledSlide>
-                  <SlideBody slide={s} people={people} tags={tags} />
-                </ScaledSlide>
+                <SlideFrame slide={s} people={people} tags={tags} />
               </Box>
               <Typography variant="caption" sx={{ color: "#8a929c" }}>{i + 1}</Typography>
             </Box>
@@ -260,18 +256,14 @@ function PresenterView({ slides, index, go, people, tags }: { slides: Slide[]; i
     <Box sx={{ height: "100dvh", bgcolor: "#0b0c0f", color: "#e6e8eb", p: 2, display: "grid", gridTemplateColumns: "2fr 1fr", gridTemplateRows: "1fr auto", gap: 2 }}>
       <Box sx={{ minHeight: 0 }}>
         {slides[index] && (
-          <ScaledSlide>
-            <SlideBody slide={slides[index]} people={people} tags={tags} />
-          </ScaledSlide>
+          <SlideFrame slide={slides[index]} people={people} tags={tags} />
         )}
       </Box>
       <Stack spacing={2} sx={{ minHeight: 0 }}>
         <Typography variant="overline" sx={{ color: "#8a929c" }}>Next</Typography>
         <Box sx={{ aspectRatio: "16 / 9" }}>
           {slides[index + 1] ? (
-            <ScaledSlide>
-              <SlideBody slide={slides[index + 1]} people={people} tags={tags} />
-            </ScaledSlide>
+            <SlideFrame slide={slides[index + 1]} people={people} tags={tags} />
           ) : (
             <Typography sx={{ color: "#8a929c" }}>End of deck</Typography>
           )}

@@ -38,6 +38,7 @@ import { isTypingTarget } from "../../app/shortcuts";
 import { useWs, wsPath } from "../../app/session";
 import { useNotify } from "../../components/notify";
 import { RichText } from "../../components/RichText";
+import { SlideCanvas } from "../../components/SlideCanvas";
 import { EmptyState, TagChip, UserAvatar } from "../../components/ui";
 import { formatDay, formatRange } from "../../lib/dates";
 import { AnnotatedImage } from "../posts/editor/ImageBlock";
@@ -66,6 +67,7 @@ function Entry({ detail, people, tags, origin, pageBreak }: { detail: PostDetail
         {p.blocks.map((b) => {
           if (b.type === "text" || b.type === "table") return <RichText key={b.id} doc={b.doc} />;
           if (b.type === "slide_break") return null;
+          if (b.type === "slide") return <SlideCanvas key={b.id} design={b.design} images={imgs} sx={{ breakInside: "avoid" }} />;
           const img = imgs.get(b.imageInstanceId);
           return img ? (
             <Box component="figure" key={b.id} sx={{ m: 0, breakInside: "avoid" }}>

@@ -33,7 +33,8 @@ import {
 } from "../../lib/dates";
 import { effectiveSort } from "../../lib/filterSpec";
 import { parseBoolean, positiveNeedles, type QueryField, type QueryNode } from "../../lib/query";
-import { docText, mentionedIds } from "../../lib/prosemirror";
+import { blockDocs } from "../../lib/blocks";
+import { docText, mentionedIds, type PMNode } from "../../lib/prosemirror";
 
 // Client-side stand-in for the Elasticsearch query in §B4. It implements the same FilterSpec,
 // the same disjunctive facet semantics (§W4.7), and the same histogram bucketing (§W4.2), so
@@ -113,10 +114,7 @@ export class SearchEngine {
 
   private derive(post: Post): Derived {
     const tagText = post.tagIds.map((id) => this.tagNames.get(id) ?? "").join(" ");
-    const blocksText = post.blocks
-      .filter((b) => b.type === "text" || b.type === "table")
-      .map((b) => docText((b as { doc: unknown }).doc))
-      .join("\n");
+    const blocksText = blockDocs(post.blocks).map(docText).join("\n");
     const images = this.data.images(post);
     const comments = this.data.comments(post.id).filter((c) => !c.deletedAt && !c.hidden);
     const imageText = images
@@ -126,7 +124,7 @@ export class SearchEngine {
     const commentText = comments.map((c) => docText(c.doc)).join("\n");
     const reactors = new Set<ID>(Object.values(post.reactions ?? {}).flat());
     comments.forEach((c) => Object.values(c.reactions).flat().forEach((id) => reactors.add(id)));
-    const mentioned = new Set<ID>([...mentionedIds({ type: "doc", content: post.blocks.map((b) => (b as { doc?: unknown }).doc).filter(Boolean) }), ...comments.flatMap((c) => mentionedIds(c.doc))]);
+    const mentioned = new Set<ID>([...mentionedIds({ type: "doc", content: blockDocs(post.blocks) as PMNode[] }), ...comments.flatMap((c) => mentionedIds(c.doc))]);
     const questions = comments.filter((c) => c.isQuestion);
     const lastActivity = comments.reduce((m, c) => (c.createdAt > m ? c.createdAt : m), post.updatedAt);
     const d: Derived = {

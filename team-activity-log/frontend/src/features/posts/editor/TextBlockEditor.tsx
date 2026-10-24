@@ -18,12 +18,35 @@ import Placeholder from "@tiptap/extension-placeholder";
 import { TableKit } from "@tiptap/extension-table";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, useSyncExternalStore, type ReactNode } from "react";
 import { proseSx } from "../../../theme/prose";
 import { AlignButton, ColorMenu } from "./FormatControls";
 import { formattingExtensions } from "./formatting";
 
 // One TipTap editor per text/table block. Content is ProseMirror JSON in and out (§C1).
+
+/**
+ * Which text block shows its toolbar: the one most recently focused. A toolbar never collapses
+ * just because focus left (a button, a slide, the page), since that would shift everything below it
+ * mid-click. Focusing another block swaps toolbars: the old one closes as the new one opens.
+ */
+let activeBar: string | null = null;
+const barListeners = new Set<() => void>();
+const setActiveBar = (id: string | null) => {
+  activeBar = id;
+  barListeners.forEach((l) => l());
+};
+function useToolbarOwner(id: string, focused: boolean) {
+  const active = useSyncExternalStore(
+    (l) => (barListeners.add(l), () => barListeners.delete(l)),
+    () => activeBar,
+  );
+  useEffect(() => {
+    if (focused) setActiveBar(id);
+  }, [focused, id]);
+  useEffect(() => () => void (activeBar === id && setActiveBar(null)), [id]);
+  return active === id;
+}
 
 function Btn({ title, active, onClick, children }: { title: string; active?: boolean; onClick: () => void; children: ReactNode }) {
   return (
@@ -149,11 +172,13 @@ export function TextBlockEditor({ doc, onChange, onPasteImages, onBlur, placehol
     },
   });
   const focused = useEditorState({ editor, selector: ({ editor: e }) => e?.isFocused ?? false });
+  const barId = useId();
+  const showBar = useToolbarOwner(barId, focused);
 
   return (
     <Box sx={{ position: "relative" }}>
       {!readOnly && editor && (
-        <Box sx={{ position: "sticky", top: 52, zIndex: 2, bgcolor: "background.paper", borderBottom: 1, borderColor: "divider", mb: 1, opacity: focused ? 1 : 0, height: focused ? "auto" : 0, overflow: "hidden", transition: "opacity 120ms" }}>
+        <Box sx={{ position: "sticky", top: 52, zIndex: 2, bgcolor: "background.paper", borderBottom: 1, borderColor: "divider", mb: 1, opacity: showBar ? 1 : 0, height: showBar ? "auto" : 0, overflow: "hidden", transition: "opacity 120ms" }}>
           <EditorToolbar editor={editor} table={table} />
         </Box>
       )}

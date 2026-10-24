@@ -3,6 +3,7 @@ import { useState, type ReactNode } from "react";
 import type { ID, Tag, User } from "../../api/contract";
 import { AnnotationLayer } from "../../components/AnnotationLayer";
 import { RichText } from "../../components/RichText";
+import { SlideCanvas } from "../../components/SlideCanvas";
 import { formatDay } from "../../lib/dates";
 import { useFit } from "../../lib/useFit";
 import type { Slide } from "../../lib/slides";
@@ -52,7 +53,27 @@ function ZoomableImage({ slide, interactive }: { slide: Extract<Slide, { kind: "
   );
 }
 
-export function SlideBody({ slide, people, tags, interactive = false }: { slide: Slide; people: Map<ID, User>; tags: Map<ID, Tag>; interactive?: boolean }) {
+/** Any slide, sized to its container: designed slides at their own aspect, others on the 16:9 canvas. */
+export function SlideFrame({ slide, people, tags, interactive = false }: { slide: Slide; people: Map<ID, User>; tags: Map<ID, Tag>; interactive?: boolean }) {
+  if (slide.kind === "designed") return <DesignedFrame slide={slide} />;
+  return (
+    <ScaledSlide>
+      <SlideBody slide={slide} people={people} tags={tags} interactive={interactive} />
+    </ScaledSlide>
+  );
+}
+
+function DesignedFrame({ slide }: { slide: Extract<Slide, { kind: "designed" }> }) {
+  const { w, h } = slide.design.size;
+  const fit = useFit<HTMLDivElement>(w / h);
+  return (
+    <Box ref={fit.ref} sx={{ width: "100%", height: "100%", display: "grid", placeItems: "center", overflow: "hidden" }}>
+      <Box sx={{ width: fit.width }}>{fit.width > 0 && <SlideCanvas design={slide.design} images={slide.images} quality="original" />}</Box>
+    </Box>
+  );
+}
+
+export function SlideBody({ slide, people, tags, interactive = false }: { slide: Exclude<Slide, { kind: "designed" }>; people: Map<ID, User>; tags: Map<ID, Tag>; interactive?: boolean }) {
   if (slide.kind === "title") {
     const author = people.get(slide.authorId);
     return (

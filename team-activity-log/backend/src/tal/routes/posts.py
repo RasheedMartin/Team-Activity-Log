@@ -23,13 +23,13 @@ from ..images import ALLOWED, create_asset
 from ..outbox import enqueue
 from ..prosemirror import empty_doc, is_doc_empty
 from ..timeutil import iso, now, today
-from ..views import asset_view, block_image_ids, image_views, post_detail, post_views
+from ..views import asset_view, block_docs, block_image_ids, image_views, post_detail, post_views
 
 router = APIRouter()
 
 
 def image_count(blocks: list) -> int:
-    return sum(1 for b in blocks or [] if b.get("type") == "image")
+    return len(block_image_ids(blocks, content_only=True))
 
 
 async def editable_post(ctx: OrgCtx, post_id: str) -> m.Post:
@@ -166,7 +166,7 @@ async def publish(org: str, post_id: str, body: dict = Body(default={}), u: m.Us
     problems = []
     if not p.title.strip():
         problems.append("Add a title")
-    if not any(b.get("type") == "image" or (b.get("type") in ("text", "table") and not is_doc_empty(b.get("doc"))) for b in p.blocks or []):
+    if not block_image_ids(p.blocks) and all(is_doc_empty(d) for d in block_docs(p.blocks)):
         problems.append("Add some text or an image")
     imgs = await image_views(db, block_image_ids(p.blocks), p.org_id)
     if any(v["asset"]["processing"] == "failed" for v in imgs.values()):

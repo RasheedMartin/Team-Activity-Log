@@ -224,3 +224,27 @@ def test_zip_bomb_decks_are_refused():
         z.writestr("ppt/media/huge.png", b"\0" * (300 * 1024 * 1024))
     with pytest.raises(PptxError, match="unreasonable size"):
         parse_pptx(buf.getvalue())
+
+
+def test_slide_designs_keep_only_safe_plain_values():
+    from tal.sanitize import blocks
+
+    iid = "0192f0c0-0000-7000-8000-000000000001"
+    [b] = blocks([{"id": "s", "type": "slide", "notes": "n", "design": {
+        "size": {"w": 960, "h": 540}, "background": "url(javascript:x)", "fonts": {"body": "Arial</style>", "heading": "Georgia"},
+        "elements": [
+            {"id": "a", "kind": "text", "x": 1e9, "y": 0, "w": 100, "h": 50, "color": "red", "fill": "#ABCDEF", "valign": "sideways", "onclick": "x",
+             "doc": {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "hi", "marks": [{"type": "textStyle", "attrs": {"fontSize": "12px;position:fixed", "color": "#c00000"}}]}]}]}},
+            {"id": "b", "kind": "shape", "shape": "script", "x": 0, "y": 0, "w": 10, "h": 10, "lineWidth": float("nan")},
+            {"id": "c", "kind": "image", "imageInstanceId": "not-a-uuid", "x": 0, "y": 0, "w": 1, "h": 1},
+            {"id": "d", "kind": "image", "imageInstanceId": iid, "x": 0, "y": 0, "w": 1, "h": 1, "decorative": "yes"},
+            {"id": "e", "kind": "iframe", "x": 0, "y": 0, "w": 1, "h": 1},
+            {"id": "f", "kind": "text", "x": "0", "y": 0, "w": 1, "h": 1},
+        ]}}])  # fmt: skip
+    d = b["design"]
+    assert b["notes"] == "n" and "background" not in d and d["fonts"] == {"heading": "Georgia"}
+    text, shape, image = d["elements"]  # bad image id, unknown kind, and non-numeric geometry dropped
+    assert text["x"] == 2880 and text["fill"] == "#abcdef" and "color" not in text and "valign" not in text and "onclick" not in text
+    assert text["doc"]["content"][0]["content"][0]["marks"] == [{"type": "textStyle", "attrs": {"color": "#c00000"}}]  # bad size dropped
+    assert shape["shape"] == "rect" and "lineWidth" not in shape
+    assert image == {"id": "d", "kind": "image", "x": 0, "y": 0, "w": 1, "h": 1, "imageInstanceId": iid}  # "yes" is not True

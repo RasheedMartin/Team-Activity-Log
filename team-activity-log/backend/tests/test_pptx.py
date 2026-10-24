@@ -114,5 +114,19 @@ def test_matches_the_shared_expectation(fmt):
     """frontend/src/mock/pptx.test.ts checks the mock parser against the same file, so the two
     parsers can't drift. After an intended change, regenerate it from this parser."""
     expected = json.loads(FIXTURE.with_name("Formatting_2024.expected.json").read_text())
-    got = [{"title": s.title, "warnings": s.warnings, "parts": [{"kind": "text", "content": p} if k == "text" else {"kind": "image", "index": p} for k, p in s.parts]} for s in fmt.slides]
-    assert got == expected
+    assert summarize(fmt) == expected
+
+
+def summarize(deck) -> list[dict]:
+    return [
+        {
+            "title": s.title,
+            "warnings": s.warnings,
+            "notes": s.notes,
+            "parts": [{"kind": "text", "content": p} if k == "text" else {"kind": "image", "index": p} for k, p in s.parts],
+            "rich": s.rich,
+            "design": s.design,
+            "designImages": len(s.design_images),
+        }
+        for s in deck.slides
+    ]

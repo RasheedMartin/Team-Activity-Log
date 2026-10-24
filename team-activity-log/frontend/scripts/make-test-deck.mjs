@@ -1,7 +1,9 @@
 // Builds e2e/fixtures/Lab_Notes_2021.pptx: a small but structurally real PowerPoint package
 // (presentation, sections, layouts, slides, notes, media) used by parser and E2E tests, and
 // e2e/fixtures/Formatting_2024.pptx: theme colors, positioned shapes, numbered/nested lists,
-// links, highlight, alignment, a styled table, a chart with data, and SmartArt.
+// links, highlight, alignment, a styled table, a chart with data, and SmartArt — plus, for
+// designed slides, a master with a background, logo, color bar and title style, a group, an arrow
+// connector, mixed font sizes, and SmartArt with its drawing cache.
 // Usage: node scripts/make-test-deck.mjs
 import JSZip from "jszip";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -77,6 +79,8 @@ const sp = (id, { ph = "", pos = "", paras, txBox = false }) =>
 const solid = (inner) => `<a:solidFill>${inner}</a:solidFill>`;
 const C = "http://schemas.openxmlformats.org/drawingml/2006/chart";
 const DGM = "http://schemas.openxmlformats.org/drawingml/2006/diagram";
+const DSP = "http://schemas.microsoft.com/office/drawing/2008/diagram";
+const xf = (x, y, w, h, extra = "") => `<a:xfrm${extra}><a:off x="${Math.round(x * EMU)}" y="${Math.round(y * EMU)}"/><a:ext cx="${Math.round(w * EMU)}" cy="${Math.round(h * EMU)}"/></a:xfrm>`;
 
 const fmtSlides = [
   {
@@ -122,6 +126,21 @@ const fmtSlides = [
       `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="5" name="SmartArt"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x="${EMU / 2}" y="${5 * EMU}"/><a:ext cx="${4 * EMU}" cy="${EMU}"/></p:xfrm><a:graphic><a:graphicData uri="${DGM}"><dgm:relIds xmlns:dgm="${DGM}" r:dm="rIdDm" r:lo="x" r:qs="x" r:cs="x"/></a:graphicData></a:graphic></p:graphicFrame>`,
     ],
   },
+  {
+    layout: 2,
+    notes: "Designed slide notes",
+    rels: [`<Relationship Id="rIdDm" Type="${REL}/diagramData" Target="../diagrams/data2.xml"/>`, `<Relationship Id="rIdDraw" Type="http://schemas.microsoft.com/office/2007/relationships/diagramDrawing" Target="../diagrams/drawing1.xml"/>`],
+    shapes: [
+      sp(2, { ph: '<p:ph type="title"/>', paras: [para(run("Design"))] }),
+      // a group drawn at 2x: child space 2in x 1in mapped onto 4in x 2in at (1in, 2in)
+      `<p:grpSp><p:nvGrpSpPr><p:cNvPr id="3" name="Group"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="${EMU}" y="${2 * EMU}"/><a:ext cx="${4 * EMU}" cy="${2 * EMU}"/><a:chOff x="0" y="0"/><a:chExt cx="${2 * EMU}" cy="${EMU}"/></a:xfrm></p:grpSpPr>` +
+        `<p:sp><p:nvSpPr><p:cNvPr id="4" name="Box"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>${xf(0, 0, 1, 0.5)}<a:prstGeom prst="roundRect"><a:avLst/></a:prstGeom>${solid('<a:schemeClr val="accent2"/>')}</p:spPr><p:txBody><a:bodyPr anchor="ctr"/>${para(run("Grouped box"))}</p:txBody></p:sp>` +
+        `</p:grpSp>`,
+      `<p:cxnSp><p:nvCxnSpPr><p:cNvPr id="5" name="Arrow"/><p:cNvCxnSpPr/><p:nvPr/></p:nvCxnSpPr><p:spPr>${xf(5.5, 3, 2, 0, ' flipV="1"')}<a:prstGeom prst="straightConnector1"><a:avLst/></a:prstGeom><a:ln w="25400">${solid('<a:srgbClr val="333333"/>')}<a:tailEnd type="triangle"/></a:ln></p:spPr></p:cxnSp>`,
+      sp(6, { txBox: true, pos: `<p:spPr>${xf(8, 2, 4, 1)}</p:spPr>`, paras: [p2("", r2("Big", ' sz="2400"'), r2(" small", ' sz="1200"'), r2(" again", ' sz="2400"'))] }),
+      `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="7" name="SmartArt"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x="${EMU}" y="${5 * EMU}"/><a:ext cx="${6 * EMU}" cy="${EMU}"/></p:xfrm><a:graphic><a:graphicData uri="${DGM}"><dgm:relIds xmlns:dgm="${DGM}" r:dm="rIdDm" r:lo="x" r:qs="x" r:cs="x"/></a:graphicData></a:graphic></p:graphicFrame>`,
+    ],
+  },
 ];
 
 const series = (name, vals) =>
@@ -129,8 +148,18 @@ const series = (name, vals) =>
 const chartXml = `<?xml version="1.0" encoding="UTF-8"?><c:chartSpace xmlns:c="${C}" ${NS}><c:chart><c:title><c:tx><c:rich><a:p><a:r><a:t>Gain by channel</a:t></a:r></a:p></c:rich></c:tx></c:title><c:plotArea><c:barChart>${series("Run A", ["1.02", "0.98"])}${series("Run B", ["1.01", "0.97"])}</c:barChart></c:plotArea></c:chart></c:chartSpace>`;
 const dgmPt = (id, t, type) => `<dgm:pt modelId="${id}"${type ? ` type="${type}"` : ""}>${t ? `<dgm:t><a:bodyPr/><a:p><a:r><a:t>${t}</a:t></a:r></a:p></dgm:t>` : ""}</dgm:pt>`;
 const dataXml = `<?xml version="1.0" encoding="UTF-8"?><dgm:dataModel xmlns:dgm="${DGM}" ${NS}><dgm:ptLst>${dgmPt(0, "", "doc")}${dgmPt(1, "Plan")}${dgmPt(2, "Build")}${dgmPt(3, "ignored", "parTrans")}${dgmPt(4, "Test")}</dgm:ptLst></dgm:dataModel>`;
-const themeXml = `<?xml version="1.0" encoding="UTF-8"?><a:theme ${NS} name="Test"><a:themeElements><a:clrScheme name="Test"><a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="44546A"/></a:dk2><a:lt2><a:srgbClr val="E7E6E6"/></a:lt2><a:accent1><a:srgbClr val="4472C4"/></a:accent1><a:accent2><a:srgbClr val="ED7D31"/></a:accent2></a:clrScheme></a:themeElements></a:theme>`;
-const layoutXml = (type, shapes = "") => `<?xml version="1.0" encoding="UTF-8"?><p:sldLayout ${NS} type="${type}"><p:cSld><p:spTree>${shapes}</p:spTree></p:cSld></p:sldLayout>`;
+const themeXml = `<?xml version="1.0" encoding="UTF-8"?><a:theme ${NS} name="Test"><a:themeElements><a:clrScheme name="Test"><a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="44546A"/></a:dk2><a:lt2><a:srgbClr val="E7E6E6"/></a:lt2><a:accent1><a:srgbClr val="4472C4"/></a:accent1><a:accent2><a:srgbClr val="ED7D31"/></a:accent2></a:clrScheme><a:fontScheme name="Test"><a:majorFont><a:latin typeface="Georgia"/></a:majorFont><a:minorFont><a:latin typeface="Verdana"/></a:minorFont></a:fontScheme></a:themeElements></a:theme>`;
+const drawingXml = `<?xml version="1.0" encoding="UTF-8"?><dsp:drawing xmlns:dsp="${DSP}" ${NS}><dsp:spTree><dsp:nvGrpSpPr><dsp:cNvPr id="0" name=""/><dsp:cNvGrpSpPr/></dsp:nvGrpSpPr><dsp:grpSpPr/>${["Step A", "Step B"]
+  .map((t, i) => `<dsp:sp modelId="{${i}}"><dsp:nvSpPr><dsp:cNvPr id="0" name=""/><dsp:cNvSpPr/></dsp:nvSpPr><dsp:spPr>${xf(i * 3, 0, 2.5, 1)}<a:prstGeom prst="roundRect"><a:avLst/></a:prstGeom>${solid('<a:schemeClr val="accent1"/>')}</dsp:spPr><dsp:txBody><a:bodyPr anchor="ctr"/><a:p><a:r><a:rPr lang="en-US" sz="2000"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:rPr><a:t>${t}</a:t></a:r></a:p></dsp:txBody></dsp:sp>`)
+  .join("")}</dsp:spTree></dsp:drawing>`;
+const data2Xml = `<?xml version="1.0" encoding="UTF-8"?><dgm:dataModel xmlns:dgm="${DGM}" ${NS}><dgm:ptLst>${dgmPt(0, "", "doc")}${dgmPt(1, "Step A")}${dgmPt(2, "Step B")}</dgm:ptLst><dgm:extLst><a:ext uri="http://schemas.microsoft.com/office/drawing/2008/diagram"><dsp:dataModelExt xmlns:dsp="${DSP}" relId="rIdDraw" minVer="http://schemas.openxmlformats.org/drawingml/2006/diagram"/></a:ext></dgm:extLst></dgm:dataModel>`;
+const masterXml = `<?xml version="1.0" encoding="UTF-8"?><p:sldMaster ${NS}><p:cSld><p:bg><p:bgPr>${solid('<a:srgbClr val="F7F9FC"/>')}<a:effectLst/></p:bgPr></p:bg><p:spTree>` +
+  sp(2, { ph: '<p:ph type="title"/>', pos: `<p:spPr>${xf(0.5, 0.3, 12.3, 1)}</p:spPr>`, paras: [para(run(""))] }).replace("<a:bodyPr/>", '<a:bodyPr anchor="b"/>') +
+  `<p:pic><p:nvPicPr><p:cNvPr id="3" name="Logo"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="rIdLogo"/></p:blipFill><p:spPr>${xf(12.2, 6.8, 0.9, 0.5)}</p:spPr></p:pic>` +
+  `<p:sp><p:nvSpPr><p:cNvPr id="4" name="Bar"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>${xf(0, 7.3, 13.333, 0.2)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>${solid('<a:schemeClr val="accent1"/>')}</p:spPr></p:sp>` +
+  `</p:spTree></p:cSld><p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/>` +
+  `<p:txStyles><p:titleStyle><a:lvl1pPr><a:defRPr sz="3600">${solid('<a:schemeClr val="tx2"/>')}</a:defRPr></a:lvl1pPr></p:titleStyle><p:bodyStyle><a:lvl1pPr><a:defRPr sz="2000"/></a:lvl1pPr></p:bodyStyle><p:otherStyle><a:lvl1pPr><a:defRPr sz="1800"/></a:lvl1pPr></p:otherStyle></p:txStyles></p:sldMaster>`;
+const layoutXml = (type, shapes = "", attrs = "") => `<?xml version="1.0" encoding="UTF-8"?><p:sldLayout ${NS} type="${type}"${attrs}><p:cSld><p:spTree>${shapes}</p:spTree></p:cSld></p:sldLayout>`;
 const relsXml = (rs) => `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rs.join("")}</Relationships>`;
 
 const fz = new JSZip();
@@ -139,18 +168,22 @@ fz.file("_rels/.rels", relsXml([`<Relationship Id="rId1" Type="${REL}/officeDocu
 fz.file("ppt/presentation.xml", `<?xml version="1.0" encoding="UTF-8"?><p:presentation ${NS}><p:sldIdLst>${fmtSlides.map((_, i) => `<p:sldId id="${256 + i}" r:id="rIdS${i + 1}"/>`).join("")}</p:sldIdLst><p:sldSz cx="12192000" cy="6858000"/></p:presentation>`);
 fz.file("ppt/_rels/presentation.xml.rels", relsXml(fmtSlides.map((_, i) => `<Relationship Id="rIdS${i + 1}" Type="${REL}/slide" Target="slides/slide${i + 1}.xml"/>`)));
 fz.file("ppt/theme/theme1.xml", themeXml);
-fz.file("ppt/slideMasters/slideMaster1.xml", `<?xml version="1.0" encoding="UTF-8"?><p:sldMaster ${NS}><p:cSld><p:spTree/></p:cSld></p:sldMaster>`);
-fz.file("ppt/slideMasters/_rels/slideMaster1.xml.rels", relsXml([`<Relationship Id="rIdT" Type="${REL}/theme" Target="../theme/theme1.xml"/>`]));
-fz.file("ppt/slideLayouts/slideLayout1.xml", layoutXml("title"));
+fz.file("ppt/slideMasters/slideMaster1.xml", masterXml);
+fz.file("ppt/slideMasters/_rels/slideMaster1.xml.rels", relsXml([`<Relationship Id="rIdT" Type="${REL}/theme" Target="../theme/theme1.xml"/>`, `<Relationship Id="rIdLogo" Type="${REL}/image" Target="../media/image1.png"/>`]));
+fz.file("ppt/slideLayouts/slideLayout1.xml", layoutXml("title", "", ' showMasterSp="0"')); // title slides hide the master's art
 fz.file("ppt/slideLayouts/slideLayout2.xml", layoutXml("obj", sp(9, { ph: '<p:ph idx="1"/>', pos: at(0.5, 1.5), paras: [para(run(""))] })));
 for (const n of [1, 2]) fz.file(`ppt/slideLayouts/_rels/slideLayout${n}.xml.rels`, relsXml([`<Relationship Id="rIdM" Type="${REL}/slideMaster" Target="../slideMasters/slideMaster1.xml"/>`]));
 fz.file("ppt/media/image1.png", png);
 fz.file("ppt/charts/chart1.xml", chartXml);
 fz.file("ppt/diagrams/data1.xml", dataXml);
+fz.file("ppt/diagrams/data2.xml", data2Xml);
+fz.file("ppt/diagrams/drawing1.xml", drawingXml);
 fmtSlides.forEach((s, i) => {
   const n = i + 1;
   fz.file(`ppt/slides/slide${n}.xml`, slideXml(s.shapes));
-  fz.file(`ppt/slides/_rels/slide${n}.xml.rels`, relsXml([`<Relationship Id="rIdL" Type="${REL}/slideLayout" Target="../slideLayouts/slideLayout${s.layout}.xml"/>`, ...(s.rels ?? [])]));
+  const notesRel = s.notes ? [`<Relationship Id="rIdN" Type="${REL}/notesSlide" Target="../notesSlides/notesSlide${n}.xml"/>`] : [];
+  if (s.notes) fz.file(`ppt/notesSlides/notesSlide${n}.xml`, notesXml(s.notes));
+  fz.file(`ppt/slides/_rels/slide${n}.xml.rels`, relsXml([`<Relationship Id="rIdL" Type="${REL}/slideLayout" Target="../slideLayouts/slideLayout${s.layout}.xml"/>`, ...notesRel, ...(s.rels ?? [])]));
 });
 const out2 = join(ROOT, "e2e/fixtures/Formatting_2024.pptx");
 writeFileSync(out2, await fz.generateAsync({ type: "nodebuffer" }));

@@ -3,6 +3,7 @@ import { Box, Checkbox, Stack, Typography, useTheme } from "@mui/material";
 import { memo, type ReactNode } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import type { SearchHit, Tag, User } from "../../api/contract";
+import { blockDocs } from "../../lib/blocks";
 import { formatDay } from "../../lib/dates";
 import { docText } from "../../lib/prosemirror";
 import { StatusPill, TagChip, UserAvatar } from "../../components/ui";
@@ -57,7 +58,7 @@ export const PostCard = memo(function PostCard({ hit, href, author, tags, focuse
   const { post } = hit;
   const body = hit.highlights.find((h) => h.field !== "title");
   const titleHl = hit.highlights.find((h) => h.field === "title");
-  const plain = post.summary ?? docText(post.blocks.find((b) => b.type === "text")?.type === "text" ? (post.blocks.find((b) => b.type === "text") as { doc: unknown }).doc : null);
+  const plain = post.summary ?? docText(blockDocs(post.blocks)[0] ?? null);
   const pool = hit.imageHits?.length ? hit.images.filter((i) => hit.imageHits!.some((h) => h.imageInstanceId === i.imageInstanceId)) : hit.images;
   const maxThumbs = comfortable ? 4 : 3;
   const thumbs = pool.slice(0, maxThumbs);

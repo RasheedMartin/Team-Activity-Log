@@ -154,9 +154,10 @@ NODES: dict[str, set[str]] = {
     "tableHeader": {"colspan", "rowspan", "colwidth"},
     "mention": {"id", "label", "mentionSuggestionChar"},
 }
-MARKS: dict[str, set[str]] = {"bold": set(), "italic": set(), "underline": set(), "strike": set(), "code": set(), "link": {"href"}, "textStyle": {"color"}, "highlight": {"color"}}
+MARKS: dict[str, set[str]] = {"bold": set(), "italic": set(), "underline": set(), "strike": set(), "code": set(), "link": {"href"}, "textStyle": {"color", "fontSize"}, "highlight": {"color"}}
 ALIGNMENTS = {"left", "center", "right", "justify"}
 HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
+FONT_SIZE = re.compile(r"^\d{1,3}(\.\d)?px$")  # designed slides: 1 px = 1 pt
 SAFE_HREF = re.compile(r"^(https?://|mailto:)", re.I)
 MAX_DEPTH = 40
 MAX_NODES = 20_000
@@ -175,6 +176,8 @@ def _attr(node_type: str, key: str, v: Any) -> Any:
         return s[:2048] if SAFE_HREF.match(s) and not _CONTROL_SINGLE.search(s) else None
     if key == "textAlign":
         return v if v in ALIGNMENTS else None
+    if key == "fontSize":
+        return v if isinstance(v, str) and FONT_SIZE.match(v) and 1 <= float(v[:-2]) <= 400 else None
     if key == "color":
         return v.lower() if isinstance(v, str) and HEX_COLOR.match(v) else None  # never a CSS expression
     if key in ("id",):
@@ -217,7 +220,7 @@ def doc(value: Any, field: str = "doc") -> dict:
                 if isinstance(mk, dict) and mk.get("type") in MARKS:
                     ma = mk.get("attrs") if isinstance(mk.get("attrs"), dict) else {}
                     mclean = {k: _attr(mk["type"], k, ma[k]) for k in MARKS[mk["type"]] if k in ma}
-                    if (mk["type"] == "link" and not mclean.get("href")) or (mk["type"] in ("textStyle", "highlight") and not mclean.get("color")):
+                    if (mk["type"] == "link" and not mclean.get("href")) or (mk["type"] == "highlight" and not mclean.get("color")) or (mk["type"] == "textStyle" and not any(mclean.values())):
                         continue  # unsafe or missing value: keep the text, drop the mark
                     marks.append({"type": mk["type"], **({"attrs": {k: v for k, v in mclean.items() if v is not None}} if mclean else {})})
             if marks:
@@ -236,7 +239,81 @@ def doc(value: Any, field: str = "doc") -> dict:
     return root  # type: ignore[return-value]
 
 
-BLOCK_TYPES = {"text", "table", "image", "slide_break"}
+BLOCK_TYPES = {"text", "table", "image", "slide_break", "slide"}
+SLIDE_SHAPES = {"rect", "roundRect", "ellipse", "triangle", "line", "arrow"}
+SLIDE_VALIGN = {"top", "middle", "bottom"}
+SLIDE_ROLES = {"title", "body"}
+FONT_NAME = re.compile(r"^[\w .-]{1,64}$")
+MAX_SLIDE_ELEMENTS = 300
+
+
+def _finite(v: Any, lo: float, hi: float) -> float | None:
+    """A number clamped into [lo, hi], or None when it isn't a finite number."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+        return None
+    return round(min(hi, max(lo, float(v))), 2)
+
+
+def _hex(v: Any) -> str | None:
+    return v.lower() if isinstance(v, str) and HEX_COLOR.match(v) else None
+
+
+def slide_design(value: Any, field: str = "design") -> dict:
+    """A designed slide rebuilt from the allow-list: geometry clamped, colors plain hex, text
+    through `doc`, images as instance ids. Anything unrecognized is dropped."""
+    if not isinstance(value, dict):
+        invalid(field, "A slide design must be an object")
+    size = value.get("size") if isinstance(value.get("size"), dict) else {}
+    w, h = _finite(size.get("w"), 10, 10_000), _finite(size.get("h"), 10, 10_000)
+    if not w or not h:
+        invalid(field, "A slide needs a size")
+    out: dict[str, Any] = {"size": {"w": w, "h": h}, "elements": []}
+    if bg := _hex(value.get("background")):
+        out["background"] = bg
+    fonts = value.get("fonts") if isinstance(value.get("fonts"), dict) else {}
+    fonts = {k: fonts[k] for k in ("heading", "body") if isinstance(fonts.get(k), str) and FONT_NAME.match(fonts[k])}
+    if fonts:
+        out["fonts"] = fonts
+    elements = value.get("elements") if isinstance(value.get("elements"), list) else []
+    if len(elements) > MAX_SLIDE_ELEMENTS:
+        invalid(field, f"A slide can have at most {MAX_SLIDE_ELEMENTS} elements")
+    for e in elements:
+        if not isinstance(e, dict) or e.get("kind") not in ("text", "shape", "image"):
+            continue
+        geo = {k: _finite(e.get(k), lo, hi) for k, lo, hi in (("x", -2 * w, 3 * w), ("y", -2 * h, 3 * h), ("w", 0, 4 * w), ("h", 0, 4 * h))}
+        if any(v is None for v in geo.values()):
+            continue
+        el: dict[str, Any] = {"id": text(e.get("id"), f"{field}.id", 64) or "", "kind": e["kind"], **geo}
+        if rot := _finite(e.get("rotation"), -360, 360):
+            el["rotation"] = rot
+        if e["kind"] == "image":
+            iid = parse_uuid(e.get("imageInstanceId"))
+            if not iid:
+                continue
+            el["imageInstanceId"] = str(iid)
+        else:
+            if e.get("doc") is not None:
+                el["doc"] = doc(e.get("doc"), f"{field}.doc")
+            if fs := _finite(e.get("fontSize"), 1, 400):
+                el["fontSize"] = fs
+            for k in ("color", "fill", "line"):
+                if c := _hex(e.get(k)):
+                    el[k] = c
+            if e.get("valign") in SLIDE_VALIGN:
+                el["valign"] = e["valign"]
+            if e.get("role") in SLIDE_ROLES:
+                el["role"] = e["role"]
+            if e["kind"] == "shape":
+                el["shape"] = e.get("shape") if e.get("shape") in SLIDE_SHAPES else "rect"
+                if (lw := _finite(e.get("lineWidth"), 0, 100)) is not None:
+                    el["lineWidth"] = lw
+                for k in ("flipH", "flipV"):
+                    if e.get(k) is True:
+                        el[k] = True
+        if e.get("decorative") is True:
+            el["decorative"] = True
+        out["elements"].append(el)
+    return out
 
 
 def blocks(value: Any, field: str = "blocks") -> list[dict]:
@@ -257,7 +334,8 @@ def blocks(value: Any, field: str = "blocks") -> list[dict]:
                 out.append({"id": bid, "type": "image", "imageInstanceId": str(iid)})
         else:
             notes = text(b.get("notes"), f"{field}.notes", 10_000, multiline=True)
-            out.append({"id": bid, "type": "slide_break", **({"notes": notes} if notes else {})})
+            extra = {"design": slide_design(b.get("design"), f"{field}.design")} if b["type"] == "slide" else {}
+            out.append({"id": bid, "type": b["type"], **extra, **({"notes": notes} if notes else {})})
     return out
 
 

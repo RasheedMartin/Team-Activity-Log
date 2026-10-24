@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import models as m
 from ..dates import ORDER, add_days, auto_interval, bucket_start, midnight_iso, next_bucket, parse_date, resolve_range
-from ..views import asset_url, block_image_ids, post_views, tag_view
+from ..views import asset_url, block_docs, block_image_ids, post_views, tag_view
 from .client import es
 from .indexer import alias
 from .translate import SORTS, SearchCtx, Translated, effective_sort, highlight, selected_values, translate
@@ -88,13 +88,13 @@ def match_image(inst: m.ImageInstance, asset: m.Asset, c: dict, today: dt.date) 
 
 
 async def _post_images(db: AsyncSession, posts: list[m.Post]) -> dict[uuid.UUID, list[tuple[m.ImageInstance, m.Asset]]]:
-    ids = [i for p in posts for i in block_image_ids(p.blocks)]
+    ids = [i for p in posts for i in block_image_ids(p.blocks, content_only=True)]
     found: dict[uuid.UUID, tuple[m.ImageInstance, m.Asset]] = {}
     if ids:
         for inst, asset in await db.execute(select(m.ImageInstance, m.Asset).join(m.Asset, m.Asset.id == m.ImageInstance.asset_id).where(m.ImageInstance.id.in_(ids))):
             found[inst.id] = (inst, asset)
     # Only images of the post's own org (an id pasted from another tenant resolves to nothing).
-    return {p.id: [found[i] for i in block_image_ids(p.blocks) if i in found and found[i][0].org_id == p.org_id and found[i][1].org_id == p.org_id] for p in posts}
+    return {p.id: [found[i] for i in block_image_ids(p.blocks, content_only=True) if i in found and found[i][0].org_id == p.org_id and found[i][1].org_id == p.org_id] for p in posts}
 
 
 def _variant(asset: m.Asset, name: str) -> str:
@@ -303,7 +303,7 @@ async def search(db: AsyncSession, spec: dict, ctx: SearchCtx) -> dict:
 def _excerpt(p: m.Post) -> str:
     from ..prosemirror import doc_text
 
-    text = p.summary or "\n".join(doc_text(b.get("doc")) for b in p.blocks or [] if b.get("type") in ("text", "table"))
+    text = p.summary or "\n".join(doc_text(d) for d in block_docs(p.blocks))
     text = re.sub(r"\s+", " ", text).strip()
     return f"{text[:240]}…" if len(text) > 240 else text
 

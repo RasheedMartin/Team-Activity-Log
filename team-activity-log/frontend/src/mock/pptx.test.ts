@@ -45,6 +45,7 @@ describe("pptx parser", () => {
     // Formatting_2024.expected.json is the backend parser's output (backend/tests/test_pptx.py).
     const d = await parsePptx(new Uint8Array(readFileSync(join(__dirname, "../../e2e/fixtures/Formatting_2024.pptx"))));
     const expected = JSON.parse(readFileSync(join(__dirname, "../../e2e/fixtures/Formatting_2024.expected.json"), "utf8"));
-    expect(d.slides.map((s) => ({ title: s.title, warnings: s.warnings, parts: s.parts }))).toEqual(expected);
+    const got = d.slides.map((s) => ({ title: s.title, warnings: s.warnings, notes: s.notes, parts: s.parts, rich: s.rich, design: s.design, designImages: s.designImages.length }));
+    expect(got).toEqual(expected);
   });
 });
