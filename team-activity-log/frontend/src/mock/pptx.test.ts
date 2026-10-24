@@ -40,4 +40,11 @@ describe("pptx parser", () => {
   it("rejects files that aren't presentations, with a readable message", async () => {
     await expect(parsePptx(new Uint8Array(4000))).rejects.toThrow(/isn't a valid .pptx/);
   });
+
+  it("keeps formatting and reading order exactly like the backend parser", async () => {
+    // Formatting_2024.expected.json is the backend parser's output (backend/tests/test_pptx.py).
+    const d = await parsePptx(new Uint8Array(readFileSync(join(__dirname, "../../e2e/fixtures/Formatting_2024.pptx"))));
+    const expected = JSON.parse(readFileSync(join(__dirname, "../../e2e/fixtures/Formatting_2024.expected.json"), "utf8"));
+    expect(d.slides.map((s) => ({ title: s.title, warnings: s.warnings, parts: s.parts }))).toEqual(expected);
+  });
 });

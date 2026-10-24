@@ -89,14 +89,23 @@ async function parseJob(jobId: string) {
   await db.flush();
 }
 
-/** Blocks for one post: per slide a break (with presenter notes), heading when several slides, text, images. */
+/** Blocks for one post: per slide a break (with presenter notes), heading when several slides,
+ *  then text and images in the slide's reading order. */
 async function blocksFor(orgId: string, postId: string, slides: ParsedSlide[]): Promise<Block[]> {
   const blocks: Block[] = [];
   for (const [k, sl] of slides.entries()) {
     if (k > 0 || sl.notes) blocks.push({ id: uuidv7(), type: "slide_break", notes: sl.notes || undefined });
-    const content = [...(slides.length > 1 && sl.title ? [heading(sl.title)] : []), ...sl.content];
-    if (content.length) blocks.push({ id: uuidv7(), type: "text", doc: doc(...content) });
-    for (const img of sl.images) {
+    let parts = sl.parts;
+    if (slides.length > 1 && sl.title) {
+      const [head, ...rest] = parts;
+      parts = head?.kind === "text" ? [{ kind: "text", content: [heading(sl.title), ...head.content] }, ...rest] : [{ kind: "text", content: [heading(sl.title)] }, ...parts];
+    }
+    for (const part of parts) {
+      if (part.kind === "text") {
+        blocks.push({ id: uuidv7(), type: "text", doc: doc(...part.content) });
+        continue;
+      }
+      const img = sl.images[part.index];
       const { asset } = await createAsset(orgId, img.blob, img.name, "pptx_import"); // deduped by hash within the org
       const inst = db.t.images.put({ id: uuidv7(), assetId: asset.id, postId, tags: [], customFields: {}, caption: `Slide ${sl.n}` });
       blocks.push({ id: uuidv7(), type: "image", imageInstanceId: inst.id });

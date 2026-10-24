@@ -241,15 +241,20 @@ async def patch_job(org: str, job_id: str, body: dict = Body(...), u: m.User = D
 
 
 async def blocks_for(db: AsyncSession, ctx: OrgCtx, post_id: uuid.UUID, slides: list[ParsedSlide]) -> list[dict]:
-    """Per slide: a break (with presenter notes), a heading when several slides, text, images."""
+    """Per slide: a break (with presenter notes), a heading when several slides, then text and
+    images in the slide's reading order."""
     blocks: list[dict] = []
     for k, sl in enumerate(slides):
         if k > 0 or sl.notes:
             blocks.append({"id": str(uuid7()), "type": "slide_break", **({"notes": sl.notes} if sl.notes else {})})
-        content = [*([heading(sl.title)] if len(slides) > 1 and sl.title else []), *sl.content]
-        if content:
-            blocks.append({"id": str(uuid7()), "type": "text", "doc": doc(*content)})
-        for img in sl.images:
+        parts = list(sl.parts)
+        if len(slides) > 1 and sl.title:
+            parts = [("text", [heading(sl.title), *parts[0][1]]), *parts[1:]] if parts and parts[0][0] == "text" else [("text", [heading(sl.title)]), *parts]
+        for kind, payload in parts:
+            if kind == "text":
+                blocks.append({"id": str(uuid7()), "type": "text", "doc": clean.doc(doc(*payload))})
+                continue
+            img = sl.images[payload]
             asset, _ = await create_asset(db, ctx.org.id, img.data, img.name, "pptx_import", ctx.user.id)
             inst = m.ImageInstance(id=uuid7(), org_id=ctx.org.id, asset_id=asset.id, post_id=post_id, tags=[], custom_fields={}, caption=f"Slide {sl.n}")
             db.add(inst)

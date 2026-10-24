@@ -138,9 +138,9 @@ def json_size(value: Any, field: str, max_bytes: int) -> Any:
 
 NODES: dict[str, set[str]] = {
     "doc": set(),
-    "paragraph": set(),
+    "paragraph": {"textAlign"},
     "text": set(),
-    "heading": {"level"},
+    "heading": {"level", "textAlign"},
     "blockquote": set(),
     "bulletList": set(),
     "orderedList": {"start", "type"},
@@ -154,7 +154,9 @@ NODES: dict[str, set[str]] = {
     "tableHeader": {"colspan", "rowspan", "colwidth"},
     "mention": {"id", "label", "mentionSuggestionChar"},
 }
-MARKS: dict[str, set[str]] = {"bold": set(), "italic": set(), "underline": set(), "strike": set(), "code": set(), "link": {"href"}}
+MARKS: dict[str, set[str]] = {"bold": set(), "italic": set(), "underline": set(), "strike": set(), "code": set(), "link": {"href"}, "textStyle": {"color"}, "highlight": {"color"}}
+ALIGNMENTS = {"left", "center", "right", "justify"}
+HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 SAFE_HREF = re.compile(r"^(https?://|mailto:)", re.I)
 MAX_DEPTH = 40
 MAX_NODES = 20_000
@@ -171,6 +173,10 @@ def _attr(node_type: str, key: str, v: Any) -> Any:
     if key == "href":
         s = v.strip() if isinstance(v, str) else ""
         return s[:2048] if SAFE_HREF.match(s) and not _CONTROL_SINGLE.search(s) else None
+    if key == "textAlign":
+        return v if v in ALIGNMENTS else None
+    if key == "color":
+        return v.lower() if isinstance(v, str) and HEX_COLOR.match(v) else None  # never a CSS expression
     if key in ("id",):
         return str(v)[:64] if isinstance(v, str) and parse_uuid(v) else None
     if isinstance(v, str):
@@ -211,8 +217,8 @@ def doc(value: Any, field: str = "doc") -> dict:
                 if isinstance(mk, dict) and mk.get("type") in MARKS:
                     ma = mk.get("attrs") if isinstance(mk.get("attrs"), dict) else {}
                     mclean = {k: _attr(mk["type"], k, ma[k]) for k in MARKS[mk["type"]] if k in ma}
-                    if mk["type"] == "link" and not mclean.get("href"):
-                        continue  # unsafe or missing href: keep the text, drop the link
+                    if (mk["type"] == "link" and not mclean.get("href")) or (mk["type"] in ("textStyle", "highlight") and not mclean.get("color")):
+                        continue  # unsafe or missing value: keep the text, drop the mark
                     marks.append({"type": mk["type"], **({"attrs": {k: v for k, v in mclean.items() if v is not None}} if mclean else {})})
             if marks:
                 out["marks"] = marks

@@ -48,3 +48,9 @@ export function mentionedIds(d: unknown): string[] {
   walk(d as PMNode);
   return [...new Set(ids)];
 }
+
+/** Whether a doc contains a table anywhere (its editor then needs table support to keep it). */
+export function hasTable(doc: unknown): boolean {
+  const walk = (n: PMNode | undefined): boolean => !!n && (n.type === "table" || (n.content ?? []).some(walk));
+  return walk(doc as PMNode);
+}

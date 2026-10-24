@@ -1,0 +1,508 @@
+[
+ {
+  "title": "Quarterly review",
+  "warnings": [],
+  "parts": [
+   {
+    "kind": "text",
+    "content": [
+     {
+      "type": "heading",
+      "attrs": {
+       "level": 3,
+       "textAlign": "center"
+      },
+      "content": [
+       {
+        "type": "text",
+        "text": "Detector group"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "title": "Results",
+  "warnings": [],
+  "parts": [
+   {
+    "kind": "text",
+    "content": [
+     {
+      "type": "bulletList",
+      "content": [
+       {
+        "type": "listItem",
+        "content": [
+         {
+          "type": "paragraph",
+          "content": [
+           {
+            "type": "text",
+            "text": "Gain stable"
+           }
+          ]
+         },
+         {
+          "type": "bulletList",
+          "content": [
+           {
+            "type": "listItem",
+            "content": [
+             {
+              "type": "paragraph",
+              "content": [
+               {
+                "type": "text",
+                "text": "Channel 12 fixed"
+               }
+              ]
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "type": "orderedList",
+      "content": [
+       {
+        "type": "listItem",
+        "content": [
+         {
+          "type": "paragraph",
+          "content": [
+           {
+            "type": "text",
+            "text": "Third step"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "type": "listItem",
+        "content": [
+         {
+          "type": "paragraph",
+          "content": [
+           {
+            "type": "text",
+            "text": "Fourth step"
+           }
+          ]
+         }
+        ]
+       }
+      ],
+      "attrs": {
+       "start": 3
+      }
+     },
+     {
+      "type": "paragraph",
+      "content": [
+       {
+        "type": "text",
+        "text": "critical",
+        "marks": [
+         {
+          "type": "textStyle",
+          "attrs": {
+           "color": "#c00000"
+          }
+         }
+        ]
+       },
+       {
+        "type": "text",
+        "text": " accent",
+        "marks": [
+         {
+          "type": "textStyle",
+          "attrs": {
+           "color": "#c55a11"
+          }
+         }
+        ]
+       },
+       {
+        "type": "text",
+        "text": " plain"
+       }
+      ]
+     },
+     {
+      "type": "paragraph",
+      "content": [
+       {
+        "type": "text",
+        "text": "flagged",
+        "marks": [
+         {
+          "type": "highlight",
+          "attrs": {
+           "color": "#ffff00"
+          }
+         }
+        ]
+       },
+       {
+        "type": "text",
+        "text": " run log",
+        "marks": [
+         {
+          "type": "link",
+          "attrs": {
+           "href": "https://example.test/run"
+          }
+         }
+        ]
+       },
+       {
+        "type": "text",
+        "text": " old value",
+        "marks": [
+         {
+          "type": "strike"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "type": "paragraph",
+      "content": [
+       {
+        "type": "text",
+        "text": "Right column"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "kind": "image",
+    "index": 0
+   },
+   {
+    "kind": "text",
+    "content": [
+     {
+      "type": "heading",
+      "attrs": {
+       "level": 3
+      },
+      "content": [
+       {
+        "type": "text",
+        "text": "Big takeaway"
+       }
+      ]
+     },
+     {
+      "type": "paragraph",
+      "attrs": {
+       "textAlign": "center"
+      },
+      "content": [
+       {
+        "type": "text",
+        "text": "Centered note"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "title": "Data",
+  "warnings": [
+   "Chart imported as a table of its data",
+   "SmartArt imported as a list"
+  ],
+  "parts": [
+   {
+    "kind": "text",
+    "content": [
+     {
+      "type": "table",
+      "content": [
+       {
+        "type": "tableRow",
+        "content": [
+         {
+          "type": "tableHeader",
+          "attrs": {
+           "colspan": 2
+          },
+          "content": [
+           {
+            "type": "paragraph",
+            "content": [
+             {
+              "type": "text",
+              "text": "Run summary"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "type": "tableRow",
+        "content": [
+         {
+          "type": "tableCell",
+          "content": [
+           {
+            "type": "paragraph",
+            "content": [
+             {
+              "type": "text",
+              "text": "Gain"
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "type": "tableCell",
+          "content": [
+           {
+            "type": "paragraph",
+            "content": [
+             {
+              "type": "text",
+              "text": "1.02"
+             }
+            ]
+           },
+           {
+            "type": "paragraph",
+            "content": [
+             {
+              "type": "text",
+              "text": "stable"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "type": "paragraph",
+      "content": [
+       {
+        "type": "text",
+        "text": "Gain by channel",
+        "marks": [
+         {
+          "type": "bold"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "type": "table",
+      "content": [
+       {
+        "type": "tableRow",
+        "content": [
+         {
+          "type": "tableHeader",
+          "content": [
+           {
+            "type": "paragraph"
+           }
+          ]
+         },
+         {
+          "type": "tableHeader",
+          "content": [
+           {
+            "type": "paragraph",
+            "content": [
+             {
+              "type": "text",
+              "text": "Run A"
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "type": "tableHeader",
+          "content": [
+           {
+            "type": "paragraph",
+            "content": [
+             {
+              "type": "text",
+              "text": "Run B"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "type": "tableRow",
+        "content": [
+         {
+          "type": "tableCell",
+          "content": [
+           {
+            "type": "paragraph",
+            "content": [
+             {
+              "type": "text",
+              "text": "Ch 12"
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "type": "tableCell",
+          "content": [
+           {
+            "type": "paragraph",
+            "content": [
+             {
+              "type": "text",
+              "text": "1.02"
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "type": "tableCell",
+          "content": [
+           {
+            "type": "paragraph",
+            "content": [
+             {
+              "type": "text",
+              "text": "1.01"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "type": "tableRow",
+        "content": [
+         {
+          "type": "tableCell",
+          "content": [
+           {
+            "type": "paragraph",
+            "content": [
+             {
+              "type": "text",
+              "text": "Ch 13"
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "type": "tableCell",
+          "content": [
+           {
+            "type": "paragraph",
+            "content": [
+             {
+              "type": "text",
+              "text": "0.98"
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "type": "tableCell",
+          "content": [
+           {
+            "type": "paragraph",
+            "content": [
+             {
+              "type": "text",
+              "text": "0.97"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "type": "bulletList",
+      "content": [
+       {
+        "type": "listItem",
+        "content": [
+         {
+          "type": "paragraph",
+          "content": [
+           {
+            "type": "text",
+            "text": "Plan"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "type": "listItem",
+        "content": [
+         {
+          "type": "paragraph",
+          "content": [
+           {
+            "type": "text",
+            "text": "Build"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "type": "listItem",
+        "content": [
+         {
+          "type": "paragraph",
+          "content": [
+           {
+            "type": "text",
+            "text": "Test"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+]

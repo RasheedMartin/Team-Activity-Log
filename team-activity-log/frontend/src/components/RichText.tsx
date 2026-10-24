@@ -1,5 +1,5 @@
 import { Box, Link, type SxProps, type Theme } from "@mui/material";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { PMNode } from "../lib/prosemirror";
 import { proseSx } from "../theme/prose";
 
@@ -7,6 +7,9 @@ import { proseSx } from "../theme/prose";
 // and only http(s)/mailto links survive.
 
 const SAFE_HREF = /^(https?:|mailto:)/i;
+const HEX = /^#[0-9a-f]{6}$/i; // colors are only ever plain hex (the backend enforces it too)
+const ALIGN = new Set(["left", "center", "right", "justify"]);
+const align = (node: PMNode) => (ALIGN.has(String(node.attrs?.textAlign)) ? { textAlign: node.attrs!.textAlign as "center" } : undefined);
 
 function marks(node: PMNode, child: ReactNode, key: number): ReactNode {
   return (node.marks ?? []).reduce<ReactNode>((acc, m, i) => {
@@ -22,6 +25,24 @@ function marks(node: PMNode, child: ReactNode, key: number): ReactNode {
         return <s key={k}>{acc}</s>;
       case "code":
         return <code key={k}>{acc}</code>;
+      case "textStyle": {
+        const color = String(m.attrs?.color ?? "");
+        return HEX.test(color) ? (
+          <span key={k} data-tc="" style={{ "--tc": color } as CSSProperties}>
+            {acc}
+          </span>
+        ) : (
+          acc
+        );
+      }
+      case "highlight": {
+        const color = String(m.attrs?.color ?? "");
+        return (
+          <mark key={k} data-hl="" style={HEX.test(color) ? ({ "--hl": color } as CSSProperties) : undefined}>
+            {acc}
+          </mark>
+        );
+      }
       case "link": {
         const href = String(m.attrs?.href ?? "");
         return SAFE_HREF.test(href) ? (
@@ -47,11 +68,11 @@ function render(node: PMNode | undefined, key: number): ReactNode {
     case "text":
       return marks(node, node.text ?? "", key);
     case "paragraph":
-      return <p key={key}>{kids()}</p>;
+      return <p key={key} style={align(node)}>{kids()}</p>;
     case "heading": {
       const level = Math.min(4, Math.max(2, Number(node.attrs?.level ?? 2)));
       const Tag = `h${level}` as "h2";
-      return <Tag key={key}>{kids()}</Tag>;
+      return <Tag key={key} style={align(node)}>{kids()}</Tag>;
     }
     case "bulletList":
       return <ul key={key}>{kids()}</ul>;

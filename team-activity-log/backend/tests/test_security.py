@@ -46,6 +46,21 @@ async def test_rich_text_is_rebuilt_from_an_allow_list(client):
     assert "attrs" not in heading and heading["content"][0]["text"] == "bigevil"  # bidi override stripped
 
 
+def test_colors_and_alignment_accept_only_plain_values():
+    from tal.sanitize import doc
+
+    d = doc({"type": "doc", "content": [{"type": "paragraph", "attrs": {"textAlign": "center;position:fixed"}, "content": [
+        {"type": "text", "text": "ok", "marks": [{"type": "textStyle", "attrs": {"color": "#C00000"}}, {"type": "highlight", "attrs": {"color": "#ffff00"}}]},
+        {"type": "text", "text": " css", "marks": [{"type": "textStyle", "attrs": {"color": "red;background:url(https://evil.test)"}}]},
+        {"type": "text", "text": " var", "marks": [{"type": "highlight", "attrs": {"color": "var(--x)"}}]},
+    ]}, {"type": "heading", "attrs": {"level": 3, "textAlign": "right"}, "content": [{"type": "text", "text": "h"}]}]})  # fmt: skip
+    para, heading = d["content"]
+    assert "attrs" not in para  # unknown alignment dropped
+    assert para["content"][0]["marks"] == [{"type": "textStyle", "attrs": {"color": "#c00000"}}, {"type": "highlight", "attrs": {"color": "#ffff00"}}]
+    assert "marks" not in para["content"][1] and "marks" not in para["content"][2]  # anything but #rrggbb: mark dropped, text kept
+    assert heading["attrs"] == {"level": 3, "textAlign": "right"}
+
+
 async def test_text_fields_are_cleaned_and_bounded(client):
     org, ws = ids(await signup(client, "ada@example.test"))
     post = await make_post(client, org, ws, title="  Hello\u0000 world​  ")

@@ -26,7 +26,7 @@ import { ErrorState, Kbd, StatusPill } from "../../components/ui";
 import { timeAgo, todayISO } from "../../lib/dates";
 import { errorMessage } from "../../lib/format";
 import { uuidv7 } from "../../lib/ids";
-import { isDocEmpty } from "../../lib/prosemirror";
+import { hasTable, isDocEmpty } from "../../lib/prosemirror";
 import { Annotator } from "./Annotator";
 import { ImageBlock, UploadingBlock, type UploadState } from "./editor/ImageBlock";
 import { emptyTable } from "./editor/emptyTable";
@@ -428,7 +428,7 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
                       <TextBlockEditor
                         label={b.type === "table" ? "Table" : `Text block ${i + 1}`}
                         doc={b.doc}
-                        table={b.type === "table"}
+                        table={b.type === "table" || hasTable(b.doc)} // imported slides keep tables (and chart data) inside text blocks
                         autoFocus={i === 0 && !!f.title && isDocEmpty(b.doc)}
                         placeholder={i === 0 ? "What did you do, find, or decide? Paste screenshots right here." : "Keep writing…"}
                         onChange={(doc) => setBlock(b.id, { doc } as Partial<Block>)}

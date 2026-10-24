@@ -20,6 +20,8 @@ import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/r
 import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useRef, type ReactNode } from "react";
 import { proseSx } from "../../../theme/prose";
+import { AlignButton, ColorMenu } from "./FormatControls";
+import { formattingExtensions } from "./formatting";
 
 // One TipTap editor per text/table block. Content is ProseMirror JSON in and out (§C1).
 
@@ -74,11 +76,13 @@ export function EditorToolbar({ editor, table }: { editor: Editor; table?: boole
       <Btn title="Strikethrough" active={s.strike} onClick={() => c().toggleStrike().run()}><FormatStrikethrough /></Btn>
       <Btn title="Inline code" active={s.code} onClick={() => c().toggleCode().run()}><Code /></Btn>
       <Btn title="Link" active={s.link} onClick={setLink}><LinkRounded /></Btn>
+      <ColorMenu editor={editor} />
       <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
       <Btn title="Heading" active={s.h2} onClick={() => c().toggleHeading({ level: 2 }).run()}><Typography sx={{ fontWeight: 700, fontSize: 13, px: 0.25 }}>H2</Typography></Btn>
       <Btn title="Subheading" active={s.h3} onClick={() => c().toggleHeading({ level: 3 }).run()}><Typography sx={{ fontWeight: 700, fontSize: 12, px: 0.25 }}>H3</Typography></Btn>
       <Btn title="Bulleted list" active={s.bullet} onClick={() => c().toggleBulletList().run()}><FormatListBulleted /></Btn>
       <Btn title="Numbered list" active={s.ordered} onClick={() => c().toggleOrderedList().run()}><FormatListNumbered /></Btn>
+      <AlignButton editor={editor} />
       <Btn title="Quote" active={s.quote} onClick={() => c().toggleBlockquote().run()}><FormatQuote /></Btn>
       <Btn title="Code block" active={s.codeBlock} onClick={() => c().toggleCodeBlock().run()}><DataObject /></Btn>
       {table && (
@@ -117,6 +121,7 @@ export function TextBlockEditor({ doc, onChange, onPasteImages, onBlur, placehol
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ heading: { levels: [2, 3, 4] }, link: { openOnClick: false, autolink: true, protocols: ["http", "https", "mailto"] } }),
+      ...formattingExtensions,
       Placeholder.configure({ placeholder: placeholder ?? "Write…" }),
       ...(table ? [TableKit.configure({ table: { resizable: false } })] : []),
     ],

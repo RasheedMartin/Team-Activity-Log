@@ -1,210 +1,127 @@
 # Team Activity Log
 
-A real-time team activity feed for logging daily work — what you shipped, fixed, or learned. Built with React, TipTap, and MUI, backed by a FastAPI server.
+A searchable lab notebook for teams. People post what they did, found, or decided (text,
+images, tables, and annotated figures), then find it again by full-text and boolean search,
+facets, and dates. Slide decks import as editable posts, and any set of posts can be arranged
+into a notebook or presented as slides.
 
-![Stack](https://img.shields.io/badge/React-18-blue?logo=react) ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?logo=typescript) ![MUI](https://img.shields.io/badge/MUI-5-007FFF?logo=mui) ![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688?logo=fastapi)
+> "Team Activity Log" is a working name. The brand lives in `frontend/src/app/brand.ts`.
 
----
+## What it does
 
-## Features
+- **Posts.** A rich-text editor (TipTap) with images, tables, slide breaks, and text color,
+  highlight, and alignment. Draw on images: arrows, shapes, text, highlighter. Posts have a work
+  date, tags, and co-authors, and stay drafts until published.
+- **Search.** Boolean queries (`AND`, `OR`, `NOT`, parentheses, `field:value`), faceted filters, a
+  date histogram, an image gallery, and saved searches. Search reads image captions, annotation
+  text, and comments as well as post text.
+- **Import slides.** Drop in a `.pptx` and get posts that keep the deck's formatting, in reading
+  order:
+  - text formatting: colors, highlight, numbered and nested lists, links, and headings;
+  - images, tables, and speaker notes;
+  - charts become tables of their data, and SmartArt becomes a list.
 
-**Post Composer**
+  You review and publish the posts; nothing publishes on its own.
+- **Explore, collections, and notebooks.** Browse by tag. A collection is posts you pick; a
+  notebook is posts in reading order. Present any post, selection, or notebook full-screen.
+- **Discussion.** Threaded comments, @mentions, questions with accepted answers, reactions, and
+  live updates.
+- **Teams.** Organizations, workspaces (including private ones), roles, invites and join links,
+  Google sign-in, email verification, and plan limits.
+- **Works on laptop and phone.** Every page is built and tested at both sizes.
 
-- Rich text editor powered by TipTap with full formatting toolbar
-  - Bold, italic, underline, strikethrough, inline code
-  - Bullet lists, ordered lists, blockquotes, code blocks
-  - Undo / redo
-- Attach images via file picker or paste from clipboard
-- Draw freehand annotations directly in the composer (blank canvas)
-- Tag posts with color-coded labels
-- Posts serialize to an ordered `blocks[]` array preserving text/image sequence
+The words the product uses (saved search, collection, notebook, favorites, and so on) are
+defined in [docs/CONCEPTS.md](team-activity-log/docs/CONCEPTS.md).
 
-**Image Annotator**
+## How it's built
 
-- 8 drawing tools: Pen, Line, Rectangle, Ellipse, Arrow, Text, Highlighter, Eraser
-- Keyboard shortcuts: `P` `L` `R` `E` `A` `T` `H` `X`
-- Color palette + opacity + brush size controls
-- Undo per stroke, clear all
-- Click any image in the composer or feed to annotate it in place
+| Part | Stack |
+|---|---|
+| Frontend | React 19, TypeScript, MUI 7, TipTap 3, TanStack Query, React Router 7, Vite |
+| Backend | FastAPI, SQLAlchemy 2 (async), Alembic, Python 3.11+ |
+| Data | **Postgres** is the source of truth. **Elasticsearch 8** holds search, rebuilt from Postgres whenever needed. Images are stored in Postgres or an S3-compatible bucket. |
+| Tests | Vitest (unit), pytest (backend), Playwright (end to end, run against both the mock and the real API) |
+| Hosting | Railway: a single Docker service serves the built UI and the `/v1` API from one origin |
 
-**Feed**
+The frontend talks to one API contract
+([frontend/src/api/contract.ts](team-activity-log/frontend/src/api/contract.ts)). It runs in two
+modes:
 
-- Sequential block rendering — text and images appear in the order they were written
-- Collapse long posts with a smooth expand/collapse toggle
-- Emoji reactions with per-user toggle state
-- Threaded comments with infinite nesting and per-comment emoji reactions
-- Filter feed by team member, tag, or full-text search
-- Click a recent comment in the sidebar to filter and scroll to that post
+- **Mock:** an in-browser mock server (MSW and IndexedDB). No backend needed; good for UI work and
+  demos.
+- **Live:** the real FastAPI backend.
 
-**Layout**
+Both modes implement the same contract, so the UI doesn't change between them.
 
-- Three-column layout: team/tag filters → feed → composer/stats/comments
-- All three columns sticky with independent scroll
-- Right panel sections (composer, today's stats, recent comments) collapse with accordion — only one open at a time
-
----
-
-## Tech Stack
-
-| Layer                 | Library                                                     |
-| --------------------- | ----------------------------------------------------------- |
-| UI framework          | [MUI v5](https://mui.com)                                   |
-| Rich text editor      | [TipTap](https://tiptap.dev) + StarterKit + Image extension |
-| State / data fetching | [TanStack Query v5](https://tanstack.com/query)             |
-| Backend               | [FastAPI](https://fastapi.tiangolo.com)                     |
-| Language              | TypeScript + Python                                         |
-| Fonts                 | IBM Plex Sans, IBM Plex Mono                                |
-
----
-
-## Project Structure
+## Repository layout
 
 ```
-src/
-├── api/
-│   └── client.ts                     # apiFetch wrapper
-├── pages/
-│   └── TeamActivityLog.tsx           # Main page, state, query hooks
-├── components/
-│   └── TeamLog/
-│       ├── PostCard.tsx              # Feed post with reactions, comments, annotator
-│       ├── PostComposer.tsx          # TipTap editor, image handling, tag picker
-│       ├── LeftPanel.tsx             # Team member + tag filters
-│       ├── RightPanel.tsx            # Accordion: composer, stats, recent comments
-│       ├── EditorToolbar.tsx         # TipTap formatting toolbar
-│       ├── ImageAnnotator.tsx        # Canvas annotation modal
-│       ├── CommentNode.tsx           # Recursive threaded comment tree
-│       ├── ReplyBox.tsx              # Inline reply composer
-│       ├── AvatarComponent.tsx       # User avatar with initials + color
-│       ├── ActionButton.tsx          # Reusable action button
-│       └── Tags.tsx                  # Tag chip component
-├── interfaces/
-│   └── TeamActivityLogInterfaces.tsx # TypeScript types
-└── utilities/
-    └── TeamLogsUtilities.ts          # MUI theme, helpers, sBtn style
+team-activity-log/
+├── frontend/          React app, mock API (src/mock), E2E tests (e2e/)
+│   └── scripts/       test-deck and mock-asset generators
+├── backend/           FastAPI app (src/tal), migrations, tests, the `tal` CLI
+│   └── src/app/       the original prototype API (legacy, not used by the app)
+├── docs/              CONCEPTS (glossary), DECISIONS (design log), PRICING, AUDIT
+├── Dockerfile         builds the UI and serves it from the API
+└── railway.toml       Railway start command and health check
 ```
 
----
+## Run it
 
-## Getting Started
+### Frontend only (mock mode)
 
-### Prerequisites
-
-- Node.js 18+
-- Python 3.11+
-
-### Frontend
+Needs Node 20+.
 
 ```bash
-# Install dependencies
+cd team-activity-log/frontend
 npm install
-
-# Start dev server
-npm run dev
+npm run dev            # http://localhost:5173
 ```
 
-Runs on `http://localhost:5173`.
+Open `/dev` to load a demo scenario (an empty org, a small team, a busy 5,000-post org, and
+others) and sign in as any persona.
 
-### Backend
+### With the real backend
+
+Needs Python 3.11+, Postgres 14+, and Elasticsearch 8. Set up the backend first, following
+[backend/README.md](team-activity-log/backend/README.md): fill in `.env`, then run
+`tal check`, `tal migrate` and `tal serve`. Then start the frontend in live mode:
 
 ```bash
-cd backend
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install fastapi uvicorn pydantic
-
-# Start server
-uvicorn app.main:app --reload
+cd team-activity-log/frontend
+npm run dev:live       # proxies /v1 to localhost:8000
 ```
 
-Runs on `http://127.0.0.1:8000`.
+The backend README also covers:
+- S3 image storage;
+- email delivery (Resend or Postmark);
+- Google sign-in;
+- rebuilding search;
+- running Postgres and Elasticsearch locally.
 
-### Environment
+## Test
 
-Create a `.env` file in the project root:
+```bash
+cd team-activity-log/frontend
+npm run typecheck && npm run lint && npm test     # types, lint, unit tests
+npx playwright test                               # end to end, mock mode
+E2E_API=live npx playwright test                  # end to end, real API (needs local Postgres + Elasticsearch)
 
-```env
-VITE_API_BASE_URL=http://127.0.0.1:8000
+cd ../backend
+.venv/bin/pytest                                  # backend tests (uses a tal_test database)
 ```
 
-Update `src/api/client.ts` to use `import.meta.env.VITE_API_BASE_URL`.
+## Deploy
 
----
+Merging to `main` deploys to Railway automatically. On start, the service runs
+`tal migrate && tal serve`, and Railway checks `/v1/health`. For service setup and the
+environment variables to set, see
+[backend/README.md → Deploy on Railway](team-activity-log/backend/README.md#deploy-on-railway).
 
-## Data Model
+## Design notes
 
-Posts use a sequential `blocks` array instead of separate `content` + `images` fields, preserving the order text and images were written:
-
-```typescript
-type Block =
-  | { type: "text"; html: string; position: number }
-  | { type: "image"; src: string; position: number; caption?: string };
-
-interface Post {
-  id: number;
-  userId: number;
-  timestamp: Date;
-  tags: string[];
-  reactions: Record<string, number[]>; // emoji → [userId]
-  comments: Comment[];
-  blocks: Block[];
-}
-```
-
-### Backend (Pydantic)
-
-```python
-class TextBlock(BaseModel):
-    type: Literal["text"]
-    html: str
-    position: int
-
-class ImageBlock(BaseModel):
-    type: Literal["image"]
-    src: str
-    position: int
-    caption: str | None = None
-
-Block = Annotated[Union[TextBlock, ImageBlock], Field(discriminator="type")]
-
-class Post(BaseModel):
-    id: int
-    userId: int
-    timestamp: datetime
-    tags: list[str]
-    reactions: dict[str, list[int]]
-    comments: list[Comment]
-    blocks: list[Block]
-```
-
----
-
-## API Endpoints
-
-| Method | Path     | Description    |
-| ------ | -------- | -------------- |
-| `GET`  | `/posts` | List all posts |
-| `GET`  | `/users` | List all users |
-| `GET`  | `/tags`  | List all tags  |
-
----
-
-## Keyboard Shortcuts
-
-These apply when the image annotator is open:
-
-| Key      | Tool             |
-| -------- | ---------------- |
-| `P`      | Pen              |
-| `L`      | Line             |
-| `R`      | Rectangle        |
-| `E`      | Ellipse          |
-| `A`      | Arrow            |
-| `T`      | Text             |
-| `H`      | Highlighter      |
-| `X`      | Eraser           |
-| `Ctrl+Z` | Undo last stroke |
+- [docs/DECISIONS.md](team-activity-log/docs/DECISIONS.md): why things work the way they do
+  (navigation, import rules, slides, search).
+- [docs/PRICING.md](team-activity-log/docs/PRICING.md): plans and how each limit is enforced.
+- [docs/CONCEPTS.md](team-activity-log/docs/CONCEPTS.md): user-facing terms, and the help pages
+  still to write.

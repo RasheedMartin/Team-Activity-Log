@@ -14,7 +14,7 @@ icons, and one-line definitions is `frontend/src/features/collections/concepts.t
 | **Library** | Every saved search, collection, and notebook in the workspace. | — | library |
 | **Activity** | What's yours to deal with: mentions & replies, your drafts, and (admins) the recycle bin. | — | bell |
 | **Recycle bin** | Deleted posts (kept 30 days) and hidden posts, with Restore. Admins only. | Delete or hide a post | — |
-| **Import slides** | Turn a PowerPoint deck into posts: slide text, speaker notes, tables, images. Nothing publishes until you say so. | Rail button, or drop a .pptx anywhere | slideshow |
+| **Import slides** | Turn a PowerPoint deck into posts: slide text with its formatting (colors, highlight, lists, links), speaker notes, tables, charts (as their data), images, in the slide's reading order. Nothing publishes until you say so. | Rail button, or drop a .pptx anywhere | slideshow |
 
 Internal names differ on purpose and stay stable for the backend contract: a saved search is a
 `SavedView` (`/saved-views`), a favorite is a pin (`/pins`), a notebook is a `Collection` with
