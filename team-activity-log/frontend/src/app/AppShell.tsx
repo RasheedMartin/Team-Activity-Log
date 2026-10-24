@@ -36,10 +36,12 @@ import {
   useTheme,
 } from "@mui/material";
 import { useEffect, useState, type ReactNode } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link as RouterLink, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { API_MODE } from "../api/client";
 import { useCollections, useLogout, useNotifications, useRememberWorkspace, useSavedViews } from "../api/hooks";
-import { toSearchParams } from "../lib/filterSpec";
+import { fromSearchParams, specKey, toSearchParams } from "../lib/filterSpec";
+
+const collectionParams = (id: string) => toSearchParams({ all: [{ field: "collection", op: "in", value: [id] }], sort: "oldest" });
 import { UserAvatar } from "../components/ui";
 import { can, useWs, wsPath } from "./session";
 import { useShortcuts } from "./shortcuts";
@@ -48,21 +50,29 @@ import { useLiveEvents } from "../features/discussion/live";
 
 const RAIL_WIDTH = 232;
 
-function NavItem({ to, icon, label, end, badge, onClick }: { to: string; icon: ReactNode; label: string; end?: boolean; badge?: boolean; onClick?: () => void }) {
-  return (
-    <ListItemButton
-      component={NavLink}
-      to={to}
-      end={end}
-      onClick={onClick}
-      sx={{ py: 0.5, mb: 0.25, "&.active": { bgcolor: "action.selected", fontWeight: 600 } }}
-    >
+/**
+ * Rail link. NavLink matches on the path only, so links that differ only by query string (saved
+ * views, collections — all `/search?…`) pass `active` explicitly instead.
+ */
+function NavItem({ to, icon, label, end, badge, onClick, active }: { to: string; icon: ReactNode; label: string; end?: boolean; badge?: boolean; onClick?: () => void; active?: boolean }) {
+  const sx = { py: 0.5, mb: 0.25, "&.active, &[aria-current=page]": { bgcolor: "action.selected", fontWeight: 600 } };
+  const content = (
+    <>
       <ListItemIcon sx={{ minWidth: 30, color: "text.secondary", "& svg": { fontSize: 18 } }}>
         <Badge variant="dot" color="primary" invisible={!badge}>
           {icon}
         </Badge>
       </ListItemIcon>
       <ListItemText primary={label} slotProps={{ primary: { noWrap: true, fontSize: "0.85rem", fontWeight: "inherit" } }} />
+    </>
+  );
+  return active === undefined ? (
+    <ListItemButton component={NavLink} to={to} end={end} onClick={onClick} sx={sx}>
+      {content}
+    </ListItemButton>
+  ) : (
+    <ListItemButton component={RouterLink} to={to} onClick={onClick} aria-current={active ? "page" : undefined} sx={sx}>
+      {content}
     </ListItemButton>
   );
 }
@@ -181,6 +191,9 @@ function Rail({ onNavigate }: { onNavigate?: () => void }) {
   const { data: notes } = useNotifications(org.id);
   const unread = notes?.some((n) => !n.readAt && n.workspaceId === ws.id);
   const pinned = views?.filter((v) => v.pinned) ?? [];
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  const onSearch = location.pathname === `${base}/search`;
   return (
     <Stack sx={{ height: "100%", py: 1 }}>
       <Box sx={{ px: 1 }}>
@@ -212,14 +225,14 @@ function Rail({ onNavigate }: { onNavigate?: () => void }) {
         {pinned.length > 0 && (
           <List dense disablePadding subheader={<ListSubheader sx={{ bgcolor: "transparent", lineHeight: "28px", fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>Saved views</ListSubheader>}>
             {pinned.map((v) => (
-              <NavItem key={v.id} to={`${base}/search?${toSearchParams(v.filterSpec)}&view=${v.id}`} icon={<BookmarkBorderRounded />} label={v.name} onClick={onNavigate} />
+              <NavItem key={v.id} to={`${base}/search?${toSearchParams(v.filterSpec)}&view=${v.id}`} active={onSearch && params.get("view") === v.id} icon={<BookmarkBorderRounded />} label={v.name} onClick={onNavigate} />
             ))}
           </List>
         )}
         {!!collections?.length && (
           <List dense disablePadding subheader={<ListSubheader sx={{ bgcolor: "transparent", lineHeight: "28px", fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>Collections</ListSubheader>}>
             {collections.slice(0, 8).map((c) => (
-              <NavItem key={c.id} to={`${base}/search?${toSearchParams({ all: [{ field: "collection", op: "in", value: [c.id] }], sort: "oldest" })}`} icon={<CollectionsBookmarkOutlined />} label={c.name} onClick={onNavigate} />
+              <NavItem key={c.id} to={`${base}/search?${collectionParams(c.id)}`} active={onSearch && !params.get("view") && specKey(fromSearchParams(params)) === specKey(fromSearchParams(collectionParams(c.id)))} icon={<CollectionsBookmarkOutlined />} label={c.name} onClick={onNavigate} />
             ))}
           </List>
         )}
