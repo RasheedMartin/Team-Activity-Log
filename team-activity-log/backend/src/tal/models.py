@@ -8,6 +8,7 @@ hosted Postgres 14+ works with just a connection string. Tenancy is enforced in 
 
 from __future__ import annotations
 
+import builtins
 import datetime as dt
 import uuid
 
@@ -80,6 +81,20 @@ class Session(Base):
     created_at: Mapped[dt.datetime] = ts(False, True)
     expires_at: Mapped[dt.datetime] = ts(False)
     revoked_at: Mapped[dt.datetime | None] = ts()
+
+
+class Identity(Base):
+    """A sign-in method linked to a user other than a password (Google today; Microsoft/SAML later)."""
+
+    __tablename__ = "identities"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    user_id: Mapped[uuid.UUID] = fk("users.id")
+    provider: Mapped[str] = mapped_column(String(20))
+    subject: Mapped[str] = mapped_column(String(255))  # the provider's stable user id ("sub")
+    email: Mapped[str | None] = mapped_column(String(320))
+    created_at: Mapped[dt.datetime] = ts(False, True)
+    last_used_at: Mapped[dt.datetime | None] = ts()
+    __table_args__ = (UniqueConstraint("provider", "subject"),)
 
 
 class AuthToken(Base):
@@ -361,8 +376,8 @@ class Upload(Base):
     mime: Mapped[str] = mapped_column(String(100))
     bytes: Mapped[int] = mapped_column(BigInteger)
     source_kind: Mapped[str] = mapped_column(String(16))
-    # Explicit: the `bytes` column above shadows the builtin in this class's annotations.
-    data: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    # builtins.bytes: the `bytes` column above shadows the builtin inside this class.
+    data: Mapped[builtins.bytes | None] = mapped_column(LargeBinary, nullable=True)
     created_at: Mapped[dt.datetime] = ts(False, True)
 
 
@@ -478,7 +493,8 @@ class Outbox(Base):
 
 
 class Email(Base):
-    """Outgoing email. Shown on /dev in development; a sender drains it in production (later)."""
+    """Outgoing email, written in the same transaction as the action that causes it (an outbox).
+    The mailer delivers pending rows through the configured provider; /dev lists them."""
 
     __tablename__ = "emails"
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
@@ -486,4 +502,12 @@ class Email(Base):
     subject: Mapped[str] = mapped_column(Text)
     body: Mapped[str] = mapped_column(Text)
     link: Mapped[str | None] = mapped_column(Text)
-    sent_at: Mapped[dt.datetime] = ts(False, True)
+    sent_at: Mapped[dt.datetime] = ts(False, True)  # when the app queued it
+    status: Mapped[str] = mapped_column(String(10), server_default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, server_default="0")
+    last_error: Mapped[str | None] = mapped_column(Text)
+    delivered_at: Mapped[dt.datetime | None] = ts()
+    __table_args__ = (
+        CheckConstraint("status in ('pending','sent','failed','logged')", name="emails_status"),
+        Index("emails_pending", "sent_at", postgresql_where=text("status = 'pending'")),
+    )

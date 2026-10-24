@@ -272,7 +272,7 @@ async def load(request: Request, response: Response, body: dict = Body(...), db:
         elif key.split(":")[0] in ("verify", "magic", "reset") and value:
             db.add(m.AuthToken(token_hash=token_hash(key.split(":", 1)[1]), kind=key.split(":")[0], user_id=U(value), expires_at=now() + dt.timedelta(days=7)))
     await bulk(db, m.Pin, pins)
-    await bulk(db, m.Email, [{"id": U(e["id"]), "to": e["to"], "subject": e["subject"], "body": e["body"], "link": e.get("link"), "sent_at": T(e["sentAt"])} for e in t.get("emails", [])])
+    await bulk(db, m.Email, [{"id": U(e["id"]), "to": e["to"], "subject": e["subject"], "body": e["body"], "link": e.get("link"), "sent_at": T(e["sentAt"]), "status": "logged"} for e in t.get("emails", [])])
     await db.commit()
 
     # Search: drop this environment's documents and rebuild from Postgres.

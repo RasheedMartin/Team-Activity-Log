@@ -16,8 +16,10 @@ from fastapi.staticfiles import StaticFiles
 from . import db, events
 from .config import get_settings
 from .errors import ApiError, api_error_handler
-from .routes import auth, dev, discussion, health, imports, library, orgs, posts, search
+from .mailer import run_mailer
+from .routes import auth, dev, discussion, health, imports, library, oauth, orgs, posts, search
 from .search import client as es_client
+from .search.diagnose import explain, identity
 from .search.indexer import ensure_index, run_indexer
 
 log = logging.getLogger("tal")
@@ -32,11 +34,14 @@ async def lifespan(app: FastAPI):
     tasks: list[asyncio.Task] = []
     try:
         await ensure_index()
-    except Exception:  # noqa: BLE001 - the app still serves everything but search
-        log.exception("Elasticsearch isn't reachable or the index couldn't be created; search will return 503 until it is")
+        log.info("Elasticsearch ready; connected as %s", await identity())
+    except Exception as e:  # noqa: BLE001 - the app still serves everything but search
+        log.error("%s Search returns 503 until this is fixed; everything else works.", await explain(e))
     await events.start_listener()
     if s.run_indexer:
         tasks.append(asyncio.create_task(run_indexer(stop)))
+        tasks.append(asyncio.create_task(run_mailer(stop)))
+    log.info("Email: %s; Google sign-in: %s", s.email_provider if s.email_provider != "log" else "not sent (EMAIL_PROVIDER=log)", "on" if s.google_enabled else "off")
     yield
     stop.set()
     for t in tasks:
@@ -56,7 +61,7 @@ def create_app() -> FastAPI:
     async def _invalid(_: Request, exc: RequestValidationError):
         return JSONResponse({"code": "invalid", "message": "The request wasn't understood", "details": exc.errors()[:5]}, status_code=422)
 
-    for r in (health, auth, orgs, posts, search, library, discussion, imports):
+    for r in (health, auth, oauth, orgs, posts, search, library, discussion, imports):
         app.include_router(r.router, prefix="/v1")
     if s.dev_mode:
         app.include_router(dev.router, prefix="/v1")

@@ -82,11 +82,19 @@ Railway auto-deploys from the repo's `main` branch: changes go live when they ar
    S3_REGION=auto
    ENV=production
    DEV_MODE=false
-   PUBLIC_APP_URL=https://<your app domain>
+   PUBLIC_APP_URL=https://<your app domain>       # links in emails, and Google's redirect back
+   EMAIL_PROVIDER=resend
+   EMAIL_API_KEY=<Resend API key>
+   EMAIL_FROM=Team Activity Log <noreply@yourdomain.com>
+   GOOGLE_CLIENT_ID=<from Google Cloud Console>
+   GOOGLE_CLIENT_SECRET=<from Google Cloud Console>
    ```
 
+   The deploy log's first lines confirm it: `Email: resend; Google sign-in: on`.
+
    No `TAL_ENV_FILE` here: `.env.railway` is only for running commands from your laptop.
-3. **Networking → Generate Domain** on the app service. That URL is the app.
+3. **Networking → Generate Domain** on the app service, with target port **8080** (Railway's default
+   `$PORT`, which the app listens on). A mismatched port shows up as 502 "connection refused".
 4. Deploy. Each start runs migrations first (safe to repeat), then serves on Railway's `$PORT`.
    Railway waits for `/v1/health`; `/v1/health/ready` shows both data stores and the search index lag.
 5. Optional, once the app is live: remove the public TCP proxies on Postgres and Elasticsearch.
@@ -142,10 +150,22 @@ cd ../frontend && E2E_API=live npx playwright test   # the whole UI suite agains
 The live E2E run uses its own database (`tal_e2e`) and index prefix (`tal_e2e`), so it never
 touches your dev data.
 
+## Email and Google sign-in
+
+- **Email** (verification, magic links, password resets, invites): written to the `emails` table
+  in the same transaction as the action, then delivered by the mailer (in the API process, or
+  `tal worker`) through Resend or Postmark, with retries. `EMAIL_PROVIDER=log` (the default)
+  never sends; messages stay visible on `/dev`. A rejected send records the provider's reason in
+  `emails.last_error` (for example "domain is not verified").
+- **Google**: OAuth client of type *Web application* with redirect URI
+  `<PUBLIC_APP_URL>/v1/auth/google/callback` (add `http://localhost:5173/...` for local dev and set
+  `PUBLIC_APP_URL=http://localhost:5173` in your local `.env`). The button appears only when
+  `GOOGLE_CLIENT_ID`/`SECRET` are set. A Google account with the same verified email as an existing
+  account is linked to it, not duplicated.
+
 ## Not yet
 
 - OCR for uploaded images (`ocrState: "none"` until an OCR worker is added).
 - S3-compatible object storage as an alternative to Postgres for image bytes.
 - Postgres row-level security as a second tenancy guard (tenancy is enforced in every query today).
-- Sending real email (messages are written to the `emails` table and shown on `/dev`).
 - Billing (plans are in the schema; see `docs/PRICING.md`).

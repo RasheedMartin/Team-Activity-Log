@@ -767,6 +767,10 @@ export function useImportAction(orgId: ID, id: ID) {
   });
 }
 
+/** Sign-in methods the server has configured (shows the Google button only when it works). */
+export const useAuthProviders = () =>
+  useQuery({ queryKey: ["auth", "providers"], queryFn: ({ signal }) => get<{ google: boolean }>("/auth/providers", signal), staleTime: Infinity, retry: false });
+
 // ---- dev ----
 
 export const usePersonas = () =>
