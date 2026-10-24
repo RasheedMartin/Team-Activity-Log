@@ -37,3 +37,19 @@ export const LongTitleManyTags: Story = {
   },
 };
 export const UnknownAuthorLoading: Story = { args: { hit: hit(), author: undefined } };
+export const ManyImages: Story = {
+  args: {
+    hit: hit(
+      { images: [1, 2, 3, 4, 5, 6, 7].map((n) => ({ imageInstanceId: `m${n}`, thumbUrl: `/mock-assets/fig-0${(n % 4) + 1}-chart.svg`, width: 1200, height: 800, dominantColor: "#fff" })) },
+      { counts: { comments: 4, reactions: 3, images: 7 } },
+    ),
+  },
+};
+export const NoImagesAlignedFooter: Story = {
+  render: (args) => (
+    <>
+      <PostCard {...args} hit={hit()} />
+      <PostCard {...args} hit={hit({ images: [] }, { counts: { comments: 12, reactions: 0, images: 0 }, reactions: {} })} />
+    </>
+  ),
+};
