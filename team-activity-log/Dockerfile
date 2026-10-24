@@ -21,6 +21,7 @@ COPY --from=web /app/frontend/dist /app/frontend/dist
 ENV ENV=production FRONTEND_DIST=/app/frontend/dist
 RUN useradd --create-home app
 USER app
-EXPOSE 8000
+# Railway sets PORT (8080 by default); the public domain must target the same port.
+EXPOSE 8080
 # Migrations are idempotent, so running them on every start is safe.
-CMD ["sh", "-c", "tal migrate && tal serve --port ${PORT:-8000}"]
+CMD ["sh", "-c", "tal migrate && tal serve --port ${PORT:-8080}"]

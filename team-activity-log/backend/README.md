@@ -86,7 +86,8 @@ Railway auto-deploys from the repo's `main` branch: changes go live when they ar
    ```
 
    No `TAL_ENV_FILE` here: `.env.railway` is only for running commands from your laptop.
-3. **Networking → Generate Domain** on the app service. That URL is the app.
+3. **Networking → Generate Domain** on the app service, with target port **8080** (Railway's default
+   `$PORT`, which the app listens on). A mismatched port shows up as 502 "connection refused".
 4. Deploy. Each start runs migrations first (safe to repeat), then serves on Railway's `$PORT`.
    Railway waits for `/v1/health`; `/v1/health/ready` shows both data stores and the search index lag.
 5. Optional, once the app is live: remove the public TCP proxies on Postgres and Elasticsearch.
