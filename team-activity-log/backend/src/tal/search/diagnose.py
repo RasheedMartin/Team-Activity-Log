@@ -17,6 +17,8 @@ async def identity() -> str:
     except AuthenticationException:
         return f"rejected ({mode}): wrong username/password or API key"
     except ApiError as e:
+        if e.meta.status in (400, 405) and not (s.elasticsearch_api_key or s.elasticsearch_username):
+            return "no login (this cluster has security turned off; fine for local dev only)"
         return f"couldn't check identity ({mode}): HTTP {e.meta.status}"
     name, roles = who.get("username", "?"), [r for r in who.get("roles", []) if r != "anonymous_role"]
     if name == "anonymous_user":
