@@ -3,10 +3,8 @@ import {
   AdminPanelSettingsOutlined,
   BookmarkBorderRounded,
   CollectionsBookmarkOutlined,
-  DeleteOutlineRounded,
   HomeOutlined,
   SearchRounded,
-  EditNoteRounded,
   MenuBookOutlined,
   ExpandMoreRounded,
   InboxOutlined,
@@ -226,10 +224,8 @@ function Rail({ onNavigate }: { onNavigate?: () => void }) {
           <NavItem to={base} end icon={<HomeOutlined />} label="Home" onClick={onNavigate} />
           {/* Search is the all-posts list; it's "current" unless a pinned view/collection is. */}
           <NavItem to={`${base}/search`} icon={<SearchRounded />} label="Search" active={onSearch && !pinActive} onClick={onNavigate} />
-          {can(role, "member") && <NavItem to={`${base}/drafts`} icon={<EditNoteRounded />} label="My drafts" onClick={onNavigate} />}
           <NavItem to={`${base}/inbox`} icon={<InboxOutlined />} label="Inbox" badge={unread} onClick={onNavigate} />
           {can(role, "member") && <NavItem to={`${base}/import`} icon={<UploadFileOutlined />} label="Import deck" onClick={onNavigate} />}
-          {can(role, "admin") && <NavItem to={`${base}/trash`} icon={<DeleteOutlineRounded />} label="Hidden & deleted" onClick={onNavigate} />}
         </List>
         <List
           dense

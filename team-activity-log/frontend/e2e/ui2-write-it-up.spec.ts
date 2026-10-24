@@ -80,12 +80,13 @@ test("v2 Write It Up end to end", async ({ page }) => {
   await page.getByRole("alert").getByRole("button", { name: "Show" }).click();
   await expect(page.getByText(/Superseded by run 4512/)).toHaveCount(0);
 
-  // Delete, then an admin (Dana is owner) restores it from Hidden & deleted.
+  // Delete, then an admin (Dana is owner) restores it from the recycle bin in the Inbox.
   await page.getByRole("button", { name: "More actions" }).click();
   await page.getByRole("menuitem", { name: "Delete" }).click();
   await expect(page.getByText("Post deleted")).toBeVisible();
-  await page.getByRole("link", { name: "Hidden & deleted" }).click();
-  const row = page.getByRole("listitem").filter({ hasText: "Detector B noise after shielding (v2)" });
+  await page.getByRole("link", { name: "Inbox" }).click();
+  await page.getByRole("tab", { name: /Recycle bin/ }).click();
+  const row = page.getByRole("tabpanel", { name: "Recycle bin" }).getByRole("listitem").filter({ hasText: "Detector B noise after shielding (v2)" });
   await row.getByRole("button", { name: "Restore" }).click();
   await expect(page.getByText("Restored")).toBeVisible();
 
@@ -112,11 +113,26 @@ test("two tabs editing one draft get a conflict, not a silent overwrite", async 
 
 test("drafts list and discard with undo", async ({ page }) => {
   await openScenario(page, "small");
-  await page.getByRole("link", { name: "My drafts" }).click();
-  const discard = page.getByRole("main").getByRole("button", { name: /^Discard / }).first();
+  await page.getByRole("link", { name: "Inbox" }).click();
+  await page.getByRole("tab", { name: /Drafts/ }).click();
+  const drafts = page.getByRole("tabpanel", { name: "Drafts" });
+  const discard = drafts.getByRole("button", { name: /^Discard / }).first();
   const title = (await discard.getAttribute("aria-label"))!.replace(/^Discard /, "");
   await discard.click();
   await expect(page.getByText(`Discarded “${title}”`)).toBeVisible();
   await page.getByRole("button", { name: "Undo" }).click();
   await expect(page.getByText(title).first()).toBeVisible();
+});
+
+test("one Inbox in the rail: mentions, drafts, and recycle bin are tabs; old links land on theirs", async ({ page }) => {
+  await openScenario(page, "small");
+  await expect(page.getByRole("navigation", { name: "Workspace" }).getByRole("link", { name: /My drafts|Hidden|Recycle/ })).toHaveCount(0);
+  await page.getByRole("link", { name: "Inbox" }).click();
+  await expect(page.getByRole("tab", { name: /Mentions & replies/ })).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("tab", { name: /Drafts/ }).click();
+  await expect(page).toHaveURL(/\/inbox\/drafts$/);
+  await expect(page.getByRole("tabpanel", { name: "Drafts" })).toBeVisible();
+  await page.goto(page.url().replace(/\/inbox\/drafts$/, "/trash"));
+  await expect(page).toHaveURL(/\/inbox\/recycle-bin$/);
+  await expect(page.getByRole("tab", { name: /Recycle bin/ })).toHaveAttribute("aria-selected", "true");
 });

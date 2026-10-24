@@ -219,7 +219,7 @@ function ActivityTab() {
   // "My activity" views are ordinary search FilterSpecs (§B8), so they reuse the search screen.
   const views: { label: string; icon: ReactNode; spec?: FilterSpec; to?: string }[] = [
     { label: "My posts", icon: <ArticleOutlined />, spec: { all: [{ field: "mine", op: "eq", value: true }] } },
-    { label: "My drafts", icon: <EditNoteRounded />, to: wsPath(target.org, target.ws, "/drafts") },
+    { label: "My drafts", icon: <EditNoteRounded />, to: wsPath(target.org, target.ws, "/inbox/drafts") },
     { label: "Posts I commented on", icon: <ChatBubbleOutlineRounded />, spec: { all: [{ field: "iCommented", op: "eq", value: true }], sort: "recentActivity" } },
     { label: "Posts I reacted to", icon: <EmojiEmotionsOutlined />, spec: { all: [{ field: "iReacted", op: "eq", value: true }] } },
     { label: "Posts that mention me", icon: <AlternateEmailRounded />, spec: { all: [{ field: "mentionsMe", op: "eq", value: true }] } },

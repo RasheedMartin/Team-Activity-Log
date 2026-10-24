@@ -130,7 +130,9 @@ test("delete a whole import removes its posts", async ({ page }) => {
   await page.getByRole("button", { name: "Delete this import" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
   await expect(page.getByText("Import deleted")).toBeVisible();
-  await page.getByRole("link", { name: "My drafts" }).click();
+  await page.getByRole("link", { name: "Inbox" }).click();
+  await page.getByRole("tab", { name: /Drafts/ }).click();
+  await expect(page.getByRole("tabpanel", { name: "Drafts" })).toBeVisible();
   await expect(page.getByText("Cooldown overview")).toHaveCount(0);
 });
 

@@ -21,9 +21,10 @@ import { SearchPage } from "./features/search/SearchPage";
 
 const ComposerPage = lazy(() => import("./features/posts/ComposerPage"));
 const PostDetailPage = lazy(() => import("./features/posts/PostDetailPage"));
-const DraftsPage = lazy(() => import("./features/posts/DraftsPage"));
-const TrashPage = lazy(() => import("./features/posts/TrashPage"));
-const InboxPage = lazy(() => import("./features/discussion/InboxPage"));
+const InboxPage = lazy(() => import("./features/inbox/InboxPage"));
+const MentionsTab = lazy(() => import("./features/inbox/Mentions"));
+const DraftsTab = lazy(() => import("./features/inbox/Drafts"));
+const RecycleBinTab = lazy(() => import("./features/inbox/RecycleBin"));
 const PresentPage = lazy(() => import("./features/present/PresentPage"));
 const ImportPage = lazy(() => import("./features/import/ImportPage"));
 const AdminPage = lazy(() => import("./features/admin/AdminPage"));
@@ -90,9 +91,14 @@ export function App() {
         <Route path="p/:postId" element={page(<PostDetailPage />)} />
         <Route path="p/:postId/edit" element={page(<ComposerPage />)} />
         <Route path="p/:postId/present" element={page(<PresentPage />)} />
-        <Route path="drafts" element={page(<DraftsPage />)} />
-        <Route path="trash" element={page(<TrashPage />)} />
-        <Route path="inbox" element={page(<InboxPage />)} />
+        {/* Drafts and the recycle bin are Inbox tabs; old links land on them. */}
+        <Route path="drafts" element={<Navigate to="../inbox/drafts" replace relative="path" />} />
+        <Route path="trash" element={<Navigate to="../inbox/recycle-bin" replace relative="path" />} />
+        <Route path="inbox" element={page(<InboxPage />)}>
+          <Route index element={page(<MentionsTab />)} />
+          <Route path="drafts" element={page(<DraftsTab />)} />
+          <Route path="recycle-bin" element={page(<RecycleBinTab />)} />
+        </Route>
         <Route path="import" element={page(<ImportPage />)} />
         <Route path="present" element={page(<PresentPage />)} />
       </Route>

@@ -340,10 +340,10 @@ export function usePostAction(orgId: ID) {
 
 export const useRevisions = (orgId: ID, id: ID, enabled: boolean) =>
   useQuery({ queryKey: qk.revisions(orgId, id), queryFn: ({ signal }) => get<PostRevision[]>(`${O(orgId)}/posts/${id}/revisions`, signal), enabled });
-export const useDrafts = (orgId: ID, wsId: ID) =>
-  useQuery({ queryKey: qk.drafts(orgId, wsId), queryFn: ({ signal }) => get<DraftSummary[]>(`${W(orgId, wsId)}/drafts`, signal) });
-export const useTrash = (orgId: ID, wsId: ID) =>
-  useQuery({ queryKey: qk.trash(orgId, wsId), queryFn: ({ signal }) => get<{ deleted: Post[]; hidden: Post[] }>(`${W(orgId, wsId)}/trash`, signal) });
+export const useDrafts = (orgId: ID, wsId: ID, enabled = true) =>
+  useQuery({ queryKey: qk.drafts(orgId, wsId), enabled, queryFn: ({ signal }) => get<DraftSummary[]>(`${W(orgId, wsId)}/drafts`, signal) });
+export const useTrash = (orgId: ID, wsId: ID, enabled = true) =>
+  useQuery({ queryKey: qk.trash(orgId, wsId), enabled, queryFn: ({ signal }) => get<{ deleted: Post[]; hidden: Post[] }>(`${W(orgId, wsId)}/trash`, signal) });
 
 // ---- assets & images ----
 

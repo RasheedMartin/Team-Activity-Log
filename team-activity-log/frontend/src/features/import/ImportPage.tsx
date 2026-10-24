@@ -331,7 +331,7 @@ function DoneStep({ job, onNew }: { job: ImportJob; onNew: () => void }) {
         <Button variant="contained" disabled={published || act.isPending} onClick={() => act.mutate({ action: "publishAll" }, { onSuccess: () => (setPublished(true), notify("All imported drafts published")) })}>
           {published ? "Published" : "Publish all"}
         </Button>
-        <Button component={RouterLink} to={wsPath(org, ws, "/drafts")}>Review drafts</Button>
+        <Button component={RouterLink} to={wsPath(org, ws, "/inbox/drafts")}>Review drafts</Button>
         {published && <Button component={RouterLink} to={collectionUrl}>Open collection</Button>}
         <Button startIcon={<DownloadRounded />} onClick={downloadReport}>Download report</Button>
         <Button onClick={onNew}>Import another deck</Button>

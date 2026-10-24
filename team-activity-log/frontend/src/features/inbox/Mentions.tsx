@@ -3,42 +3,42 @@ import { Box, Button, List, ListItemButton, ListItemAvatar, ListItemText, Paper,
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMarkRead, useNotifications, usePeople } from "../../api/hooks";
-import { useWs, wsPath } from "../../app/session";
-import { EmptyState, ErrorState, PageHeader, UserAvatar } from "../../components/ui";
-import { timeAgo } from "../../lib/dates";
 import { useOrigin } from "../../app/origin";
+import { useWs, wsPath } from "../../app/session";
+import { EmptyState, ErrorState, UserAvatar } from "../../components/ui";
+import { timeAgo } from "../../lib/dates";
+import { InboxPanel } from "./Section";
 
 /** Mentions and replies (§W3.5). Quiet: no push, no red badges — a dot in the rail at most. */
-export default function InboxPage() {
+export default function MentionsTab() {
   const { org, ws } = useWs();
   const q = useNotifications(org.id);
+  const origin = useOrigin("Inbox");
   const mark = useMarkRead(org.id);
   const navigate = useNavigate();
   const { data: people = [] } = usePeople(org.id);
   const [filter, setFilter] = useState<"unread" | "all">("unread");
-  const origin = useOrigin("Inbox");
   const all = (q.data ?? []).filter((n) => n.workspaceId === ws.id);
   const list = filter === "unread" ? all.filter((n) => !n.readAt) : all;
   const unread = all.filter((n) => !n.readAt).length;
   return (
-    <Box sx={{ maxWidth: 860, width: "100%", mx: "auto", px: { xs: 1.5, sm: 3 }, py: 3 }}>
-      <PageHeader
-        title="Inbox"
-        sub="Mentions and replies to you in this workspace."
-        actions={
-          <Stack direction="row" spacing={1} alignItems="center">
-            <ToggleButtonGroup size="small" exclusive value={filter} onChange={(_, v) => v && setFilter(v)} aria-label="Show">
-              <ToggleButton value="unread">Unread{unread ? ` (${unread})` : ""}</ToggleButton>
-              <ToggleButton value="all">All</ToggleButton>
-            </ToggleButtonGroup>
-            <Button startIcon={<DoneAllRounded />} disabled={!unread} onClick={() => mark.mutate(all.filter((n) => !n.readAt).map((n) => n.id))}>
-              Mark all read
-            </Button>
-          </Stack>
-        }
-      />
+    <InboxPanel
+      label="Mentions & replies"
+      sub="When someone @mentions you or replies to you in this workspace."
+      actions={
+        <Stack direction="row" spacing={1} alignItems="center">
+          <ToggleButtonGroup size="small" exclusive value={filter} onChange={(_, v) => v && setFilter(v)} aria-label="Show">
+            <ToggleButton value="unread">Unread{unread ? ` (${unread})` : ""}</ToggleButton>
+            <ToggleButton value="all">All</ToggleButton>
+          </ToggleButtonGroup>
+          <Button startIcon={<DoneAllRounded />} disabled={!unread} onClick={() => mark.mutate(all.filter((n) => !n.readAt).map((n) => n.id))}>
+            Mark all read
+          </Button>
+        </Stack>
+      }
+    >
       {q.isPending ? (
-        <Stack spacing={1}>{[0, 1, 2].map((i) => <Skeleton key={i} variant="rounded" height={64} />)}</Stack>
+        <Stack spacing={1}>{[0, 1].map((i) => <Skeleton key={i} variant="rounded" height={64} />)}</Stack>
       ) : q.error ? (
         <ErrorState error={q.error} onRetry={() => q.refetch()} />
       ) : !list.length ? (
@@ -83,6 +83,6 @@ export default function InboxPage() {
           </List>
         </Paper>
       )}
-    </Box>
+    </InboxPanel>
   );
 }
