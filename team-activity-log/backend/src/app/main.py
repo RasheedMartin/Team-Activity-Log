@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -5,7 +7,6 @@ from fastapi.staticfiles import StaticFiles
 from .routers.posts import router as posts_router
 from .routers.tags import router as tags_router
 from .routers.users import router as user_router
-import os
 
 app = FastAPI(title="Team Activity Log API")
 
