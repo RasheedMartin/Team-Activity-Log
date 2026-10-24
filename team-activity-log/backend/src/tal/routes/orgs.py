@@ -12,13 +12,16 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import models as m
+from .. import plans
+from .. import sanitize as clean
+from ..config import get_settings
 from ..context import OrgCtx, accessible_workspaces, current_user, hash_password, org_ctx, require_user, start_session, token_hash, verify_password
 from ..db import get_db
-from ..errors import fail
+from ..errors import ApiError, fail
 from ..ids import parse_uuid, uuid7
 from ..timeutil import iso, now, today
 from ..views import org_view, tag_view, user_view, workspace_view
-from .auth import EMAIL_RE, find_by_email, me_response, send_email
+from .auth import find_by_email, me_response, send_email
 
 router = APIRouter()
 
@@ -124,16 +127,14 @@ async def slug_available(slug: str = "", db: AsyncSession = Depends(get_db, scop
 
 @router.post("/orgs", status_code=201)
 async def create_org(body: dict = Body(...), u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
-    name = str(body.get("name") or "").strip()
-    if not name:
-        fail(422, "invalid", "Name your organization")
-    slug = slugify(str(body.get("slug") or "") or name)
+    name = clean.text(body.get("name"), "name", 100, required=True, label="Organization name") or ""
+    slug = slugify(clean.text(body.get("slug"), "slug", 60) or name)
     if not slug or await slug_taken(db, slug):
         fail(409, "slug_taken", "That URL is taken, try another")
-    org = m.Organization(id=uuid7(), name=name, slug=slug)
+    org = m.Organization(id=uuid7(), name=name, slug=slug, plan=get_settings().new_org_plan)
     db.add(org)
     await db.flush()
-    ws_name = str(body.get("workspaceName") or "").strip() or "General"
+    ws_name = clean.text(body.get("workspaceName"), "workspaceName", 100) or "General"
     ws = m.Workspace(id=uuid7(), org_id=org.id, name=ws_name, slug=slugify(ws_name) or "general", all_org_members=True, created_at=now())
     db.add(ws)
     db.add(m.Membership(id=uuid7(), org_id=org.id, user_id=u.id, role="owner", status="active"))
@@ -148,8 +149,8 @@ async def create_org(body: dict = Body(...), u: m.User = Depends(require_user), 
 @router.patch("/orgs/{org}")
 async def patch_org(org: str, body: dict = Body(...), u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
     ctx = await org_ctx(db, u, org, "owner")
-    if str(body.get("name") or "").strip():
-        ctx.org.name = body["name"].strip()
+    if "name" in body:
+        ctx.org.name = clean.text(body["name"], "name", 100, required=True, label="Organization name") or ctx.org.name
     return org_view(ctx.org)
 
 
@@ -199,7 +200,7 @@ async def patch_member(org: str, user_id: str, body: dict = Body(...), u: m.User
     if status in ("active", "deactivated"):
         mem.status = status
     if body.get("workspaceIds") is not None:
-        wanted = {w for w in (parse_uuid(x) for x in body["workspaceIds"]) if w}
+        wanted = set(clean.uuid_list(body["workspaceIds"], "workspaceIds", 500))
         valid = {w.id for w in (await db.execute(select(m.Workspace).where(m.Workspace.org_id == ctx.org.id))).scalars()}
         await db.execute(delete(m.WorkspaceMember).where(m.WorkspaceMember.user_id == mem.user_id, m.WorkspaceMember.workspace_id.in_(valid)))
         for w in wanted & valid:
@@ -250,13 +251,25 @@ async def list_invites(org: str, u: m.User = Depends(require_user), db: AsyncSes
 async def create_invites(org: str, body: dict = Body(...), u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
     ctx = await org_ctx(db, u, org, "admin")
     results = []
-    for i in body.get("invites") or []:
-        email = str(i.get("email") or "").strip()
-        if not EMAIL_RE.match(email):
-            results.append({"email": email, "error": "Invalid email"})
+    batch = body.get("invites") or []
+    if not isinstance(batch, list) or len(batch) > 200:
+        fail(422, "invalid", "Send at most 200 invites at a time")
+    for i in batch:
+        if not isinstance(i, dict):
+            continue
+        raw = i.get("email") if isinstance(i.get("email"), str) else ""
+        try:
+            email = clean.email(raw)
+            name = clean.text(i.get("name"), "name", 200)
+            ws_ids = clean.uuid_list(i.get("workspaceIds"), "workspaceIds", 500)
+        except ApiError as e:
+            results.append({"email": raw[:254], "error": e.message})
             continue
         if i.get("role") == "owner":
             results.append({"email": email, "error": "Invite as admin, then transfer ownership"})
+            continue
+        if i.get("role") not in ("admin", "member", "viewer"):
+            results.append({"email": email, "error": "Choose a role: admin, member, or viewer"})
             continue
         existing = await find_by_email(db, email)
         if existing and (await db.execute(select(m.Membership).where(m.Membership.org_id == ctx.org.id, m.Membership.user_id == existing.id))).scalar_one_or_none():
@@ -264,7 +277,13 @@ async def create_invites(org: str, body: dict = Body(...), u: m.User = Depends(r
             continue
         for old in (await db.execute(select(m.Invite).where(m.Invite.org_id == ctx.org.id, m.Invite.email == email.lower(), m.Invite.status == "pending"))).scalars():
             old.status = "revoked"
-        inv = await issue_invite(db, ctx, email, i.get("role") or "member", i.get("workspaceIds") or [], i.get("name"))
+        await db.flush()
+        try:
+            await plans.check_can_add_members(db, ctx.org)
+        except ApiError as e:
+            results.append({"email": email, "error": e.message})
+            continue
+        inv = await issue_invite(db, ctx, email, i["role"], ws_ids, name)
         results.append({"email": email, "invite": invite_view(inv)})
     return results
 
@@ -306,8 +325,9 @@ async def list_links(org: str, u: m.User = Depends(require_user), db: AsyncSessi
 @router.post("/orgs/{org}/invite-links", status_code=201)
 async def create_link(org: str, body: dict = Body(...), u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
     ctx = await org_ctx(db, u, org, "admin")
-    cap = body.get("roleCap") or "member"
-    link = m.InviteLink(id=uuid7(), org_id=ctx.org.id, token=f"link-{secrets.token_urlsafe(12)}", role_cap="admin" if cap == "owner" else cap, expires_at=end_of_days(int(body.get("days") or 7)))
+    cap = body.get("roleCap") if body.get("roleCap") in ("admin", "member", "viewer", "owner") else "member"
+    days = int(clean.number(body.get("days", 7), "days", 1, 90))
+    link = m.InviteLink(id=uuid7(), org_id=ctx.org.id, token=f"link-{secrets.token_urlsafe(12)}", role_cap="admin" if cap == "owner" else cap, expires_at=end_of_days(days))
     db.add(link)
     return link_view(link)
 
@@ -353,29 +373,28 @@ async def accept_invite(token: str, request: Request, response: Response, body: 
     if link and link.expires_at < now():
         fail(410, "invite_unusable", "This invite link has expired")
     org_id = inv.org_id if inv else link.org_id  # type: ignore[union-attr]
-    email = inv.email if inv else str(body.get("email") or "").strip().lower()
+    email = inv.email if inv else (clean.email(body.get("email")) if not user else "").lower()
     if user and inv and user.email.lower() != inv.email:
         fail(409, "wrong_account", f"This invite is for {inv.email}. Sign out and try again.")
     if not user:
         existing = await find_by_email(db, email)
         if existing:
-            if not verify_password(existing.password_hash, str(body.get("password") or "")):
+            pw = body.get("password") if isinstance(body.get("password"), str) else ""
+            if not verify_password(existing.password_hash, pw[:256]):
                 fail(401, "bad_credentials", "Sign in with your existing password to accept")
             user = existing
         else:
-            name = str(body.get("name") or "").strip()
-            if not name:
-                fail(422, "invalid", "Enter your name")
-            if len(str(body.get("password") or "")) < 8:
-                fail(422, "weak_password", "Use at least 8 characters")
-            if not EMAIL_RE.match(email):
-                fail(422, "invalid", "Enter a valid email")
-            user = m.User(id=uuid7(), name=name, email=email, password_hash=hash_password(body["password"]), email_verified_at=now(), timezone=body.get("timezone") or "UTC")
+            name = clean.text(body.get("name"), "name", 200, required=True, label="Your name") or ""
+            pw = clean.password(body.get("password"))
+            # An email invite proves the address (the link was mailed there); a shared join link doesn't.
+            user = m.User(id=uuid7(), name=name, email=email, password_hash=hash_password(pw), email_verified_at=now() if inv else None, timezone=clean.timezone(body.get("timezone")) or "UTC")
             db.add(user)
             await db.flush()
     role = inv.role if inv else link.role_cap  # type: ignore[union-attr]
     ws_ids = list(inv.workspace_ids or []) if inv else []
     mem = (await db.execute(select(m.Membership).where(m.Membership.org_id == org_id, m.Membership.user_id == user.id))).scalar_one_or_none()
+    if not mem or mem.status != "active":
+        await plans.check_can_join(db, await db.get(m.Organization, org_id))
     if mem:
         mem.status = "active"
     else:
@@ -406,17 +425,18 @@ async def list_workspaces(org: str, u: m.User = Depends(require_user), db: Async
 @router.post("/orgs/{org}/workspaces", status_code=201)
 async def create_workspace(org: str, body: dict = Body(...), u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
     ctx = await org_ctx(db, u, org, "admin")
-    name = str(body.get("name") or "").strip()
-    if not name:
-        fail(422, "invalid", "Name the workspace")
+    name = clean.text(body.get("name"), "name", 100, required=True, label="Workspace name") or ""
+    description = clean.text(body.get("description"), "description", 1000, multiline=True)
+    all_members = body.get("allOrgMembers") is True
     base = slugify(name) or "workspace"
     slug, n = base, 2
     while await db.scalar(select(func.count()).select_from(m.Workspace).where(m.Workspace.org_id == ctx.org.id, m.Workspace.slug == slug)):
         slug, n = f"{base}-{n}", n + 1
-    ws = m.Workspace(id=uuid7(), org_id=ctx.org.id, name=name, slug=slug, description=body.get("description"), all_org_members=bool(body.get("allOrgMembers")), created_at=now())
+    await plans.check_can_open_workspace(db, ctx.org, private=not all_members)
+    ws = m.Workspace(id=uuid7(), org_id=ctx.org.id, name=name, slug=slug, description=description, all_org_members=all_members, created_at=now())
     db.add(ws)
     await db.flush()
-    member_ids = {x for x in (parse_uuid(i) for i in body.get("memberIds") or []) if x} | {u.id}
+    member_ids = set(clean.uuid_list(body.get("memberIds"), "memberIds", 1000)) | {u.id}
     in_org = set((await db.execute(select(m.Membership.user_id).where(m.Membership.org_id == ctx.org.id, m.Membership.user_id.in_(member_ids)))).scalars())
     for uid in in_org:
         db.add(m.WorkspaceMember(workspace_id=ws.id, user_id=uid))
@@ -430,13 +450,21 @@ async def patch_workspace(org: str, ws_id: str, body: dict = Body(...), u: m.Use
     if not ws or ws.org_id != ctx.org.id:
         fail(404, "not_found", "Workspace not found")
     if body.get("memberIds") is not None:
-        wanted = {x for x in (parse_uuid(i) for i in body["memberIds"]) if x}
+        wanted = set(clean.uuid_list(body["memberIds"], "memberIds", 1000))
         await db.execute(delete(m.WorkspaceMember).where(m.WorkspaceMember.workspace_id == ws.id))
         in_org = set((await db.execute(select(m.Membership.user_id).where(m.Membership.org_id == ctx.org.id, m.Membership.user_id.in_(wanted)))).scalars())
         for uid in in_org:
             db.add(m.WorkspaceMember(workspace_id=ws.id, user_id=uid))
-    for key, attr in (("name", "name"), ("description", "description"), ("archived", "archived"), ("allOrgMembers", "all_org_members")):
-        if key in body:
+    if ws.archived and body.get("archived") is False:  # reopening counts like creating
+        await plans.check_can_open_workspace(db, ctx.org, private=not body.get("allOrgMembers", ws.all_org_members))
+    elif body.get("allOrgMembers") is False and ws.all_org_members:
+        plans.check_private_allowed(ctx.org)
+    if "name" in body:
+        ws.name = clean.text(body["name"], "name", 100, required=True, label="Workspace name") or ws.name
+    if "description" in body:
+        ws.description = clean.text(body["description"], "description", 1000, multiline=True)
+    for key, attr in (("archived", "archived"), ("allOrgMembers", "all_org_members")):
+        if isinstance(body.get(key), bool):
             setattr(ws, attr, body[key])
     return workspace_view(ws)
 
@@ -455,14 +483,19 @@ async def list_tags(org: str, u: m.User = Depends(require_user), db: AsyncSessio
 @router.post("/orgs/{org}/tags")
 async def create_tag(org: str, response: Response, body: dict = Body(...), u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
     ctx = await org_ctx(db, u, org, "member")
-    clean = re.sub(r"\s+", "-", str(body.get("name") or "").strip().lower())
-    if not clean:
-        fail(422, "invalid", "Tag name can't be empty")
-    existing = (await db.execute(select(m.Tag).where(m.Tag.org_id == ctx.org.id, func.lower(m.Tag.name) == clean))).scalar_one_or_none()
+    tag_name = re.sub(r"\s+", "-", (clean.text(body.get("name"), "name", 50, required=True, label="Tag name") or "").lower())
+    existing = (await db.execute(select(m.Tag).where(m.Tag.org_id == ctx.org.id, func.lower(m.Tag.name) == tag_name))).scalar_one_or_none()
     if existing:
         return tag_view(existing)
     count = await db.scalar(select(func.count()).select_from(m.Tag).where(m.Tag.org_id == ctx.org.id)) or 0
-    tag = m.Tag(id=uuid7(), org_id=ctx.org.id, name=clean, color=TAG_COLORS[count % len(TAG_COLORS)], group_id=parse_uuid(body.get("groupId")))
+    group = await db.get(m.TagGroup, parse_uuid(body.get("groupId"))) if parse_uuid(body.get("groupId")) else None
+    tag = m.Tag(id=uuid7(), org_id=ctx.org.id, name=tag_name, color=TAG_COLORS[count % len(TAG_COLORS)], group_id=group.id if group and group.org_id == ctx.org.id else None)
     db.add(tag)
     response.status_code = 201
     return tag_view(tag)
+
+
+@router.get("/orgs/{org}/plan")
+async def plan(org: str, u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
+    ctx = await org_ctx(db, u, org, "admin")
+    return await plans.plan_view(db, ctx.org)

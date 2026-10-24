@@ -365,6 +365,16 @@ class AssetBlob(Base):
     data: Mapped[bytes] = mapped_column(LargeBinary)
 
 
+class Blob(Base):
+    """Files that aren't org images (profile photos), when STORAGE is Postgres. Keyed like S3."""
+
+    __tablename__ = "blobs"
+    key: Mapped[str] = mapped_column(String(300), primary_key=True)
+    mime: Mapped[str] = mapped_column(String(100))
+    data: Mapped[builtins.bytes] = mapped_column(LargeBinary)
+    created_at: Mapped[dt.datetime] = ts(False, True)
+
+
 class Upload(Base):
     """A pending upload between presign and complete."""
 

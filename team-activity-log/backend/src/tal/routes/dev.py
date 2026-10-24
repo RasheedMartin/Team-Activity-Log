@@ -120,7 +120,8 @@ async def load(request: Request, response: Response, body: dict = Body(...), db:
             for u in users
         ],
     )
-    await bulk(db, m.Organization, [{"id": U(o["id"]), "name": o["name"], "slug": o["slug"]} for o in t.get("orgs", [])])
+    # Demo orgs are on Team, so scenarios aren't held back by Free limits.
+    await bulk(db, m.Organization, [{"id": U(o["id"]), "name": o["name"], "slug": o["slug"], "plan": "team"} for o in t.get("orgs", [])])
     await bulk(
         db,
         m.Workspace,

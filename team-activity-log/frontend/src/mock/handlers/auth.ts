@@ -148,8 +148,31 @@ export const authHandlers = [
       const u = requireUser(cookies);
       const body = (await request.json()) as Partial<Pick<UserRow, "name" | "title" | "bio" | "pronouns" | "timezone" | "avatarUrl">>;
       if (body.name !== undefined && !body.name.trim()) fail(422, "invalid", "Name can't be empty");
-      const allowed = (["name", "title", "bio", "pronouns", "timezone", "avatarUrl"] as const).filter((k) => k in body);
+      const allowed = (["name", "title", "bio", "pronouns", "timezone"] as const).filter((k) => k in body);
       db.t.users.update(u.id, Object.fromEntries(allowed.map((k) => [k, body[k]])));
+      return HttpResponse.json(meResponse(db.t.users.get(u.id)!));
+    }),
+  ),
+  // Profile photo: the real server crops/re-encodes into storage; the mock keeps a data URL.
+  http.put(
+    "/v1/me/avatar",
+    route(async ({ cookies, request }) => {
+      const u = requireUser(cookies);
+      const blob = await request.blob();
+      if (!/^image\/(png|jpeg|gif|webp)$/.test(blob.type)) fail(415, "unsupported_type", "Use a PNG, JPEG, GIF, or WebP image");
+      if (blob.size > 8 * 1024 * 1024) fail(413, "too_large", "Profile photos must be under 8 MB");
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      let bin = "";
+      for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      db.t.users.update(u.id, { avatarUrl: `data:${blob.type};base64,${btoa(bin)}` });
+      return HttpResponse.json(meResponse(db.t.users.get(u.id)!));
+    }),
+  ),
+  http.delete(
+    "/v1/me/avatar",
+    route(({ cookies }) => {
+      const u = requireUser(cookies);
+      db.t.users.update(u.id, { avatarUrl: undefined });
       return HttpResponse.json(meResponse(db.t.users.get(u.id)!));
     }),
   ),

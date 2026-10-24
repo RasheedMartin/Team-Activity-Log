@@ -540,6 +540,16 @@ export interface ImportJob {
   report?: { created: number; skipped: number; warnings: number };
 }
 
+// ---- Plans (docs/PRICING.md; enforced by the server) ----
+
+export interface PlanInfo {
+  plan: "free" | "team" | "business" | "enterprise";
+  name: string;
+  /** null = unlimited */
+  limits: { members: number | null; workspaces: number | null; privateWorkspaces: boolean; storageBytes: number | null; importsPerMonth: number | null };
+  usage: { members: number; pendingInvites: number; workspaces: number; storageBytes: number; importsThisMonth: number };
+}
+
 // ---- Errors & dev ----
 
 export interface ApiErrorBody {

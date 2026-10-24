@@ -93,10 +93,12 @@ def instance_view(i: m.ImageInstance) -> dict:
     )
 
 
-async def image_views(db: AsyncSession, instance_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, dict]:
+async def image_views(db: AsyncSession, instance_ids: Sequence[uuid.UUID], org_id: uuid.UUID) -> dict[uuid.UUID, dict]:
+    """Image instances *of this org*: an id copied from another tenant's post resolves to nothing."""
     if not instance_ids:
         return {}
-    rows = (await db.execute(select(m.ImageInstance, m.Asset).join(m.Asset, m.Asset.id == m.ImageInstance.asset_id).where(m.ImageInstance.id.in_(instance_ids)))).all()
+    q = select(m.ImageInstance, m.Asset).join(m.Asset, m.Asset.id == m.ImageInstance.asset_id).where(m.ImageInstance.id.in_(instance_ids), m.ImageInstance.org_id == org_id, m.Asset.org_id == org_id)
+    rows = (await db.execute(q)).all()
     return {inst.id: {**instance_view(inst), "asset": asset_view(asset)} for inst, asset in rows}
 
 
@@ -169,7 +171,7 @@ async def post_views(db: AsyncSession, posts: Sequence[m.Post]) -> list[dict]:
 async def post_detail(db: AsyncSession, p: m.Post) -> dict:
     [view] = await post_views(db, [p])
     ids = block_image_ids(p.blocks)
-    imgs = await image_views(db, ids)
+    imgs = await image_views(db, ids, p.org_id)
     return {"post": view, "images": [imgs[i] for i in ids if i in imgs]}
 
 

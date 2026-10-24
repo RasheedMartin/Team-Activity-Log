@@ -93,7 +93,8 @@ async def _post_images(db: AsyncSession, posts: list[m.Post]) -> dict[uuid.UUID,
     if ids:
         for inst, asset in await db.execute(select(m.ImageInstance, m.Asset).join(m.Asset, m.Asset.id == m.ImageInstance.asset_id).where(m.ImageInstance.id.in_(ids))):
             found[inst.id] = (inst, asset)
-    return {p.id: [found[i] for i in block_image_ids(p.blocks) if i in found] for p in posts}
+    # Only images of the post's own org (an id pasted from another tenant resolves to nothing).
+    return {p.id: [found[i] for i in block_image_ids(p.blocks) if i in found and found[i][0].org_id == p.org_id and found[i][1].org_id == p.org_id] for p in posts}
 
 
 def _variant(asset: m.Asset, name: str) -> str:

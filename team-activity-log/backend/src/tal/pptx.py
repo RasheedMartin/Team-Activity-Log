@@ -37,7 +37,10 @@ NS = {
     "rel": "http://schemas.openxmlformats.org/package/2006/relationships",
 }
 MIME = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "gif": "image/gif", "svg": "image/svg+xml", "webp": "image/webp"}
-MAX_PARTS = 5000  # zip-bomb guard: a real deck has far fewer parts
+MAX_PARTS = 5000  # zip-bomb guards: a real deck has far fewer parts…
+MAX_UNCOMPRESSED = 1024**3  # …unpacks to well under 1 GB…
+MAX_PART = 200 * 1024**2  # …and no single part (slide XML, picture) is bigger than this
+MAX_RATIO = 200  # compression ratios beyond this are bombs, not slides
 
 
 def q(name: str) -> str:
@@ -103,6 +106,9 @@ class _Package:
             ) from e
         if len(names) > MAX_PARTS:
             raise PptxError("This file has too many parts to be a presentation.")
+        infos = self.zip.infolist()
+        if sum(i.file_size for i in infos) > MAX_UNCOMPRESSED or any(i.file_size > MAX_PART or (i.compress_size and i.file_size / i.compress_size > MAX_RATIO and i.file_size > 10 * 1024**2) for i in infos):
+            raise PptxError("This file unpacks to an unreasonable size, so it can't be imported.")
         self.names = set(names)
 
     def has(self, part: str) -> bool:

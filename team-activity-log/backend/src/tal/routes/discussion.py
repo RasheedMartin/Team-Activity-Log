@@ -11,13 +11,14 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import models as m
+from .. import sanitize as clean
 from ..context import OrgCtx, current_user, org_ctx, require_user, visible_post, ws_ctx
 from ..db import get_db, sessionmaker
 from ..errors import fail
 from ..events import emit, subscribe, unsubscribe
 from ..ids import parse_uuid, uuid7
 from ..outbox import enqueue
-from ..prosemirror import doc_text, empty_doc, mentioned_ids
+from ..prosemirror import doc_text, mentioned_ids
 from ..timeutil import now
 from ..views import comment_view, iso
 
@@ -92,9 +93,9 @@ async def add_comment(org: str, post_id: str, body: dict = Body(...), u: m.User 
         post_id=p.id,
         parent_id=parent_id,
         author_id=u.id,
-        doc=body.get("doc") or empty_doc(),
-        image_instance_ids=[x for x in (parse_uuid(i) for i in body.get("imageInstanceIds") or []) if x],
-        anchor=body.get("anchor"),
+        doc=clean.doc(body.get("doc")),
+        image_instance_ids=clean.uuid_list(body.get("imageInstanceIds"), "imageInstanceIds", 20),
+        anchor=clean.anchor(body.get("anchor")),
         is_question=bool(body.get("isQuestion")),
         resolved=False,
         hidden=False,
@@ -131,7 +132,7 @@ async def edit_comment(org: str, cid: str, body: dict = Body(...), u: m.User = D
         if body.get("version") is not None and body["version"] != c.version:
             fail(409, "version_conflict", "This comment changed. Reload and retry.")
         if "doc" in body and body["doc"] is not None:
-            c.doc, c.edited_at = body["doc"], now()
+            c.doc, c.edited_at = clean.doc(body["doc"]), now()
         if body.get("isQuestion") is not None:
             c.is_question = bool(body["isQuestion"])
         c.version += 1
@@ -183,8 +184,8 @@ def _toggle(reactions: dict, emoji: str, uid: str) -> dict:
 async def react(org: str, body: dict = Body(...), u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
     # Viewers may react (§A2, open question 4: default yes).
     ctx = await org_ctx(db, u, org, "viewer")
-    emoji = str(body.get("emoji") or "")
-    if not emoji or len(emoji) > 16:
+    emoji = body.get("emoji") if isinstance(body.get("emoji"), str) else ""
+    if not emoji or len(emoji) > 16 or any(ch.isspace() or ord(ch) < 32 or ch.isascii() and ch.isalnum() for ch in emoji):
         fail(422, "invalid", "Pick an emoji")
     if body.get("targetType") == "post":
         p = await visible_post(ctx, body.get("targetId"), lock=True)
@@ -240,7 +241,7 @@ async def mark_read(org: str, body: dict = Body(default={}), u: m.User = Depends
     q = update(m.NotificationRow).where(m.NotificationRow.user_id == u.id, m.NotificationRow.org_id == ctx.org.id, m.NotificationRow.read_at.is_(None))
     ids = (body or {}).get("ids")
     if ids is not None:
-        q = q.where(m.NotificationRow.id.in_([x for x in (parse_uuid(i) for i in ids) if x]))
+        q = q.where(m.NotificationRow.id.in_(clean.uuid_list(ids, "ids", 1000)))
     await db.execute(q.values(read_at=now()))
     return Response(status_code=204)
 

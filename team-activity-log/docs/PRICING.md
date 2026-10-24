@@ -1,6 +1,6 @@
 # Pricing (proposal — owner to confirm)
 
-Status: **draft**. Numbers are a starting point to test, not a decision. The landing page reads
+Status: **draft**, with the Free member limit decided (10). Limits are enforced by the backend (`backend/src/tal/plans.py`); billing (upgrading a plan) is not built yet. The landing page reads
 `frontend/src/app/pricing.ts`; the backend enforces limits from `backend/src/tal/plans.py`.
 Keep the two in sync (later: the landing page fetches plans from `GET /v1/plans`).
 
@@ -18,7 +18,7 @@ Keep the two in sync (later: the landing page fetches plans from `GET /v1/plans`
 | | **Free** | **Team** | **Business** | **Enterprise** |
 |---|---|---|---|---|
 | Price | $0 | **$8** /member/mo yearly ($10 monthly) | **$16** /member/mo yearly ($20 monthly) | Custom |
-| Members | up to 5 | unlimited | unlimited | unlimited |
+| Members | up to 10 | unlimited | unlimited | unlimited |
 | Workspaces | 1 | unlimited | unlimited | unlimited |
 | Storage (pooled) | 2 GB | 10 GB / member | 25 GB / member | custom |
 | Import slides | 5 decks / month | unlimited | unlimited | unlimited |
@@ -52,8 +52,22 @@ over-limit orgs become read-only for new uploads until they upgrade or trim).
 - Payment provider: **[OPEN]** Stripe Billing is the default assumption (per-seat prices, customer
   portal, webhooks → `billing_status`).
 
+## Enforcement (built)
+
+Checked where usage grows, never by deleting or hiding anything: an org over a limit keeps
+reading and writing text.
+
+| Limit | Checked when | Counts |
+|---|---|---|
+| Members | sending invites; accepting an invite or join link | active members + pending invites |
+| Workspaces / private workspaces | creating, unarchiving, making private | open (not archived) workspaces |
+| Storage | storing a new image (upload, deck import) | original bytes, each image once per org |
+| Imports per month | starting an import | imports started this calendar month that didn't fail |
+
+Admins see a Plan & usage tab (Organization admin). New orgs start on `NEW_ORG_PLAN` (default
+Free); no grandfathering. Demo scenarios load as Team.
+
 ## Open questions
 
 1. Are viewers billable? (Proposed: yes on Team; free read-only *guests* cover outside collaborators.)
-2. Free-plan limit: 5 members or 10? Labs are often 6–12 people; 5 pushes most real teams to Team.
-3. Per-seat vs flat per-lab pricing for academia (some PIs prefer one fixed annual invoice).
+2. Per-seat vs flat per-lab pricing for academia (some PIs prefer one fixed annual invoice).

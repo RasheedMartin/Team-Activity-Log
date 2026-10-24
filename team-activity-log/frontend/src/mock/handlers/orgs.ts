@@ -314,6 +314,28 @@ export const orgHandlers = [
     }),
   ),
 
+  // ---- plan & usage (the mock has no limits: every org behaves like Team) ----
+  http.get(
+    "/v1/orgs/:org/plan",
+    route(({ cookies, params }) => {
+      const ctx = orgCtx(cookies, params.org as string, "admin");
+      const members = db.t.memberships.filter((m) => m.orgId === ctx.org.id && m.status === "active").length;
+      const storageBytes = db.t.assets.filter((a) => a.orgId === ctx.org.id).reduce((n, a) => n + a.bytes, 0);
+      return HttpResponse.json({
+        plan: "team",
+        name: "Team",
+        limits: { members: null, workspaces: null, privateWorkspaces: true, storageBytes: 10 * 1024 ** 3 * Math.max(1, members), importsPerMonth: null },
+        usage: {
+          members,
+          pendingInvites: db.t.invites.filter((i) => i.orgId === ctx.org.id && i.status === "pending" && i.expiresAt > now()).length,
+          workspaces: db.t.workspaces.filter((w) => w.orgId === ctx.org.id && !w.archived).length,
+          storageBytes,
+          importsThisMonth: db.t.importJobs.filter((j) => j.orgId === ctx.org.id && j.status !== "failed").length,
+        },
+      });
+    }),
+  ),
+
   // ---- tags (Postgres-owned) ----
   http.get(
     "/v1/orgs/:org/tags",

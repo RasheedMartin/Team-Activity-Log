@@ -62,6 +62,45 @@ async def get(db: AsyncSession, asset: m.Asset, variant: str) -> tuple[str, byte
     return (hit.mime, hit.data) if hit else None
 
 
+# ---- arbitrary keys (profile photos and other non-asset files) ----
+
+
+def user_key(*parts: str) -> str:
+    return "/".join([get_settings().s3_prefix, *parts])
+
+
+async def put_key(db: AsyncSession, key: str, mime: str, data: bytes) -> None:
+    if get_settings().storage == "s3":
+        await asyncio.to_thread(_s3().put_object, Bucket=get_settings().s3_bucket, Key=key, Body=data, ContentType=mime)
+        return
+    row = await db.get(m.Blob, key)
+    if row:
+        row.mime, row.data = mime, data
+    else:
+        db.add(m.Blob(key=key, mime=mime, data=data))
+
+
+async def get_key(db: AsyncSession, key: str) -> tuple[str, bytes] | None:
+    if get_settings().storage == "s3":
+        client = _s3()
+        try:
+            obj = await asyncio.to_thread(client.get_object, Bucket=get_settings().s3_bucket, Key=key)
+        except client.exceptions.NoSuchKey:
+            return None
+        return obj.get("ContentType") or "application/octet-stream", await asyncio.to_thread(obj["Body"].read)
+    row = await db.get(m.Blob, key)
+    return (row.mime, row.data) if row else None
+
+
+async def delete_key(db: AsyncSession, key: str) -> None:
+    if get_settings().storage == "s3":
+        await asyncio.to_thread(_s3().delete_object, Bucket=get_settings().s3_bucket, Key=key)
+        return
+    row = await db.get(m.Blob, key)
+    if row:
+        await db.delete(row)
+
+
 async def check() -> str:
     """For `tal check`: confirm the bucket is reachable with these credentials."""
     s = get_settings()

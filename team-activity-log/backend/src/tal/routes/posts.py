@@ -10,12 +10,14 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import models as m
+from .. import sanitize as clean
 from .. import storage
 from ..config import get_settings
-from ..context import OrgCtx, WsCtx, can_edit_post, org_ctx, require_user, visible_post, ws_ctx
+from ..context import OrgCtx, WsCtx, accessible_workspaces, can_edit_post, org_ctx, require_user, visible_post, ws_ctx
 from ..db import get_db
 from ..errors import fail
 from ..events import emit
+from ..httputil import read_limited
 from ..ids import parse_uuid, uuid7
 from ..images import ALLOWED, create_asset
 from ..outbox import enqueue
@@ -87,14 +89,14 @@ async def create_post(org: str, ws: str, body: dict = Body(default={}), u: m.Use
     if ctx.ws.archived:
         fail(409, "archived", "This workspace is archived")
     t = now()
-    blocks = body.get("blocks") or [{"id": str(uuid7()), "type": "text", "doc": empty_doc()}]
+    blocks = clean.blocks(body["blocks"]) if body.get("blocks") else [{"id": str(uuid7()), "type": "text", "doc": empty_doc()}]
     p = m.Post(
         id=uuid7(),
         org_id=ctx.org.id,
         workspace_id=ctx.ws.id,
         author_id=u.id,
-        title=body.get("title") or "",
-        work_date=dt.date.fromisoformat(body["workDate"]) if body.get("workDate") else today(),
+        title=clean.text(body.get("title"), "title", 300) or "",
+        work_date=clean.iso_date(body["workDate"], "workDate") if body.get("workDate") else today(),
         work_date_source="user",
         status="draft",
         visibility="visible",
@@ -109,7 +111,7 @@ async def create_post(org: str, ws: str, body: dict = Body(default={}), u: m.Use
     db.add(p)
     await db.flush()
     if body.get("tagIds"):
-        await set_tags(db, ctx, p, body["tagIds"])
+        await set_tags(db, ctx, p, clean.uuid_list(body["tagIds"], "tagIds", 50))
     return await detail(db, p)
 
 
@@ -127,19 +129,19 @@ async def patch_post(org: str, post_id: str, body: dict = Body(...), u: m.User =
     if p.deleted_at:
         fail(409, "deleted", "This post was deleted")
     if "title" in body:
-        p.title = body["title"] or ""
+        p.title = clean.text(body["title"], "title", 300) or ""
     if "summary" in body:
-        p.summary = body["summary"]
+        p.summary = clean.text(body["summary"], "summary", 2000, multiline=True)
     if body.get("workDate"):
-        p.work_date = dt.date.fromisoformat(body["workDate"])
+        p.work_date = clean.iso_date(body["workDate"], "workDate")
         p.work_date_source = "user"
     if "blocks" in body and body["blocks"] is not None:
-        p.blocks = body["blocks"]
+        p.blocks = clean.blocks(body["blocks"])
         p.image_count = image_count(p.blocks)
     if "tagIds" in body and body["tagIds"] is not None:
-        await set_tags(db, ctx, p, body["tagIds"])
+        await set_tags(db, ctx, p, clean.uuid_list(body["tagIds"], "tagIds", 50))
     if "coAuthorIds" in body and body["coAuthorIds"] is not None:
-        await set_co_authors(db, ctx, p, body["coAuthorIds"])
+        await set_co_authors(db, ctx, p, clean.uuid_list(body["coAuthorIds"], "coAuthorIds", 20))
     if p.status == "published":
         # Rapid edits by the same person coalesce into one revision (§A5).
         last = await db.get(m.PostRevision, (p.id, p.revision))
@@ -166,7 +168,7 @@ async def publish(org: str, post_id: str, body: dict = Body(default={}), u: m.Us
         problems.append("Add a title")
     if not any(b.get("type") == "image" or (b.get("type") in ("text", "table") and not is_doc_empty(b.get("doc"))) for b in p.blocks or []):
         problems.append("Add some text or an image")
-    imgs = await image_views(db, block_image_ids(p.blocks))
+    imgs = await image_views(db, block_image_ids(p.blocks), p.org_id)
     if any(v["asset"]["processing"] == "failed" for v in imgs.values()):
         problems.append("Remove or retry failed uploads")
     if problems:
@@ -195,7 +197,7 @@ async def hide(org: str, post_id: str, body: dict = Body(default={}), u: m.User 
     p = await editable_post(ctx, post_id)
     if p.status != "published":
         fail(409, "not_published", "Only published posts can be hidden")
-    reason = str((body or {}).get("reason") or "").strip() or None
+    reason = clean.text((body or {}).get("reason"), "reason", 500, multiline=True)
     p.visibility, p.hidden_reason, p.hidden_by, p.hidden_at, p.version = "hidden", reason, u.id, now(), p.version + 1
     await changed(db, p)
     return await detail(db, p)
@@ -268,12 +270,13 @@ async def trash(org: str, ws: str, u: m.User = Depends(require_user), db: AsyncS
 @router.post("/orgs/{org}/uploads", status_code=201)
 async def presign(org: str, body: dict = Body(...), u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
     ctx = await org_ctx(db, u, org, "member")
-    mime, size = str(body.get("mime") or ""), int(body.get("bytes") or 0)
+    mime = str(body.get("mime") or "")
+    size = int(clean.number(body.get("bytes", 0), "bytes", 0, 10**12))
     if mime not in ALLOWED:
         fail(415, "unsupported_type", "Only PNG, JPEG, GIF, WebP, and SVG images are supported")
     if size > get_settings().max_upload_bytes:
         fail(413, "too_large", "Images must be under 25 MB")
-    up = m.Upload(id=uuid7(), org_id=ctx.org.id, user_id=u.id, filename=str(body.get("filename") or "image"), mime=mime, bytes=size, source_kind=body.get("sourceKind") or "upload")
+    up = m.Upload(id=uuid7(), org_id=ctx.org.id, user_id=u.id, filename=clean.text(body.get("filename"), "filename", 255) or "image", mime=mime, bytes=size, source_kind=body.get("sourceKind") if body.get("sourceKind") in ("upload", "paste", "screenshot") else "upload")
     db.add(up)
     return {"uploadId": str(up.id), "uploadUrl": f"/v1/orgs/{ctx.org.id}/uploads/{up.id}/data"}
 
@@ -284,20 +287,10 @@ async def upload_data(org: str, upload_id: str, request: Request, u: m.User = De
     up = await db.get(m.Upload, parse_uuid(upload_id)) if parse_uuid(upload_id) else None
     if not up or up.org_id != ctx.org.id or up.user_id != u.id:
         fail(404, "not_found", "Upload not found or expired")
-    data = await _read_limited(request, get_settings().max_upload_bytes, "Images must be under 25 MB")
+    data = await read_limited(request, get_settings().max_upload_bytes, "Images must be under 25 MB")
     up.data = data
     up.bytes = len(data)
     return Response(status_code=200)
-
-
-async def _read_limited(request: Request, limit: int, message: str) -> bytes:
-    chunks, total = [], 0
-    async for chunk in request.stream():
-        total += len(chunk)
-        if total > limit:
-            fail(413, "too_large", message)
-        chunks.append(chunk)
-    return b"".join(chunks)
 
 
 @router.post("/orgs/{org}/uploads/{upload_id}/complete")
@@ -312,6 +305,18 @@ async def complete(org: str, upload_id: str, response: Response, u: m.User = Dep
     return asset_view(asset)
 
 
+async def _asset_visible(ctx: OrgCtx, asset_id: uuid.UUID) -> bool:
+    """Used in a post or comment in a workspace this person can open."""
+    ws_ids = [w.id for w in await accessible_workspaces(ctx, True)]
+    in_post = select(m.ImageInstance.id).join(m.Post, m.Post.id == m.ImageInstance.post_id).where(m.ImageInstance.asset_id == asset_id, m.Post.workspace_id.in_(ws_ids))
+    in_comment = (
+        select(m.ImageInstance.id)
+        .join(m.CommentRow, m.CommentRow.id == m.ImageInstance.comment_id)
+        .where(m.ImageInstance.asset_id == asset_id, m.CommentRow.workspace_id.in_(ws_ids))
+    )
+    return bool(await ctx.db.scalar(select(in_post.union(in_comment).limit(1).subquery().c.id)))
+
+
 @router.get("/orgs/{org}/assets/{asset_id}/{variant}")
 async def serve_asset(org: str, asset_id: str, variant: str, u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
     ctx = await org_ctx(db, u, org)
@@ -319,6 +324,8 @@ async def serve_asset(org: str, asset_id: str, variant: str, u: m.User = Depends
     asset = await db.get(m.Asset, aid) if aid else None
     if not asset or asset.org_id != ctx.org.id:
         fail(404, "not_found", "Image not found")
+    if asset.created_by != u.id and not await _asset_visible(ctx, asset.id):
+        fail(404, "not_found", "Image not found")  # e.g. only used in a private workspace you're not in
     found = await storage.get(db, asset, variant)
     if not found:
         fail(404, "not_found", "Image not found")
@@ -353,7 +360,7 @@ async def create_instance(org: str, body: dict = Body(...), u: m.User = Depends(
     inst = m.ImageInstance(id=uuid7(), org_id=ctx.org.id, asset_id=asset.id, post_id=post_id, comment_id=parse_uuid(body.get("commentId")), tags=[], custom_fields={})
     db.add(inst)
     await db.flush()
-    return (await image_views(db, [inst.id]))[inst.id]
+    return (await image_views(db, [inst.id], ctx.org.id))[inst.id]
 
 
 @router.get("/orgs/{org}/image-instances/{inst_id}")
@@ -362,7 +369,12 @@ async def get_instance(org: str, inst_id: str, u: m.User = Depends(require_user)
     inst = await _instance(ctx, inst_id)
     if inst.post_id:
         await visible_post(ctx, inst.post_id)
-    return (await image_views(db, [inst.id]))[inst.id]
+    elif inst.comment_id:
+        c = await db.get(m.CommentRow, inst.comment_id)
+        if not c or c.org_id != ctx.org.id:
+            fail(404, "not_found", "Image not found")
+        await visible_post(ctx, c.post_id)  # a comment's image is visible where the comment is
+    return (await image_views(db, [inst.id], ctx.org.id))[inst.id]
 
 
 async def _reindex_parent(db: AsyncSession, inst: m.ImageInstance) -> None:
@@ -378,9 +390,16 @@ async def patch_instance(org: str, inst_id: str, body: dict = Body(...), u: m.Us
     inst = await _instance(ctx, inst_id)
     if inst.post_id:
         await editable_post(ctx, str(inst.post_id))
-    for key, attr in (("caption", "caption"), ("altText", "alt_text"), ("figureLabel", "figure_label"), ("tags", "tags"), ("customFields", "custom_fields")):
-        if key in body:
-            setattr(inst, attr, body[key])
+    if "caption" in body:
+        inst.caption = clean.text(body["caption"], "caption", 1000, multiline=True)
+    if "altText" in body:
+        inst.alt_text = clean.text(body["altText"], "altText", 1000, multiline=True)
+    if "figureLabel" in body:
+        inst.figure_label = clean.text(body["figureLabel"], "figureLabel", 50)
+    if "tags" in body:
+        inst.tags = clean.string_list(body["tags"], "tags", 30, 50)
+    if "customFields" in body:
+        inst.custom_fields = clean.custom_fields(body["customFields"])
     if "assetId" in body:
         a = await db.get(m.Asset, parse_uuid(body["assetId"])) if parse_uuid(body["assetId"]) else None
         if not a or a.org_id != ctx.org.id:
@@ -388,7 +407,7 @@ async def patch_instance(org: str, inst_id: str, body: dict = Body(...), u: m.Us
         inst.asset_id = a.id
     await _reindex_parent(db, inst)
     await db.flush()
-    return (await image_views(db, [inst.id]))[inst.id]
+    return (await image_views(db, [inst.id], ctx.org.id))[inst.id]
 
 
 @router.put("/orgs/{org}/image-instances/{inst_id}/annotation")
@@ -402,7 +421,7 @@ async def put_annotation(org: str, inst_id: str, body: dict = Body(...), u: m.Us
     cur = (inst.annotation or {}).get("version", 0)
     if body.get("version") != cur:
         fail(409, "version_conflict", "Someone else changed these annotations. Reload to see their version.")
-    inst.annotation = {"shapes": body.get("shapes") or [], "version": cur + 1}
+    inst.annotation = {"shapes": clean.shapes(body.get("shapes") or []), "version": cur + 1}
     await _reindex_parent(db, inst)
     await db.flush()
-    return (await image_views(db, [inst.id]))[inst.id]
+    return (await image_views(db, [inst.id], ctx.org.id))[inst.id]

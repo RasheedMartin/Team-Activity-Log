@@ -20,6 +20,7 @@ from typing import Any
 
 from ..dates import resolve_range
 from ..query import Node, parse_boolean, positive_needles
+from ..sanitize import FIELD_KEY
 
 GROUPS = ("tag", "author", "imageType", "date", "other")
 FACET_GROUPS = ("tag", "author", "imageType", "date")
@@ -152,7 +153,7 @@ def image_clause(c: dict, today: dt.date) -> dict:
     if f == "image.custom":
         kv = v if isinstance(v, dict) else {}
         key = str(kv.get("key") or "")
-        if not key:
+        if not FIELD_KEY.match(key):  # it becomes part of a field path: no wildcards, dots stay literal-safe
             return MATCH_NONE
         if kv.get("value") is None:
             return {"exists": {"field": f"images.custom.{key}"}}

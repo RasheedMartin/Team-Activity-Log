@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     s3_addressing_style: Literal["auto", "virtual", "path"] = "auto"
     s3_prefix: str = Field(default="tal", description="Key prefix, so several environments can share a bucket.")
 
+    # ---- Plans (docs/PRICING.md; limits in tal/plans.py) ----
+    new_org_plan: Literal["free", "team", "business", "enterprise"] = Field(default="free", description="Plan for newly created organizations (billing upgrades them later).")
+
     # ---- Email: queued in Postgres, delivered by the mailer ----
     email_provider: Literal["log", "resend", "postmark"] = Field(default="log", description="log = don't send (development); messages stay visible on /dev.")
     email_api_key: str | None = None
@@ -86,6 +89,7 @@ class Settings(BaseSettings):
     max_upload_bytes: int = 25 * 1024 * 1024
     max_import_bytes: int = 200 * 1024 * 1024
     log_level: str = "INFO"
+    rate_limit: bool = Field(default=True, description="Rate-limit sign-in endpoints. Off only for automated test runs.")
     frontend_dist: str | None = Field(default=None, description="Path to a built frontend (npm run build) to serve from the same origin.")
 
     @model_validator(mode="after")

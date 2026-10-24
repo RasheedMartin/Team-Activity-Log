@@ -72,7 +72,7 @@ async def build_documents(db: AsyncSession, post_ids: Sequence[uuid.UUID]) -> tu
     for p in live:
         blocks = p.blocks or []
         body = "\n".join(doc_text(b.get("doc")) for b in blocks if b.get("type") in ("text", "table"))
-        imgs = [images[i] for i in block_image_ids(blocks) if i in images]
+        imgs = [images[i] for i in block_image_ids(blocks) if i in images and images[i][0].org_id == p.org_id and images[i][1].org_id == p.org_id]
         cs = comments[p.id]
         img_fields = [image_search_fields(inst, asset) for inst, asset in imgs]
         image_text = "\n".join(

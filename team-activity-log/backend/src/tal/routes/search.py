@@ -9,6 +9,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import models as m
+from .. import sanitize as clean
 from ..context import WsCtx, require_user, ws_ctx
 from ..db import get_db
 from ..errors import fail
@@ -44,7 +45,7 @@ async def guarded(coro):
 @router.post("/orgs/{org}/workspaces/{ws}/search")
 async def search(org: str, ws: str, spec: dict = Body(default={}), u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
     ctx = await ws_ctx(db, u, org, ws)
-    return await guarded(service.search(db, spec or {}, search_ctx(ctx)))
+    return await guarded(service.search(db, clean.filter_spec(spec or {}, "search"), search_ctx(ctx)))
 
 
 @router.get("/orgs/{org}/workspaces/{ws}/explore")
@@ -68,7 +69,7 @@ async def explore(org: str, ws: str, u: m.User = Depends(require_user), db: Asyn
 @router.get("/orgs/{org}/workspaces/{ws}/suggest")
 async def suggest(org: str, ws: str, q: str = "", u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
     ctx = await ws_ctx(db, u, org, ws)
-    q = q.strip().lower()
+    q = (q or "")[:100].strip().lower()
     if not q:
         return {"tags": [], "people": [], "posts": []}
 

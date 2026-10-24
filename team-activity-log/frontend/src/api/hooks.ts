@@ -129,7 +129,20 @@ export function useLogout() {
 }
 
 export const useUpdateProfile = () =>
-  useSetsMe((v: Partial<Pick<User, "name" | "title" | "bio" | "pronouns" | "timezone" | "avatarUrl">>) => patch<MeResponse>("/me", v));
+  useSetsMe((v: Partial<Pick<User, "name" | "title" | "bio" | "pronouns" | "timezone">>) => patch<MeResponse>("/me", v));
+
+/** Profile photo: the server validates, crops, re-encodes, and stores it (S3 in production). */
+export function useProfilePhoto() {
+  const qc = useQueryClient();
+  const onSuccess = (me: MeResponse) => {
+    qc.setQueryData(qk.me, me);
+    qc.invalidateQueries({ queryKey: ["org"] }); // people lists show the new photo
+  };
+  return {
+    upload: useMutation({ mutationFn: (file: Blob) => api<MeResponse>("PUT", "/me/avatar", file), onSuccess }),
+    remove: useMutation({ mutationFn: () => api<MeResponse>("DELETE", "/me/avatar"), onSuccess }),
+  };
+}
 
 export function useUpdatePreferences() {
   const qc = useQueryClient();
@@ -766,6 +779,9 @@ export function useImportAction(orgId: ID, id: ID) {
     },
   });
 }
+
+export const usePlan = (orgId: ID) =>
+  useQuery({ queryKey: ["org", orgId, "plan"], queryFn: ({ signal }) => get<import("./contract").PlanInfo>(`${O(orgId)}/plan`, signal) });
 
 /** Sign-in methods the server has configured (shows the Google button only when it works). */
 export const useAuthProviders = () =>
