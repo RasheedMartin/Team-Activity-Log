@@ -60,7 +60,7 @@ async def start_listener() -> None:
     dsn = s.resolved_database_url.split("://", 1)[1]
     dsn = "postgresql://" + dsn  # asyncpg reads libpq URLs (sslmode included) directly
     try:
-        _conn = await asyncpg.connect(dsn)
+        _conn = await asyncpg.connect(dsn, **({"ssl": s.database_ssl} if s.database_ssl and s.database_ssl != "disable" else {}))
         await _conn.add_listener(CHANNEL, _on_notify)
     except Exception:  # noqa: BLE001
         log.exception("live events listener failed to start; SSE will be silent")
