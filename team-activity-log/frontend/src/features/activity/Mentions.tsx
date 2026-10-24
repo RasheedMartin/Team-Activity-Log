@@ -7,13 +7,13 @@ import { useOrigin } from "../../app/origin";
 import { useWs, wsPath } from "../../app/session";
 import { EmptyState, ErrorState, UserAvatar } from "../../components/ui";
 import { timeAgo } from "../../lib/dates";
-import { InboxPanel } from "./Section";
+import { ActivityPanel } from "./Section";
 
 /** Mentions and replies (§W3.5). Quiet: no push, no red badges — a dot in the rail at most. */
 export default function MentionsTab() {
   const { org, ws } = useWs();
   const q = useNotifications(org.id);
-  const origin = useOrigin("Inbox");
+  const origin = useOrigin("Activity");
   const mark = useMarkRead(org.id);
   const navigate = useNavigate();
   const { data: people = [] } = usePeople(org.id);
@@ -22,9 +22,9 @@ export default function MentionsTab() {
   const list = filter === "unread" ? all.filter((n) => !n.readAt) : all;
   const unread = all.filter((n) => !n.readAt).length;
   return (
-    <InboxPanel
+    <ActivityPanel
       label="Mentions & replies"
-      sub="When someone @mentions you or replies to you in this workspace."
+      sub="@mentions and replies to you."
       actions={
         <Stack direction="row" spacing={1} alignItems="center">
           <ToggleButtonGroup size="small" exclusive value={filter} onChange={(_, v) => v && setFilter(v)} aria-label="Show">
@@ -42,7 +42,7 @@ export default function MentionsTab() {
       ) : q.error ? (
         <ErrorState error={q.error} onRetry={() => q.refetch()} />
       ) : !list.length ? (
-        <EmptyState icon={<InboxOutlined />} title={filter === "unread" ? "You're all caught up" : "Nothing yet"} body="When someone @mentions you or replies to you, it shows up here." />
+        <EmptyState icon={<InboxOutlined />} title={filter === "unread" ? "You're all caught up" : "Nothing yet"} />
       ) : (
         <Paper variant="outlined">
           <List disablePadding>
@@ -83,6 +83,6 @@ export default function MentionsTab() {
           </List>
         </Paper>
       )}
-    </InboxPanel>
+    </ActivityPanel>
   );
 }

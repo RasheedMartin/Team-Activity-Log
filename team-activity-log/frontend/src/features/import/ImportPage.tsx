@@ -1,4 +1,4 @@
-import { CallMergeRounded, CallSplitRounded, CheckCircleRounded, DownloadRounded, ErrorOutlineRounded, UploadFileOutlined, WarningAmberRounded } from "@mui/icons-material";
+import { CallMergeRounded, CallSplitRounded, CheckCircleRounded, DownloadRounded, ErrorOutlineRounded, SearchRounded, UploadFileOutlined, WarningAmberRounded } from "@mui/icons-material";
 import {
   Alert,
   Box,
@@ -32,7 +32,7 @@ import {
   Typography,
 } from "@mui/material";
 import { useEffect, useRef, useState } from "react";
-import { Link as RouterLink, useNavigate, useSearchParams } from "react-router-dom";
+import { Link as RouterLink, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import type { ImportItem, ImportJob, ImportMode } from "../../api/contract";
 import { useImportAction, useImportJob, useStartImport } from "../../api/hooks";
 import { can, useWs, wsPath } from "../../app/session";
@@ -56,12 +56,14 @@ const slideRange = (s: number[]) => (s.length === 1 ? `${s[0]}` : `${s[0]}–${s
 function StartStep({ onStarted }: { onStarted: (job: ImportJob) => void }) {
   const { org, ws } = useWs();
   const start = useStartImport(org.id, ws.id);
-  const [file, setFile] = useState<File | null>(null);
+  // A deck dropped elsewhere in the app arrives in router state.
+  const dropped = (useLocation().state as { file?: File } | null)?.file ?? null;
+  const [file, setFile] = useState<File | null>(dropped);
   const [mode, setMode] = useState<ImportMode>("per_slide");
   const [tagIds, setTagIds] = useState<string[]>([]);
   const [guessDates, setGuessDates] = useState(true);
   const [baseDate, setBaseDate] = useState(todayISO());
-  const [collectionName, setCollectionName] = useState("");
+  const [collectionName, setCollectionName] = useState(dropped?.name.replace(/\.pptx$/i, "") ?? "");
   const [drag, setDrag] = useState(false);
   const pick = (f?: File | null) => {
     if (!f) return;
@@ -331,10 +333,10 @@ function DoneStep({ job, onNew }: { job: ImportJob; onNew: () => void }) {
         <Button variant="contained" disabled={published || act.isPending} onClick={() => act.mutate({ action: "publishAll" }, { onSuccess: () => (setPublished(true), notify("All imported drafts published")) })}>
           {published ? "Published" : "Publish all"}
         </Button>
-        <Button component={RouterLink} to={wsPath(org, ws, "/inbox/drafts")}>Review drafts</Button>
-        {published && <Button component={RouterLink} to={collectionUrl}>Open collection</Button>}
+        <Button component={RouterLink} to={wsPath(org, ws, "/activity/drafts")}>Review drafts</Button>
+        {published && <Button component={RouterLink} to={collectionUrl} startIcon={<SearchRounded />}>Search these slides</Button>}
         <Button startIcon={<DownloadRounded />} onClick={downloadReport}>Download report</Button>
-        <Button onClick={onNew}>Import another deck</Button>
+        <Button onClick={onNew}>Import more slides</Button>
         <Button color="error" onClick={() => setConfirm(true)}>Delete this import</Button>
       </Stack>
       <Dialog open={confirm} onClose={() => setConfirm(false)} maxWidth="xs">
@@ -362,7 +364,7 @@ export default function ImportPage() {
   if (!can(role, "member")) return <EmptyState title="Importing needs member access" />;
   return (
     <Box sx={{ maxWidth: 1100, width: "100%", mx: "auto", px: { xs: 1.5, sm: 3 }, py: 3 }}>
-      <PageHeader title="Import a PowerPoint deck" sub="Turn an old deck into searchable posts. Nothing is published until you say so." />
+      <PageHeader title="Import slides" sub="Every slide becomes a searchable post. Nothing is published until you say so." />
       <Stepper activeStep={step} sx={{ mb: 3, maxWidth: 640 }}>
         {steps.map((s) => (
           <Step key={s}>

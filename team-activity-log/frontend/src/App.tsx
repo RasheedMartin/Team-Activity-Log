@@ -21,10 +21,10 @@ import { SearchPage } from "./features/search/SearchPage";
 
 const ComposerPage = lazy(() => import("./features/posts/ComposerPage"));
 const PostDetailPage = lazy(() => import("./features/posts/PostDetailPage"));
-const InboxPage = lazy(() => import("./features/inbox/InboxPage"));
-const MentionsTab = lazy(() => import("./features/inbox/Mentions"));
-const DraftsTab = lazy(() => import("./features/inbox/Drafts"));
-const RecycleBinTab = lazy(() => import("./features/inbox/RecycleBin"));
+const ActivityPage = lazy(() => import("./features/activity/ActivityPage"));
+const MentionsTab = lazy(() => import("./features/activity/Mentions"));
+const DraftsTab = lazy(() => import("./features/activity/Drafts"));
+const RecycleBinTab = lazy(() => import("./features/activity/RecycleBin"));
 const PresentPage = lazy(() => import("./features/present/PresentPage"));
 const ImportPage = lazy(() => import("./features/import/ImportPage"));
 const AdminPage = lazy(() => import("./features/admin/AdminPage"));
@@ -91,10 +91,11 @@ export function App() {
         <Route path="p/:postId" element={page(<PostDetailPage />)} />
         <Route path="p/:postId/edit" element={page(<ComposerPage />)} />
         <Route path="p/:postId/present" element={page(<PresentPage />)} />
-        {/* Drafts and the recycle bin are Inbox tabs; old links land on them. */}
-        <Route path="drafts" element={<Navigate to="../inbox/drafts" replace relative="path" />} />
-        <Route path="trash" element={<Navigate to="../inbox/recycle-bin" replace relative="path" />} />
-        <Route path="inbox" element={page(<InboxPage />)}>
+        {/* Drafts and the recycle bin are Activity tabs; old links (and the old Inbox) land on them. */}
+        <Route path="drafts" element={<Navigate to="../activity/drafts" replace relative="path" />} />
+        <Route path="trash" element={<Navigate to="../activity/recycle-bin" replace relative="path" />} />
+        <Route path="inbox" element={<Navigate to="../activity" replace relative="path" />} />
+        <Route path="activity" element={page(<ActivityPage />)}>
           <Route index element={page(<MentionsTab />)} />
           <Route path="drafts" element={page(<DraftsTab />)} />
           <Route path="recycle-bin" element={page(<RecycleBinTab />)} />

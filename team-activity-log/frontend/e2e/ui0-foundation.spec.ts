@@ -29,13 +29,12 @@ test("a workspace opens on Home, which leads into Search", async ({ page }) => {
   await openScenario(page, "small", "home");
   await expect(page.getByRole("link", { name: "Home", exact: true })).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("region", { name: "Latest posts" })).toBeVisible();
-  await page.getByLabel("Search all posts").fill("drift");
-  await page.getByRole("button", { name: "Search", exact: true }).click();
-  await expect(page).toHaveURL(/\/search\?q=drift/);
-  await expect(page.getByRole("heading", { name: "Search results" })).toBeVisible();
-  await page.getByRole("link", { name: "Home", exact: true }).click();
+  await expect(page.getByRole("main").getByRole("textbox")).toHaveCount(0); // Home browses; Search searches
   await page.getByRole("link", { name: "See all in Search" }).click();
   await expect(page.getByRole("heading", { name: /All posts/ })).toBeVisible();
+  await page.getByRole("link", { name: "Home", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Latest posts" })).toBeVisible();
   await page.keyboard.press("/");
+  await expect(page).toHaveURL(/\/search$/);
   await expect(page.getByRole("combobox", { name: "Search" })).toBeFocused();
 });

@@ -8,7 +8,7 @@ import { useNotify } from "../../components/notify";
 import { EmptyState, ErrorState } from "../../components/ui";
 import { timeAgo } from "../../lib/dates";
 import { errorMessage } from "../../lib/format";
-import { InboxPanel } from "./Section";
+import { ActivityPanel } from "./Section";
 
 /** Admin view of deleted and hidden posts (§W2.8, §A5), under the name people already know. */
 export default function RecycleBinTab() {
@@ -23,13 +23,13 @@ export default function RecycleBinTab() {
   const rows = [...(trash.data?.deleted ?? []).map((p) => ({ p, kind: "deleted" as const })), ...(trash.data?.hidden ?? []).map((p) => ({ p, kind: "hidden" as const }))];
   if (!isAdmin) return <Navigate to=".." relative="path" replace />;
   return (
-    <InboxPanel label="Recycle bin" sub="Deleted posts can be restored for 30 days, then they're purged. Hidden posts stay until restored.">
+    <ActivityPanel label="Recycle bin" sub="Deleted posts are kept for 30 days.">
       {trash.isPending ? (
         <Skeleton variant="rounded" height={56} />
       ) : trash.error ? (
         <ErrorState error={trash.error} onRetry={() => trash.refetch()} />
       ) : !rows.length ? (
-        <EmptyState icon={<DeleteOutlineRounded />} title="The recycle bin is empty" body="Deleted and hidden posts show up here so you can restore them." />
+        <EmptyState icon={<DeleteOutlineRounded />} title="The recycle bin is empty" />
       ) : (
         <Paper variant="outlined">
           <List disablePadding>
@@ -58,6 +58,6 @@ export default function RecycleBinTab() {
           </List>
         </Paper>
       )}
-    </InboxPanel>
+    </ActivityPanel>
   );
 }

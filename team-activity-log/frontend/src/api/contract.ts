@@ -276,7 +276,7 @@ export interface Notification {
   workspaceId: ID;
   createdAt: ISODateTime;
   readAt?: ISODateTime;
-  /** Hydrated by the server so the inbox renders in one request. */
+  /** Hydrated by the server so Activity renders in one request. */
   postTitle?: string;
   excerpt?: string;
 }

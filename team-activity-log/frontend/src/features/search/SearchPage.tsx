@@ -1,12 +1,12 @@
 import { CheckBoxOutlined, FilterListRounded, GridViewRounded, TableRowsOutlined, ViewListRounded, ZoomInRounded, ZoomOutRounded } from "@mui/icons-material";
-import { Box, Button, Drawer, IconButton, MenuItem, Skeleton, Stack, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography, useMediaQuery, useTheme } from "@mui/material";
+import { Box, Button, Drawer, IconButton, Link, MenuItem, Skeleton, Stack, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography, useMediaQuery, useTheme } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate, useNavigationType, useSearchParams } from "react-router-dom";
+import { Link as RouterLink, useLocation, useNavigate, useNavigationType, useSearchParams } from "react-router-dom";
 import type { Collection, Condition, DateField, FilterGroup, FilterSpec, GalleryImage, ID, Interval, LibraryItem, Post, SearchHit, SearchResponse, Sort } from "../../api/contract";
 import { isFilterGroup } from "../../api/contract";
 import { removeFromOverlay, useCollectionsByIds, useOverlay, usePeople, useSavedView, useSearch, useSearchCounts, useTags } from "../../api/hooks";
-import { useWs, wsPath } from "../../app/session";
+import { can, useWs, wsPath } from "../../app/session";
 import { APP_EVENTS, isTypingTarget, useAppEvent } from "../../app/shortcuts";
 import { useNotify } from "../../components/notify";
 import { EmptyState, ErrorState } from "../../components/ui";
@@ -57,7 +57,7 @@ const SIDEBAR_KEY = "tal.filters-open";
 
 /** The feed and search are the same screen, driven by one URL-serialized FilterSpec (§A3, §W4). */
 export function SearchPage() {
-  const { org, ws, me } = useWs();
+  const { org, ws, me, role } = useWs();
   const theme = useTheme();
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -389,7 +389,7 @@ export function SearchPage() {
                 <ErrorState error={search.error} onRetry={() => search.refetch()} />
               ) : first && first.total === 0 && !hits.length ? (
                 isEmptySpec(spec) ? (
-                  <EmptyState title="No posts yet" body="Press C to write the first one, or import a PowerPoint deck." />
+                  <EmptyState title="No posts yet" body="Press C to write the first one, or import slides from a PowerPoint deck." />
                 ) : (
                   <EmptyState
                     title={view === "gallery" ? "No images match" : "No posts match"}
@@ -408,6 +408,13 @@ export function SearchPage() {
                       ) : (
                         "Nothing matches these filters together. Clear some filters or broaden the date range."
                       )
+                    }
+                    action={
+                      spec.q?.trim() && can(role, "member") ? (
+                        <Typography variant="body2" color="text.secondary">
+                          In a slide deck? <Link component={RouterLink} to={wsPath(org, ws, "/import")}>Import slides</Link>
+                        </Typography>
+                      ) : undefined
                     }
                   />
                 )

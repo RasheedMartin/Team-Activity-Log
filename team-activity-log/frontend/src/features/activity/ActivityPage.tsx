@@ -5,10 +5,10 @@ import { can, useWs, wsPath } from "../../app/session";
 import { PageHeader } from "../../components/ui";
 
 /**
- * Inbox (owner request): one rail entry for what's yours to deal with. Mentions, drafts, and
+ * Activity (owner request): one rail entry for what's yours to deal with. Mentions, drafts, and
  * (admins) the recycle bin are tabs with their own URLs, so links and Back land on the right one.
  */
-export default function InboxPage() {
+export default function ActivityPage() {
   const { org, ws, role } = useWs();
   const isMember = can(role, "member");
   const isAdmin = can(role, "admin");
@@ -17,7 +17,7 @@ export default function InboxPage() {
   const drafts = useDrafts(org.id, ws.id, isMember);
   const trash = useTrash(org.id, ws.id, isAdmin);
 
-  const base = wsPath(org, ws, "/inbox");
+  const base = wsPath(org, ws, "/activity");
   const unread = (notes.data ?? []).filter((n) => n.workspaceId === ws.id && !n.readAt).length;
   const binCount = (trash.data?.deleted.length ?? 0) + (trash.data?.hidden.length ?? 0);
   const count = (n: number) => (n ? ` (${n})` : "");
@@ -30,8 +30,8 @@ export default function InboxPage() {
 
   return (
     <Box sx={{ maxWidth: 860, width: "100%", mx: "auto", px: { xs: 1.5, sm: 3 }, py: 3 }}>
-      <PageHeader title="Inbox" />
-      <Tabs value={current} aria-label="Inbox" variant="scrollable" allowScrollButtonsMobile sx={{ mt: -1, mb: 2.5, borderBottom: 1, borderColor: "divider" }}>
+      <PageHeader title="Activity" />
+      <Tabs value={current} aria-label="Activity" variant="scrollable" allowScrollButtonsMobile sx={{ mt: -1, mb: 2.5, borderBottom: 1, borderColor: "divider" }}>
         {tabs.map((t) => <Tab key={t.to} value={t.to} label={t.label} component={RouterLink} to={t.to} sx={{ textTransform: "none", minHeight: 44 }} />)}
       </Tabs>
       <Outlet />

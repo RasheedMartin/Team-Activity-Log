@@ -36,8 +36,9 @@ export function useShortcuts() {
         navigate(wsPath(org, ws, "/new"));
       } else if (e.key === "/") {
         e.preventDefault();
-        if (!location.pathname.endsWith("/search")) navigate(wsPath(org, ws, "/search"));
-        setTimeout(() => fire(APP_EVENTS.focusSearch), 0);
+        // Already on Search: focus now. Otherwise the box isn't mounted yet, so it focuses itself on arrival.
+        if (location.pathname.endsWith("/search")) fire(APP_EVENTS.focusSearch);
+        else navigate(wsPath(org, ws, "/search"), { state: { focusSearch: true } });
       } else if (e.key === "[") {
         fire(APP_EVENTS.toggleFilters);
       }

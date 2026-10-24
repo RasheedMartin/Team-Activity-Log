@@ -31,13 +31,13 @@ test("back returns to where you came from, with scroll restored, plus an All pos
   await expect.poll(topNow).toBeGreaterThan(before - 8);
   await expect.poll(topNow).toBeLessThan(before + 8);
 
-  // Inbox → post says "Back to Inbox".
-  await page.getByRole("link", { name: "Inbox" }).click();
+  // Activity → post says "Back to Activity".
+  await page.getByRole("link", { name: "Activity" }).click();
   await page.getByRole("button", { name: "All", exact: true }).click();
   const item = page.getByRole("button", { name: /mentioned you|replied/ }).first();
   if (await item.count()) {
     await item.click();
-    await expect(page.getByRole("button", { name: "Back to Inbox" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Back to Activity" })).toBeVisible();
   }
 
   // Direct visit (no history, no origin): back falls back to the feed.

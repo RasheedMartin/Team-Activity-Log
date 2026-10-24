@@ -25,7 +25,7 @@ export function OnboardingChecklist({ hasPosts }: { hasPosts: boolean }) {
   const items = [
     ...(can(role, "admin") ? [{ label: "Invite teammates", done: invited, to: `/o/${org.slug}/admin/members` }] : []),
     { label: "Write your first post", done: hasPosts, to: wsPath(org, ws, "/new") },
-    { label: "Import a PowerPoint deck", done: false, to: wsPath(org, ws, "/import") },
+    { label: "Import slides from PowerPoint", done: false, to: wsPath(org, ws, "/import") },
   ];
   const dismiss = () => {
     try {

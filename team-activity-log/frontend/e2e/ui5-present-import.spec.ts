@@ -11,7 +11,7 @@ const deck = (name: string, real = true) => ({ name, mimeType: PPTX_MIME, buffer
 const EXPECTED_ITEMS: Record<string, number> = { "One post per slide": 8, "One post for the deck": 1, "Group by section": 3 };
 
 async function startImport(page: Page, file: ReturnType<typeof deck>, mode: string) {
-  await page.getByRole("link", { name: "Import deck" }).click();
+  await page.getByRole("complementary").getByRole("link", { name: "Import slides" }).click();
   await page.getByLabel("PowerPoint file").setInputFiles(file);
   await page.getByRole("radio", { name: new RegExp(mode) }).click();
   await page.getByRole("button", { name: "Start import" }).click();
@@ -103,7 +103,7 @@ for (const mode of ["One post per slide", "One post for the deck", "Group by sec
     await expect(page.getByText(new RegExp(`Created ${expected} drafts`))).toBeVisible();
     await page.getByRole("button", { name: "Publish all" }).click();
     await expect(page.getByText("All imported drafts published")).toBeVisible();
-    await page.getByRole("link", { name: "Open collection" }).click();
+    await page.getByRole("link", { name: "Search these slides" }).click();
     await expect(page.locator("[data-post-id]").first()).toBeVisible();
     if (mode === "One post per slide") {
       // Real content from the deck, not canned text: slide 2's caption and picture. (Slide 2's
@@ -130,7 +130,7 @@ test("delete a whole import removes its posts", async ({ page }) => {
   await page.getByRole("button", { name: "Delete this import" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
   await expect(page.getByText("Import deleted")).toBeVisible();
-  await page.getByRole("link", { name: "Inbox" }).click();
+  await page.getByRole("link", { name: "Activity" }).click();
   await page.getByRole("tab", { name: /Drafts/ }).click();
   await expect(page.getByRole("tabpanel", { name: "Drafts" })).toBeVisible();
   await expect(page.getByText("Cooldown overview")).toHaveCount(0);
@@ -141,7 +141,7 @@ test("no duplicate notebooks; back from a post returns to the notebook", async (
   // Explore: first click makes the tag notebook, the second opens the same one.
   await page.getByRole("link", { name: "Home", exact: true }).click();
   const shelf = page.getByRole("region", { name: /^Tag / }).first();
-  await shelf.getByRole("button", { name: "Notebook" }).click();
+  await shelf.getByRole("button", { name: "Create notebook" }).click();
   await expect(page).toHaveURL(/\/notebooks\//);
   const firstUrl = page.url();
   await page.getByRole("link", { name: "Home", exact: true }).click();
@@ -169,7 +169,7 @@ test("no duplicate notebooks; back from a post returns to the notebook", async (
 test("notebook contents land exactly on the entry (reader and continuous)", async ({ page }) => {
   await openScenario(page, "busy");
   await page.getByRole("link", { name: "Home", exact: true }).click();
-  await page.getByRole("region", { name: /^Tag / }).first().getByRole("button", { name: /Notebook/ }).click();
+  await page.getByRole("region", { name: /^Tag / }).first().getByRole("button", { name: /notebook/i }).click();
   await expect(page).toHaveURL(/\/notebooks\//);
   const toc = page.getByRole("navigation", { name: "Contents" }).getByRole("button");
   await expect(toc.nth(10)).toBeVisible();
@@ -193,4 +193,23 @@ test("notebook contents land exactly on the entry (reader and continuous)", asyn
     const top = await page.evaluate((x) => Math.round(document.getElementById(`nb-${x}`)!.getBoundingClientRect().top), id);
     expect(Math.abs(top - 16)).toBeLessThan(4);
   }
+});
+
+test("import slides is easy to find, and a deck dropped anywhere starts an import", async ({ page }) => {
+  await openScenario(page, "small", "home");
+  await expect(page.getByRole("complementary").getByRole("link", { name: "Import slides" })).toBeVisible();
+
+  // Drag a real .pptx over the Home page and drop it.
+  const dt = await page.evaluateHandle(({ bytes, type }) => {
+    const d = new DataTransfer();
+    d.items.add(new File([new Uint8Array(bytes)], "Dropped_Deck.pptx", { type }));
+    return d;
+  }, { bytes: [...FIXTURE], type: PPTX_MIME });
+  await page.dispatchEvent("main", "dragenter", { dataTransfer: dt });
+  await expect(page.getByText("Drop to import slides")).toBeVisible();
+  await page.dispatchEvent("main", "dragover", { dataTransfer: dt });
+  await page.dispatchEvent("main", "drop", { dataTransfer: dt });
+  await expect(page).toHaveURL(/\/import$/);
+  await expect(page.getByText("Dropped_Deck.pptx")).toBeVisible();
+  await expect(page.getByLabel("Collection name")).toHaveValue("Dropped_Deck");
 });

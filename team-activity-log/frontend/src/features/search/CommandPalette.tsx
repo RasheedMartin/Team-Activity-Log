@@ -1,4 +1,4 @@
-import { AddRounded, ArticleOutlined, BookmarkBorderRounded, SearchRounded, SwapHorizRounded } from "@mui/icons-material";
+import { AddRounded, ArticleOutlined, BookmarkBorderRounded, SearchRounded, SlideshowOutlined, SwapHorizRounded } from "@mui/icons-material";
 import { Box, Dialog, InputBase, List, ListItemButton, ListItemIcon, ListItemText, ListSubheader, Typography } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
@@ -48,6 +48,7 @@ export function CommandPalette() {
     const base = wsPath(org, ws);
     const out: Item[] = [];
     if (can(role, "member") && match("new post")) out.push({ id: "new", group: "Actions", label: "New post", hint: "C", icon: <AddRounded />, run: () => navigate(`${base}/new`) });
+    if (can(role, "member") && match("import slides powerpoint deck pptx")) out.push({ id: "import", group: "Actions", label: "Import slides", icon: <SlideshowOutlined />, run: () => navigate(`${base}/import`) });
     if (needle) out.push({ id: "search", group: "Actions", label: `Search for “${q.trim()}”`, icon: <SearchRounded />, run: () => navigate(`${base}/search?${toSearchParams({ q: q.trim() })}`) });
     for (const p of suggest?.posts ?? []) out.push({ id: `p-${p.id}`, group: "Posts", label: p.title, icon: <ArticleOutlined />, run: () => navigate(`${base}/p/${p.id}`) });
     for (const v of (views ?? []).slice(0, 5))

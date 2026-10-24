@@ -4,10 +4,10 @@ import { useNavigate } from "react-router-dom";
 import { useDrafts, usePostAction } from "../../api/hooks";
 import { useWs, wsPath } from "../../app/session";
 import { useNotify } from "../../components/notify";
-import { EmptyState, ErrorState } from "../../components/ui";
+import { EmptyState, ErrorState, Kbd } from "../../components/ui";
 import { timeAgo } from "../../lib/dates";
 import { errorMessage } from "../../lib/format";
-import { InboxPanel } from "./Section";
+import { ActivityPanel } from "./Section";
 
 /** My drafts (§W2.5): private to the author; discard with undo. */
 export default function DraftsTab() {
@@ -23,9 +23,9 @@ export default function DraftsTab() {
       { onSuccess: () => notify(`Discarded “${title || "Untitled"}”`, () => action.mutate({ id, action: "restore" })), onError: (e) => notify(errorMessage(e)) },
     );
   return (
-    <InboxPanel
+    <ActivityPanel
       label="Drafts"
-      sub="Only you can see these. They save as you type."
+      sub="Only you can see these."
       actions={<Button startIcon={<AddRounded />} onClick={() => navigate(wsPath(org, ws, "/new"))}>New post</Button>}
     >
       {drafts.isPending ? (
@@ -33,7 +33,7 @@ export default function DraftsTab() {
       ) : drafts.error ? (
         <ErrorState error={drafts.error} onRetry={() => drafts.refetch()} />
       ) : !list.length ? (
-        <EmptyState icon={<EditNoteRounded />} title="No drafts" body="Press C anywhere to start a post. It's saved as a draft until you publish." />
+        <EmptyState icon={<EditNoteRounded />} title="No drafts" body={<>Press <Kbd>C</Kbd> to start one.</>} />
       ) : (
         <Paper variant="outlined">
           <List disablePadding>
@@ -71,6 +71,6 @@ export default function DraftsTab() {
           </List>
         </Paper>
       )}
-    </InboxPanel>
+    </ActivityPanel>
   );
 }

@@ -1,7 +1,7 @@
 import { ArticleOutlined, CloseRounded, HelpOutlineRounded, HistoryRounded, SearchRounded } from "@mui/icons-material";
 import { Box, ClickAwayListener, IconButton, InputBase, List, ListItemButton, ListItemIcon, ListItemText, ListSubheader, Paper, Popover, Popper, Stack, Typography } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import type { FilterSpec, Tag, User } from "../../api/contract";
 import { useSuggest } from "../../api/hooks";
 import { useWs, wsPath } from "../../app/session";
@@ -93,6 +93,10 @@ export function SearchBar({ spec, setSpec, tags, people }: Props) {
   }, [lastWord]);
 
   useAppEvent(APP_EVENTS.focusSearch, useCallback(() => inputRef.current?.focus(), []));
+  const arrivedToType = !!(useLocation().state as { focusSearch?: boolean } | null)?.focusSearch;
+  useEffect(() => {
+    if (arrivedToType) inputRef.current?.focus();
+  }, [arrivedToType]);
   const { data: sug } = useSuggest(org.id, ws.id, open && !/:/.test(debounced) ? debounced : "");
   const parsed = useMemo(() => parseBoolean(text), [text]);
 

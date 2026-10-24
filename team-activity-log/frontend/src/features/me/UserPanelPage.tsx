@@ -152,7 +152,7 @@ function PreferencesTab() {
         ))}
         {row("Keyboard shortcuts", "C new post · / search · J/K move · [ filters · ⌘K palette", <Switch checked={p.shortcuts} onChange={(e) => set("shortcuts", e.target.checked)} inputProps={{ "aria-label": "Keyboard shortcuts" }} />)}
         {row("Reduce motion", "Turn off animations", <Switch checked={p.reducedMotion} onChange={(e) => set("reducedMotion", e.target.checked)} inputProps={{ "aria-label": "Reduce motion" }} />)}
-        {row("Email digest", "Mentions and replies always show in your Inbox", (
+        {row("Email digest", "Mentions and replies always show in Activity", (
           <ToggleButtonGroup size="small" exclusive value={p.digest} onChange={(_, v) => v && set("digest", v)} aria-label="Digest">
             <ToggleButton value="off">Off</ToggleButton>
             <ToggleButton value="daily">Daily</ToggleButton>
@@ -219,7 +219,7 @@ function ActivityTab() {
   // "My activity" views are ordinary search FilterSpecs (§B8), so they reuse the search screen.
   const views: { label: string; icon: ReactNode; spec?: FilterSpec; to?: string }[] = [
     { label: "My posts", icon: <ArticleOutlined />, spec: { all: [{ field: "mine", op: "eq", value: true }] } },
-    { label: "My drafts", icon: <EditNoteRounded />, to: wsPath(target.org, target.ws, "/inbox/drafts") },
+    { label: "My drafts", icon: <EditNoteRounded />, to: wsPath(target.org, target.ws, "/activity/drafts") },
     { label: "Posts I commented on", icon: <ChatBubbleOutlineRounded />, spec: { all: [{ field: "iCommented", op: "eq", value: true }], sort: "recentActivity" } },
     { label: "Posts I reacted to", icon: <EmojiEmotionsOutlined />, spec: { all: [{ field: "iReacted", op: "eq", value: true }] } },
     { label: "Posts that mention me", icon: <AlternateEmailRounded />, spec: { all: [{ field: "mentionsMe", op: "eq", value: true }] } },

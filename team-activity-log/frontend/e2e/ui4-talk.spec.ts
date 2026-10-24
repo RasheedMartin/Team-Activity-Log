@@ -16,9 +16,9 @@ async function openDeepThread(page: Page) {
   await expect(page.getByRole("heading", { name: /Discussion/ })).toBeVisible();
 }
 
-// §W3 done-when: two personas converse live in a deep thread, mention each other, see Inbox
+// §W3 done-when: two personas converse live in a deep thread, mention each other, see Activity
 // items, and resolve a question; viewers can only react; hidden posts' threads are read-only.
-test("v3 Talk About It: live deep thread, mention, inbox, resolve", async ({ page, context }) => {
+test("v3 Talk About It: live deep thread, mention, activity, resolve", async ({ page, context }) => {
   await openScenario(page, "small");
   await openDeepThread(page);
   const postUrl = page.url();
@@ -51,10 +51,10 @@ test("v3 Talk About It: live deep thread, mention, inbox, resolve", async ({ pag
   await question.getByRole("button", { name: "Mark resolved" }).first().click();
   await expect(question.getByText("Resolved").first()).toBeVisible();
 
-  // Dana's inbox has the mention.
+  // Dana's Activity has the mention.
   await signInAs(page, "Dana Okafor");
   await page.reload(); // a real sign-in starts a fresh client cache
-  await page.getByRole("link", { name: "Inbox" }).click();
+  await page.getByRole("link", { name: "Activity" }).click();
   await expect(page.getByText(/Marcus Lindqvist mentioned you/)).toBeVisible();
   await page.getByText(/Marcus Lindqvist mentioned you/).click();
   await expect(page).toHaveURL(/#comment-/);

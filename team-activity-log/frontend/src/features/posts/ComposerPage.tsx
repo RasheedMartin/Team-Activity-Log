@@ -282,7 +282,7 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
   const discardDraft = () =>
     action.mutate(
       { id: post.id, action: "delete" },
-      { onSuccess: () => (navigate(wsPath(org, ws, "/inbox/drafts")), notify("Draft discarded", () => action.mutate({ id: post.id, action: "restore" }))) },
+      { onSuccess: () => (navigate(wsPath(org, ws, "/activity/drafts")), notify("Draft discarded", () => action.mutate({ id: post.id, action: "restore" }))) },
     );
   const reloadLatest = () => {
     qc.invalidateQueries({ queryKey: qk.post(orgId, post.id) }).then(() => {
@@ -336,7 +336,7 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
       {/* Top bar */}
       <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 2, py: 1, borderBottom: 1, borderColor: "divider", bgcolor: "background.paper", position: "sticky", top: 0, zIndex: 4 }}>
         <Tooltip title="Back">
-          <IconButton onClick={() => navigate(isDraft ? wsPath(org, ws, "/inbox/drafts") : wsPath(org, ws, `/p/${post.id}`))} aria-label="Back">
+          <IconButton onClick={() => navigate(isDraft ? wsPath(org, ws, "/activity/drafts") : wsPath(org, ws, `/p/${post.id}`))} aria-label="Back">
             <ArrowBackRounded />
           </IconButton>
         </Tooltip>

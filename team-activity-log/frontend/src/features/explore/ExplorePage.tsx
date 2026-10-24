@@ -1,5 +1,5 @@
-import { ArrowForwardRounded, ChatBubbleOutlineRounded, GridViewRounded, ImageOutlined, MenuBookOutlined, SearchRounded, SlideshowRounded } from "@mui/icons-material";
-import { Box, Button, ButtonBase, Chip, InputBase, Paper, Skeleton, Stack, Typography } from "@mui/material";
+import { ArrowForwardRounded, ChatBubbleOutlineRounded, GridViewRounded, ImageOutlined, MenuBookOutlined, SlideshowRounded } from "@mui/icons-material";
+import { Box, Button, ButtonBase, Chip, Skeleton, Stack, Typography } from "@mui/material";
 import { useMemo, useState } from "react";
 import { Link as RouterLink, useNavigate, useSearchParams } from "react-router-dom";
 import type { ExploreShelf, FilterSpec, User } from "../../api/contract";
@@ -9,7 +9,7 @@ import { collectPostIds, useCreateCollection, useExplore, usePeople } from "../.
 import { useNotify } from "../../components/notify";
 import { errorMessage } from "../../lib/format";
 import { useWs, wsPath } from "../../app/session";
-import { EmptyState, ErrorState, Kbd, TagDot, UserAvatar } from "../../components/ui";
+import { EmptyState, ErrorState, TagDot, UserAvatar } from "../../components/ui";
 import { formatDay, timeAgo } from "../../lib/dates";
 import { toSearchParams, toggleFacetValue } from "../../lib/filterSpec";
 import { useOrigin } from "../../app/origin";
@@ -137,7 +137,7 @@ function Shelf({ shelf, onSlideshow }: { shelf: ExploreShelf; onSlideshow: () =>
             <Button size="small" startIcon={<GridViewRounded />} component={RouterLink} to={searchUrl("gallery")}>Gallery</Button>
           </>
         )}
-        <Button size="small" startIcon={<MenuBookOutlined />} onClick={makeNotebook} disabled={making}>{shelf.notebookId ? "Open notebook" : "Notebook"}</Button>
+        <Button size="small" startIcon={<MenuBookOutlined />} onClick={makeNotebook} disabled={making}>{shelf.notebookId ? "Open notebook" : "Create notebook"}</Button>
         <Button size="small" endIcon={<ArrowForwardRounded />} component={RouterLink} to={searchUrl()}>All posts</Button>
       </Stack>
       <Box sx={{ display: "flex", gap: 1.5, overflowX: "auto", scrollSnapType: "x mandatory", pb: 1 }} role="list" aria-label={`Posts tagged ${shelf.tag.name}`}>
@@ -178,40 +178,23 @@ function LatestShelf({ posts, origin }: { posts: ExploreShelf["posts"]; origin: 
 }
 
 /**
- * Home (owner request): discovery first. A search box and the latest posts lead into Search;
- * tag shelves below are for browsing when you don't know what to look for.
+ * Home (owner request): browse, don't search. Latest posts lead into Search (rail, or /);
+ * tag shelves below are for when you don't know what to look for.
  */
 export default function ExplorePage() {
-  const { org, ws, me } = useWs();
-  const navigate = useNavigate();
+  const { org, ws } = useWs();
   const q = useExplore(org.id, ws.id);
   const [params, setParams] = useSearchParams();
   const [group, setGroup] = useState<string>("All");
-  const [text, setText] = useState("");
   const origin = useOrigin("Home");
   const slideTag = params.get("slideshow");
   const groups = useMemo(() => ["All", ...new Set((q.data?.shelves ?? []).map((s) => s.groupName ?? "Other"))], [q.data]);
   const shelves = (q.data?.shelves ?? []).filter((s) => group === "All" || s.groupName === group);
   const slideShelf = q.data?.shelves.find((s) => s.tag.id === slideTag);
-  const search = () => navigate(`${wsPath(org, ws, "/search")}${text.trim() ? `?${toSearchParams({ q: text.trim() })}` : ""}`);
 
   return (
     <Box sx={{ maxWidth: 1180, width: "100%", mx: "auto", px: { xs: 1.5, sm: 3 }, py: 3 }}>
-      <Typography variant="h1" sx={{ mb: 0.5 }}>{ws.name}</Typography>
-      <Typography color="text.secondary" sx={{ mb: 2 }}>Welcome back, {me.user.name.split(" ")[0]}. Search everything, or browse what's new.</Typography>
-      <Paper
-        component="form"
-        variant="outlined"
-        onSubmit={(e) => (e.preventDefault(), search())}
-        sx={{ display: "flex", alignItems: "center", gap: 1, px: 1.5, py: 0.75, mb: 1, borderRadius: 2, maxWidth: 760, "&:focus-within": { borderColor: "primary.main", boxShadow: (t) => `0 0 0 1px ${t.palette.primary.main}` } }}
-      >
-        <SearchRounded sx={{ color: "text.secondary" }} />
-        <InputBase fullWidth value={text} onChange={(e) => setText(e.target.value)} placeholder="Search all posts, comments, image text…" inputProps={{ "aria-label": "Search all posts" }} sx={{ fontSize: "1rem" }} />
-        <Button type="submit" variant="contained" size="small">Search</Button>
-      </Paper>
-      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
-        Tip: <Kbd>/</Kbd> opens Search from anywhere. Try <code>drift OR noise</code> or <code>tag:calibration</code>.
-      </Typography>
+      <Typography variant="h1" sx={{ mb: 1 }}>{ws.name}</Typography>
 
       {q.isPending ? (
         <Stack spacing={3} sx={{ mt: 2 }}>
@@ -230,7 +213,7 @@ export default function ExplorePage() {
           {q.data.latest.length > 0 ? (
             <LatestShelf posts={q.data.latest} origin={origin} />
           ) : (
-            <EmptyState icon={<ImageOutlined />} title="Nothing here yet" body="Press C to write the first post, or import a PowerPoint deck." />
+            <EmptyState icon={<ImageOutlined />} title="Nothing here yet" body="Press C to write the first post, or import slides from a PowerPoint deck." />
           )}
           {(q.data.shelves.length > 0) && (
             <>
