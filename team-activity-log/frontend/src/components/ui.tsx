@@ -45,23 +45,26 @@ export function TagChip({
   onDelete?: (event: React.SyntheticEvent) => void;
   onClick?: () => void;
   excluded?: boolean;
-  size?: "small" | "medium";
+  size?: "small" | "medium" | "large";
 }) {
   const theme = useTheme();
+  const large = size === "large";
   return (
     <Chip
-      size={size}
+      size={size === "small" ? "small" : "medium"}
       label={tag.name}
       onDelete={onDelete}
       onClick={onClick}
       sx={{
-        height: size === "small" ? 20 : 24,
-        fontSize: "0.72rem",
+        height: size === "small" ? 20 : large ? 34 : 24,
+        fontSize: large ? "1.05rem" : "0.72rem",
+        fontWeight: large ? 600 : 500,
+        borderRadius: large ? 1.5 : 1,
         fontFamily: "'IBM Plex Mono', monospace",
         bgcolor: tint(tag.color, theme.palette.mode),
         color: theme.palette.mode === "light" ? tag.color : theme.palette.getContrastText(theme.palette.background.paper),
         textDecoration: excluded ? "line-through" : undefined,
-        "& .MuiChip-label": { px: 0.75 },
+        "& .MuiChip-label": { px: large ? 1.5 : 0.75 },
         "& .MuiChip-deleteIcon": { fontSize: 14, color: "inherit", opacity: 0.6 },
       }}
     />

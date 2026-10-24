@@ -96,3 +96,23 @@ test("hidden posts have read-only threads", async ({ page }) => {
   await expect(page.getByText("This post is hidden, so its discussion is read-only.")).toBeVisible();
   await expect(page.getByRole("textbox", { name: /Add a comment/ })).toHaveCount(0);
 });
+
+test("threads collapse and expand (chevron, thread line, collapse all)", async ({ page }) => {
+  await openScenario(page, "small");
+  await openDeepThread(page);
+  const root = page.locator("[id^=comment-]").filter({ hasText: "Why is the drift larger on the east side?" }).first();
+  await root.getByRole("button", { name: "Collapse thread" }).first().click();
+  await expect(page.getByText(/\d+ replies hidden/).first()).toBeVisible();
+  await expect(page.getByText("Probably the cold head is closer there.")).toHaveCount(0);
+  await page.getByRole("button", { name: /Expand thread/ }).first().click();
+  await expect(page.getByText("Probably the cold head is closer there.")).toBeVisible();
+  // The thread line itself collapses a branch.
+  await page.getByRole("button", { name: /Collapse replies to/ }).first().click();
+  await expect(page.getByText(/repl(y|ies) hidden/).first()).toBeVisible();
+  await page.getByRole("button", { name: /Expand thread/ }).first().click();
+  // Collapse all / Expand all.
+  await page.getByRole("button", { name: "Collapse all" }).click();
+  await expect(page.getByText("Probably the cold head is closer there.")).toHaveCount(0);
+  await page.getByRole("button", { name: "Expand all" }).click();
+  await expect(page.getByText("Probably the cold head is closer there.")).toBeVisible();
+});

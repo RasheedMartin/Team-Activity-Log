@@ -37,7 +37,7 @@ function Shelf({ shelf, onSlideshow, onImage }: { shelf: ExploreShelf; onSlidesh
   return (
     <Box component="section" aria-label={`Tag ${shelf.tag.name}`} sx={{ py: 2, borderBottom: 1, borderColor: "divider" }}>
       <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1.25, flexWrap: "wrap", rowGap: 1 }}>
-        <TagChip tag={shelf.tag} size="medium" onClick={() => navigate(searchUrl())} />
+        <TagChip tag={shelf.tag} size="large" onClick={() => navigate(searchUrl())} />
         <Typography variant="body2" color="text.secondary">
           {shelf.count.toLocaleString()} post{shelf.count === 1 ? "" : "s"}
           {shelf.imageCount > 0 && ` · ${shelf.imageCount.toLocaleString()} image${shelf.imageCount === 1 ? "" : "s"}`} · active {timeAgo(shelf.lastActivity)}

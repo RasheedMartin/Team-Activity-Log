@@ -1,7 +1,7 @@
 import {
   ArrowBackRounded,
   CheckCircleRounded,
-  ExpandLessRounded,
+  ChevronRightRounded,
   ExpandMoreRounded,
   HelpOutlineRounded,
   LinkRounded,
@@ -9,9 +9,11 @@ import {
   PlaceOutlined,
   ReplyRounded,
   SouthRounded,
+  UnfoldLessRounded,
+  UnfoldMoreRounded,
   VisibilityOffOutlined,
 } from "@mui/icons-material";
-import { Alert, Box, Button, Chip, IconButton, Menu, MenuItem, Skeleton, Stack, Typography } from "@mui/material";
+import { Alert, Box, Button, ButtonBase, Chip, IconButton, Menu, MenuItem, Skeleton, Stack, Typography } from "@mui/material";
 import { useEffect, useMemo, useState } from "react";
 import type { Comment, ID, ImageView, Post, User } from "../../api/contract";
 import { useAddComment, useCommentAction, useComments, useImage, usePeople } from "../../api/hooks";
@@ -21,6 +23,7 @@ import { RichText } from "../../components/RichText";
 import { ErrorState, StatusPill, UserAvatar } from "../../components/ui";
 import { timeAgo } from "../../lib/dates";
 import { errorMessage } from "../../lib/format";
+import { docText } from "../../lib/prosemirror";
 import { CommentEditor } from "./CommentEditor";
 import { ReactionBar } from "./ReactionBar";
 import { flashElement, pinNumbers } from "./threads";
@@ -71,6 +74,40 @@ function CommentItem({ c, depth, ctx }: { c: Comment; depth: number; ctx: Ctx })
   const optimistic = c.id.startsWith("optimistic-");
   const run = (p: Promise<unknown>, done?: string) => p.then(() => done && notify(done)).catch((e) => notify(errorMessage(e)));
 
+  const collapsed = ctx.collapsed.has(c.id);
+  const hiddenCount = countDescendants(c.id, ctx.byParent);
+  const toggleButton = kids.length > 0 && (
+    <IconButton
+      size="small"
+      onClick={(e) => {
+        e.stopPropagation(); // the collapsed summary row toggles too
+        ctx.toggle(c.id);
+      }}
+      aria-expanded={!collapsed}
+      aria-label={collapsed ? `Expand thread (${hiddenCount} ${hiddenCount === 1 ? "reply" : "replies"})` : "Collapse thread"}
+      sx={{ p: 0.25, color: "text.secondary" }}
+    >
+      {collapsed ? <ChevronRightRounded sx={{ fontSize: 18 }} /> : <ExpandMoreRounded sx={{ fontSize: 18 }} />}
+    </IconButton>
+  );
+
+  if (collapsed)
+    return (
+      <Box id={`comment-${c.id}`} sx={{ scrollMarginTop: 80 }}>
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ py: 0.75, px: 1, borderRadius: 1, cursor: "pointer", "&:hover": { bgcolor: "action.hover" } }} onClick={() => ctx.toggle(c.id)}>
+          {toggleButton}
+          <UserAvatar user={author} size={20} />
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>{author?.name ?? "Someone"}</Typography>
+          <Typography variant="body2" color="text.secondary" noWrap sx={{ flex: 1, minWidth: 0 }}>
+            {c.deletedAt ? "deleted" : docText(c.doc).slice(0, 80)}
+          </Typography>
+          <Typography variant="caption" color="primary" sx={{ flexShrink: 0, fontWeight: 600 }}>
+            {hiddenCount} {hiddenCount === 1 ? "reply" : "replies"} hidden
+          </Typography>
+        </Stack>
+      </Box>
+    );
+
   return (
     <Box id={`comment-${c.id}`} sx={{ position: "relative", scrollMarginTop: 80 }}>
       <Stack direction="row" spacing={1.25} sx={{ py: 1, px: 1, borderRadius: 1, bgcolor: fresh ? "action.selected" : isAccepted ? "rgba(26,127,55,0.06)" : "transparent", transition: "background-color 1.5s", opacity: optimistic ? 0.65 : 1 }}>
@@ -78,6 +115,7 @@ function CommentItem({ c, depth, ctx }: { c: Comment; depth: number; ctx: Ctx })
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: "wrap", rowGap: 0.25 }}>
             <Typography variant="body2" sx={{ fontWeight: 600 }}>{author?.name ?? "Someone"}</Typography>
+            {toggleButton}
             <Typography variant="caption" color="text.secondary" title={new Date(c.createdAt).toLocaleString()}>{optimistic ? "sending…" : timeAgo(c.createdAt)}</Typography>
             {c.editedAt && !c.deletedAt && <StatusPill status="edited" />}
             {c.isQuestion && (
@@ -175,24 +213,19 @@ function CommentItem({ c, depth, ctx }: { c: Comment; depth: number; ctx: Ctx })
         </Box>
       </Stack>
       {kids.length > 0 && (
-        <Box sx={{ ml: 2.5, pl: 1.5, borderLeft: 2, borderColor: "divider" }}>
+        <Box sx={{ position: "relative", ml: 2.5, pl: 2 }}>
+          {/* The thread line is a button: click it to collapse this branch (like Reddit). */}
+          <ButtonBase
+            onClick={() => ctx.toggle(c.id)}
+            aria-label={`Collapse replies to ${author?.name ?? "comment"}`}
+            sx={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 12, display: "flex", justifyContent: "center", "&::before": { content: '""', width: 2, height: "100%", bgcolor: "divider", transition: "background-color 120ms" }, "&:hover::before, &:focus-visible::before": { bgcolor: "primary.main" } }}
+          />
           {depth + 1 >= MAX_DEPTH ? (
             <Button size="small" onClick={() => ctx.setFocusRoot(c.id)} sx={{ my: 0.5 }}>
-              Continue thread → ({countDescendants(c.id, ctx.byParent)} {countDescendants(c.id, ctx.byParent) === 1 ? "reply" : "replies"})
-            </Button>
-          ) : ctx.collapsed.has(c.id) ? (
-            <Button size="small" startIcon={<ExpandMoreRounded />} onClick={() => ctx.toggle(c.id)} sx={{ my: 0.25, color: "text.secondary" }}>
-              Show {countDescendants(c.id, ctx.byParent)} {countDescendants(c.id, ctx.byParent) === 1 ? "reply" : "replies"}
+              Continue thread → ({hiddenCount} {hiddenCount === 1 ? "reply" : "replies"})
             </Button>
           ) : (
-            <>
-              {kids.length > 1 && (
-                <Button size="small" startIcon={<ExpandLessRounded />} onClick={() => ctx.toggle(c.id)} sx={{ color: "text.disabled", fontSize: "0.72rem", minHeight: 0, py: 0 }}>
-                  Collapse
-                </Button>
-              )}
-              {kids.map((k) => <CommentItem key={k.id} c={k} depth={depth + 1} ctx={ctx} />)}
-            </>
+            kids.map((k) => <CommentItem key={k.id} c={k} depth={depth + 1} ctx={ctx} />)
           )}
         </Box>
       )}
@@ -269,6 +302,8 @@ export function ThreadView({ post, images, focusComment, onPinClick }: { post: P
     onPinClick,
   };
   const focusNode = focusRoot ? comments.find((c) => c.id === focusRoot) : null;
+  const withReplies = roots.filter((r) => (byParent.get(r.id) ?? []).length > 0).map((r) => r.id);
+  const allCollapsed = withReplies.length > 0 && withReplies.every((id) => collapsed.has(id));
 
   return (
     <Box component="section" aria-labelledby="discussion-title">
@@ -276,6 +311,11 @@ export function ThreadView({ post, images, focusComment, onPinClick }: { post: P
         <Typography id="discussion-title" variant="h3" sx={{ flex: 1 }}>
           Discussion {live > 0 && <Typography component="span" color="text.secondary">({live})</Typography>}
         </Typography>
+        {withReplies.length > 0 && (
+          <Button size="small" startIcon={allCollapsed ? <UnfoldMoreRounded /> : <UnfoldLessRounded />} onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(withReplies))} sx={{ color: "text.secondary" }}>
+            {allCollapsed ? "Expand all" : "Collapse all"}
+          </Button>
+        )}
         {latest && live > 3 && (
           <Button size="small" startIcon={<SouthRounded />} onClick={() => reveal(latest.id)}>
             Jump to latest
