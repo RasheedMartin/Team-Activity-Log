@@ -1,11 +1,11 @@
 import { ArrowForwardRounded, GridViewRounded, ImageOutlined, SlideshowRounded } from "@mui/icons-material";
 import { Box, Button, ButtonBase, Chip, Skeleton, Stack, Typography } from "@mui/material";
 import { useMemo, useState } from "react";
-import { Link as RouterLink, useNavigate, useSearchParams } from "react-router-dom";
+import { Link as RouterLink, useSearchParams } from "react-router-dom";
 import type { ExploreShelf, FilterSpec, GalleryImage } from "../../api/contract";
 import { useExplore, usePeople } from "../../api/hooks";
 import { useWs, wsPath } from "../../app/session";
-import { EmptyState, ErrorState, PageHeader, TagChip } from "../../components/ui";
+import { EmptyState, ErrorState, PageHeader, TagDot } from "../../components/ui";
 import { formatDay, timeAgo } from "../../lib/dates";
 import { toSearchParams, toggleFacetValue } from "../../lib/filterSpec";
 import { GalleryViewer } from "../search/Results";
@@ -30,15 +30,19 @@ function Tile({ img, onOpen }: { img: GalleryImage; onOpen: () => void }) {
 
 function Shelf({ shelf, onSlideshow, onImage }: { shelf: ExploreShelf; onSlideshow: () => void; onImage: (img: GalleryImage) => void }) {
   const { org, ws } = useWs();
-  const navigate = useNavigate();
   const { data: people = [] } = usePeople(org.id);
   const searchUrl = (view?: "gallery") => `${wsPath(org, ws, "/search")}?${toSearchParams({ ...toggleFacetValue({}, "tag", shelf.tag.id, "include"), view })}`;
   const postsWithoutImages = shelf.posts.filter((p) => !p.thumbUrl).slice(0, 6);
   return (
     <Box component="section" aria-label={`Tag ${shelf.tag.name}`} sx={{ py: 2, borderBottom: 1, borderColor: "divider" }}>
       <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1.25, flexWrap: "wrap", rowGap: 1 }}>
-        <TagChip tag={shelf.tag} size="large" onClick={() => navigate(searchUrl())} />
+        {/* The tag is the shelf's heading: a color dot for identity, the name at heading weight. */}
+        <Stack direction="row" spacing={1} alignItems="center" component={RouterLink} to={searchUrl()} sx={{ color: "text.primary", textDecoration: "none", "&:hover h2": { textDecoration: "underline", textUnderlineOffset: 3 } }}>
+          <TagDot color={shelf.tag.color} size={10} />
+          <Typography component="h2" sx={{ fontSize: "1.15rem", fontWeight: 600, letterSpacing: "-0.01em" }}>{shelf.tag.name}</Typography>
+        </Stack>
         <Typography variant="body2" color="text.secondary">
+          {shelf.groupName && `${shelf.groupName} · `}
           {shelf.count.toLocaleString()} post{shelf.count === 1 ? "" : "s"}
           {shelf.imageCount > 0 && ` · ${shelf.imageCount.toLocaleString()} image${shelf.imageCount === 1 ? "" : "s"}`} · active {timeAgo(shelf.lastActivity)}
         </Typography>
