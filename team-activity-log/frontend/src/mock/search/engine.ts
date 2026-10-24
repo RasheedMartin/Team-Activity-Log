@@ -516,7 +516,18 @@ export class SearchEngine {
         lastActivity: list[0].lastActivity > (list[0].post.publishedAt ?? "") ? list[0].lastActivity : list[0].post.publishedAt ?? list[0].post.createdAt,
         posts: list.slice(0, per).map((d) => {
           const first = d.images[0];
-          return { id: d.post.id, title: d.post.title, workDate: d.post.workDate, authorId: d.post.authorId, thumbUrl: first?.asset.variants.find((v) => v.name === "small")?.url, dominantColor: first?.asset.dominantColors[0] };
+          const text = (d.summary || d.body).replace(/\s+/g, " ").trim();
+          return {
+            id: d.post.id,
+            title: d.post.title,
+            workDate: d.post.workDate,
+            authorId: d.post.authorId,
+            excerpt: text.length > 240 ? `${text.slice(0, 240)}…` : text,
+            imageCount: d.images.length,
+            commentCount: d.post.counts.comments,
+            thumbUrl: first?.asset.variants.find((v) => v.name === "small")?.url,
+            dominantColor: first?.asset.dominantColors[0],
+          };
         }),
         images: imgs.slice(0, per),
       };

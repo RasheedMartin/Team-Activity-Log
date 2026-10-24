@@ -1,37 +1,94 @@
-import { ArrowForwardRounded, GridViewRounded, ImageOutlined, MenuBookOutlined, SlideshowRounded } from "@mui/icons-material";
+import { ArrowForwardRounded, ChatBubbleOutlineRounded, GridViewRounded, ImageOutlined, MenuBookOutlined, SlideshowRounded } from "@mui/icons-material";
 import { Box, Button, ButtonBase, Chip, Skeleton, Stack, Typography } from "@mui/material";
 import { useMemo, useState } from "react";
 import { Link as RouterLink, useNavigate, useSearchParams } from "react-router-dom";
-import type { ExploreShelf, FilterSpec, GalleryImage } from "../../api/contract";
+import type { ExploreShelf, FilterSpec, User } from "../../api/contract";
+import type { Origin } from "../../app/origin";
 import { collectPostIds, useCollections, useCreateCollection, useExplore, usePeople } from "../../api/hooks";
 import { useNotify } from "../../components/notify";
 import { errorMessage } from "../../lib/format";
 import { useWs, wsPath } from "../../app/session";
-import { EmptyState, ErrorState, PageHeader, TagDot } from "../../components/ui";
+import { EmptyState, ErrorState, PageHeader, TagDot, UserAvatar } from "../../components/ui";
 import { formatDay, timeAgo } from "../../lib/dates";
 import { toSearchParams, toggleFacetValue } from "../../lib/filterSpec";
 import { useOrigin } from "../../app/origin";
-import { GalleryViewer } from "../search/Results";
 import { ImageSlideshow } from "./ImageSlideshow";
 
 const tagSpec = (tagId: string): FilterSpec => toggleFacetValue({ sort: "oldest" }, "tag", tagId, "include");
 
-function Tile({ img, onOpen }: { img: GalleryImage; onOpen: () => void }) {
+const CARD_W = 248;
+const CARD_H = 252;
+const COVER_H = 132;
+
+/**
+ * Uniform post card for shelves. With an image: cover + title + a line of text. Without: the same
+ * footprint filled with more text, so image-light and image-rich shelves look equally deliberate.
+ */
+function PostTile({ post, author, origin }: { post: ExploreShelf["posts"][number]; author?: User; origin: Origin }) {
+  const { org, ws } = useWs();
+  const hasCover = !!post.thumbUrl;
   return (
     <ButtonBase
-      onClick={onOpen}
-      aria-label={`${img.caption ?? "Image"} from ${img.postTitle}`}
-      sx={{ flexShrink: 0, width: 168, height: 126, borderRadius: 1, overflow: "hidden", bgcolor: img.dominantColor ?? "action.hover", border: 1, borderColor: "divider", scrollSnapAlign: "start", position: "relative", "&:hover img": { transform: "scale(1.03)" } }}
+      component={RouterLink}
+      to={wsPath(org, ws, `/p/${post.id}`)}
+      state={origin}
+      role="listitem"
+      sx={{
+        flexShrink: 0,
+        width: CARD_W,
+        height: CARD_H,
+        borderRadius: 1.5,
+        border: 1,
+        borderColor: "divider",
+        bgcolor: "background.paper",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "stretch",
+        textAlign: "left",
+        scrollSnapAlign: "start",
+        "&:hover": { borderColor: "text.disabled", "& img": { transform: "scale(1.03)" } },
+        "&:focus-visible": { outline: 2, outlineColor: "primary.main", outlineOffset: 2 },
+      }}
     >
-      <Box component="img" src={img.thumbUrl} alt="" loading="lazy" sx={{ width: "100%", height: "100%", objectFit: "cover", transition: "transform 150ms" }} />
-      {img.figureLabel && (
-        <Box sx={{ position: "absolute", left: 6, bottom: 6, px: 0.5, borderRadius: 0.5, bgcolor: "rgba(0,0,0,0.6)", color: "#fff", fontSize: 11 }}>{img.figureLabel}</Box>
+      {hasCover && (
+        <Box sx={{ height: COVER_H, bgcolor: post.dominantColor ?? "action.hover", overflow: "hidden", position: "relative", flexShrink: 0 }}>
+          <Box component="img" src={post.thumbUrl} alt="" loading="lazy" sx={{ width: "100%", height: "100%", objectFit: "cover", display: "block", transition: "transform 150ms" }} />
+          {post.imageCount > 1 && (
+            <Box sx={{ position: "absolute", right: 6, bottom: 6, px: 0.75, borderRadius: 0.5, bgcolor: "rgba(15,17,21,0.7)", color: "#fff", fontSize: 11, fontWeight: 600 }}>
+              {post.imageCount} images
+            </Box>
+          )}
+        </Box>
       )}
+      <Stack sx={{ p: 1.5, flex: 1, minHeight: 0 }} spacing={0.5}>
+        <Typography variant="caption" color="text.secondary">{formatDay(post.workDate)}</Typography>
+        <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.35, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+          {post.title || "Untitled"}
+        </Typography>
+        {post.excerpt && (
+          <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.45, display: "-webkit-box", WebkitLineClamp: hasCover ? 1 : 6, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+            {post.excerpt}
+          </Typography>
+        )}
+        <Box sx={{ flex: 1 }} />
+        <Stack direction="row" spacing={0.75} alignItems="center" sx={{ color: "text.secondary" }}>
+          <UserAvatar user={author} size={16} />
+          <Typography variant="caption" noWrap sx={{ flex: 1 }}>{author?.name ?? ""}</Typography>
+          {!hasCover && post.imageCount > 0 && <Typography variant="caption">{post.imageCount} img</Typography>}
+          {post.commentCount > 0 && (
+            <Stack direction="row" spacing={0.25} alignItems="center">
+              <ChatBubbleOutlineRounded sx={{ fontSize: 13 }} />
+              <Typography variant="caption">{post.commentCount}</Typography>
+            </Stack>
+          )}
+        </Stack>
+      </Stack>
     </ButtonBase>
   );
 }
 
-function Shelf({ shelf, onSlideshow, onImage }: { shelf: ExploreShelf; onSlideshow: () => void; onImage: (img: GalleryImage) => void }) {
+function Shelf({ shelf, onSlideshow }: { shelf: ExploreShelf; onSlideshow: () => void }) {
   const { org, ws } = useWs();
   const { data: people = [] } = usePeople(org.id);
   const navigate = useNavigate();
@@ -58,7 +115,6 @@ function Shelf({ shelf, onSlideshow, onImage }: { shelf: ExploreShelf; onSlidesh
     }
   };
   const searchUrl = (view?: "gallery") => `${wsPath(org, ws, "/search")}?${toSearchParams({ ...toggleFacetValue({}, "tag", shelf.tag.id, "include"), view })}`;
-  const postsWithoutImages = shelf.posts.filter((p) => !p.thumbUrl).slice(0, 6);
   return (
     <Box component="section" aria-label={`Tag ${shelf.tag.name}`} sx={{ py: 2, borderBottom: 1, borderColor: "divider" }}>
       <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1.25, flexWrap: "wrap", rowGap: 1 }}>
@@ -82,25 +138,15 @@ function Shelf({ shelf, onSlideshow, onImage }: { shelf: ExploreShelf; onSlidesh
         <Button size="small" startIcon={<MenuBookOutlined />} onClick={makeNotebook} disabled={making}>{existing ? "Open notebook" : "Notebook"}</Button>
         <Button size="small" endIcon={<ArrowForwardRounded />} component={RouterLink} to={searchUrl()}>All posts</Button>
       </Stack>
-      <Box sx={{ display: "flex", gap: 1, overflowX: "auto", scrollSnapType: "x mandatory", pb: 0.5 }} role="list">
-        {shelf.images.map((img) => (
-          <Box role="listitem" key={img.imageInstanceId}>
-            <Tile img={img} onOpen={() => onImage(img)} />
-          </Box>
+      <Box sx={{ display: "flex", gap: 1.5, overflowX: "auto", scrollSnapType: "x mandatory", pb: 1 }} role="list" aria-label={`Posts tagged ${shelf.tag.name}`}>
+        {shelf.posts.map((p) => (
+          <PostTile key={p.id} post={p} author={people.find((u) => u.id === p.authorId)} origin={origin} />
         ))}
-        {postsWithoutImages.map((p) => (
-          <ButtonBase
-            role="listitem"
-            key={p.id}
-            component={RouterLink}
-            to={wsPath(org, ws, `/p/${p.id}`)}
-            state={origin}
-            sx={{ flexShrink: 0, width: 200, height: 126, borderRadius: 1, border: 1, borderColor: "divider", bgcolor: "background.paper", p: 1.25, display: "flex", flexDirection: "column", alignItems: "flex-start", justifyContent: "space-between", textAlign: "left", scrollSnapAlign: "start", "&:hover": { bgcolor: "action.hover" } }}
-          >
-            <Typography variant="body2" sx={{ fontWeight: 600, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{p.title}</Typography>
-            <Typography variant="caption" color="text.secondary">{people.find((u) => u.id === p.authorId)?.name.split(" ")[0]} · {formatDay(p.workDate)}</Typography>
+        {shelf.count > shelf.posts.length && (
+          <ButtonBase component={RouterLink} to={searchUrl()} sx={{ flexShrink: 0, width: 140, height: CARD_H, borderRadius: 1.5, border: 1, borderStyle: "dashed", borderColor: "divider", color: "primary.main", fontWeight: 600, fontSize: "0.85rem", scrollSnapAlign: "start" }}>
+            See all {shelf.count}
           </ButtonBase>
-        ))}
+        )}
       </Box>
     </Box>
   );
@@ -112,12 +158,10 @@ export default function ExplorePage() {
   const q = useExplore(org.id, ws.id);
   const [params, setParams] = useSearchParams();
   const [group, setGroup] = useState<string>("All");
-  const [viewer, setViewer] = useState<GalleryImage | null>(null);
   const slideTag = params.get("slideshow");
   const groups = useMemo(() => ["All", ...new Set((q.data?.shelves ?? []).map((s) => s.groupName ?? "Other"))], [q.data]);
   const shelves = (q.data?.shelves ?? []).filter((s) => group === "All" || s.groupName === group);
   const slideShelf = q.data?.shelves.find((s) => s.tag.id === slideTag);
-  const exploreOrigin = useOrigin("Explore");
 
   return (
     <Box sx={{ maxWidth: 1180, width: "100%", mx: "auto", px: { xs: 1.5, sm: 3 }, py: 3 }}>
@@ -142,11 +186,10 @@ export default function ExplorePage() {
         <EmptyState icon={<ImageOutlined />} title="Nothing to explore yet" body="Tag your posts and they'll show up here, grouped by topic." />
       ) : (
         shelves.map((s) => (
-          <Shelf key={s.tag.id} shelf={s} onImage={setViewer} onSlideshow={() => setParams({ slideshow: s.tag.id })} />
+          <Shelf key={s.tag.id} shelf={s} onSlideshow={() => setParams({ slideshow: s.tag.id })} />
         ))
       )}
       {slideTag && slideShelf && <ImageSlideshow title={`#${slideShelf.tag.name}`} spec={tagSpec(slideTag)} onClose={() => setParams({})} />}
-      <GalleryViewer img={viewer} onClose={() => setViewer(null)} origin={exploreOrigin} />
     </Box>
   );
 }

@@ -432,7 +432,7 @@ export interface ExploreShelf {
   count: number;
   imageCount: number;
   lastActivity: ISODateTime;
-  posts: { id: ID; title: string; workDate: ISODate; authorId: ID; thumbUrl?: string; dominantColor?: string }[];
+  posts: { id: ID; title: string; workDate: ISODate; authorId: ID; excerpt?: string; imageCount: number; commentCount: number; thumbUrl?: string; dominantColor?: string }[];
   images: GalleryImage[];
 }
 export interface ExploreResponse {
