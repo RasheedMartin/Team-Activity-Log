@@ -167,7 +167,7 @@ export default function NotebookPage() {
   }, [continuous, loadedAll]);
 
   if (isPending) return <Skeleton variant="rounded" height={300} sx={{ m: 3 }} />;
-  if (!nb) return <EmptyState title="Notebook not found" body="It may have been deleted." action={<Button component={RouterLink} to={wsPath(org, ws)}>Back to feed</Button>} />;
+  if (!nb) return <EmptyState title="Notebook not found" body="It may have been deleted." action={<Button component={RouterLink} to={wsPath(org, ws)}>Back to Home</Button>} />;
 
   const move = (entryId: string, d: -1 | 1) => {
     const order = [...nb.postIds];

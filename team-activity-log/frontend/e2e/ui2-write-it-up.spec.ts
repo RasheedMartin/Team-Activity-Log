@@ -60,7 +60,7 @@ test("v2 Write It Up end to end", async ({ page }) => {
   const postUrl = page.url();
 
   // Appears at the top of the feed.
-  await page.getByRole("link", { name: "Feed" }).first().click();
+  await page.getByRole("link", { name: "Search", exact: true }).click();
   await expect(page.locator("[data-post-id]").first()).toContainText("Detector B noise after shielding");
   await page.goto(postUrl);
 

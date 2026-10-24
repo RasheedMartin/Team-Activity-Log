@@ -36,7 +36,7 @@ export function useShortcuts() {
         navigate(wsPath(org, ws, "/new"));
       } else if (e.key === "/") {
         e.preventDefault();
-        if (!/\/w\/[^/]+(\/search)?$/.test(location.pathname)) navigate(wsPath(org, ws));
+        if (!location.pathname.endsWith("/search")) navigate(wsPath(org, ws, "/search"));
         setTimeout(() => fire(APP_EVENTS.focusSearch), 0);
       } else if (e.key === "[") {
         fire(APP_EVENTS.toggleFilters);

@@ -98,7 +98,7 @@ export function SearchPage() {
   const ctx: DescribeCtx = useMemo(() => ({ tags, people, collections: new Map(collections.map((c) => [c.id, c])), meId: me.user.id }), [tags, people, collectionsKey, me.user.id]);
   // "Back to …" label for posts opened from here: a saved view, a collection, the feed, or results.
   const onlyCollection = !spec.q && !spec.none?.length && !spec.any?.length && !spec.where && spec.all?.length === 1 && spec.all[0].field === "collection" ? collections.find((c) => (spec.all![0].value as string[])?.[0] === c.id) : undefined;
-  const origin = useOrigin(activeView?.name ?? onlyCollection?.name ?? (isEmptySpec(spec) ? "feed" : "results"));
+  const origin = useOrigin(activeView?.name ?? onlyCollection?.name ?? (isEmptySpec(spec) ? "all posts" : "results"));
 
   // Optimistic overlay (§B6): just-published posts lead the unfiltered feed until search has them.
   const { data: overlay } = useOverlay(org.id, ws.id);
@@ -317,6 +317,12 @@ export function SearchPage() {
           </Box>
         )}
         <Box sx={{ minWidth: 0, px: { xs: 1.5, md: 2 }, pb: 6 }}>
+          <Typography component="h1" variant="h3" sx={{ pt: 1.5 }}>
+            {activeView?.name ?? onlyCollection?.name ?? (isEmptySpec(spec) ? "All posts" : "Search results")}
+            {isEmptySpec(spec) && !activeView && (
+              <Typography component="span" variant="body2" color="text.secondary"> · {SORTS.find(([s]) => s === effectiveSort(spec))?.[1].toLowerCase()} first</Typography>
+            )}
+          </Typography>
           {/* Histogram strip */}
           <Box sx={{ pt: 1, pb: 0.5 }}>
             <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5, minHeight: 28 }}>

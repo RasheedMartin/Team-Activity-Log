@@ -3,7 +3,7 @@ import { openScenario } from "./helpers";
 
 test("explore shelves by tag and a tag slideshow", async ({ page }) => {
   await openScenario(page, "small");
-  await page.getByRole("link", { name: "Explore" }).click();
+  await page.getByRole("link", { name: "Home", exact: true }).click();
   const shelf = page.getByRole("region", { name: /^Tag / }).filter({ has: page.getByRole("button", { name: "Slideshow" }) }).first();
   await expect(shelf).toBeVisible();
   await shelf.getByRole("button", { name: "Slideshow" }).click();

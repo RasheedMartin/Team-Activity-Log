@@ -81,9 +81,9 @@ export function App() {
       <Route path="/o/:org" element={<RequireAuth><OrgRoute><OrgHomePage /></OrgRoute></RequireAuth>} />
       <Route path="/o/:org/admin/*" element={<RequireAuth><OrgRoute>{page(<AdminPage />)}</OrgRoute></RequireAuth>} />
       <Route path="/o/:org/w/:ws" element={<RequireAuth><WorkspaceRoute /></RequireAuth>}>
-        <Route index element={<SearchPage />} />
+        <Route index element={page(<ExplorePage />)} />
         <Route path="search" element={<SearchPage />} />
-        <Route path="explore" element={page(<ExplorePage />)} />
+        <Route path="explore" element={<Navigate to=".." replace relative="path" />} />
         <Route path="notebooks/:id" element={page(<NotebookPage />)} />
         <Route path="library" element={page(<LibraryPage />)} />
         <Route path="new" element={page(<ComposerPage />)} />

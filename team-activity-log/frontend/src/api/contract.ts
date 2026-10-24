@@ -440,6 +440,8 @@ export interface ExploreShelf {
 export interface ExploreResponse {
   shelves: ExploreShelf[];
   recent: GalleryImage[];
+  /** Newest posts across all tags: Home's first row, the bridge into Search. */
+  latest: ExploreShelf["posts"];
 }
 
 export interface SuggestResponse {

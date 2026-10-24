@@ -16,6 +16,6 @@ test("only the clicked saved view or collection is highlighted", async ({ page }
   await page.getByRole("button", { name: "Add filter" }).click();
   await page.getByRole("menuitem", { name: "Has images" }).click();
   await expect(rail.getByRole("link", { name: "Lab_Notes_2022.pptx" })).not.toHaveAttribute("aria-current", "page");
-  // Feed isn't highlighted on search URLs.
-  await expect(rail.getByRole("link", { name: "Feed" })).not.toHaveAttribute("aria-current", "page");
+  // With an ad-hoc search (no pinned item matches), Search is the current item.
+  await expect(rail.getByRole("link", { name: "Search", exact: true })).toHaveAttribute("aria-current", "page");
 });

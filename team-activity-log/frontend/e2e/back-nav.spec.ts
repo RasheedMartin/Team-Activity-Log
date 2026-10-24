@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { openScenario } from "./helpers";
 
-test("back returns to where you came from, with scroll restored, plus a Feed link", async ({ page }) => {
+test("back returns to where you came from, with scroll restored, plus an All posts link", async ({ page }) => {
   await openScenario(page, "busy");
   // Search results → post → "Back to results" restores the query and scroll.
   await page.getByRole("combobox", { name: "Search" }).fill("drift");
@@ -21,7 +21,7 @@ test("back returns to where you came from, with scroll restored, plus a Feed lin
   await expect(page).toHaveURL(/\/p\/[^/]+$/);
   const postUrl = page.url();
   await expect(page.getByRole("button", { name: "Back to results" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Feed", exact: true }).last()).toBeVisible();
+  await expect(page.getByRole("link", { name: "All posts", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Back to results" }).click();
   await expect(page.getByRole("combobox", { name: "Search" })).toHaveValue("drift");
   // What you see is restored: the card you opened is back in the same place on screen. (Absolute
@@ -43,5 +43,5 @@ test("back returns to where you came from, with scroll restored, plus a Feed lin
   // Direct visit (no history, no origin): back falls back to the feed.
   const fresh = await page.context().newPage();
   await fresh.goto(postUrl);
-  await expect(fresh.getByRole("button", { name: "Feed", exact: true })).toBeVisible();
+  await expect(fresh.getByRole("button", { name: "Home", exact: true })).toBeVisible();
 });

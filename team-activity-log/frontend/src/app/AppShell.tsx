@@ -4,9 +4,9 @@ import {
   BookmarkBorderRounded,
   CollectionsBookmarkOutlined,
   DeleteOutlineRounded,
-  DynamicFeedRounded,
+  HomeOutlined,
+  SearchRounded,
   EditNoteRounded,
-  ExploreOutlined,
   MenuBookOutlined,
   ExpandMoreRounded,
   InboxOutlined,
@@ -199,6 +199,9 @@ function Rail({ onNavigate }: { onNavigate?: () => void }) {
   const location = useLocation();
   const params = new URLSearchParams(location.search);
   const onSearch = location.pathname === `${base}/search`;
+  const pinIsActive = (item: (typeof pins)[number]) =>
+    item.kind !== "notebook" && onSearch && (item.kind === "view" ? params.get("view") === item.id : !params.get("view") && specKey(fromSearchParams(params)) === specKey(fromSearchParams(collectionParams(item.id))));
+  const pinActive = shownPins.some(pinIsActive);
   return (
     <Stack sx={{ height: "100%", py: 1 }}>
       <Box sx={{ px: 1 }}>
@@ -220,8 +223,9 @@ function Rail({ onNavigate }: { onNavigate?: () => void }) {
       )}
       <Box sx={{ flex: 1, overflow: "auto", px: 1 }}>
         <List dense disablePadding component="nav" aria-label="Workspace">
-          <NavItem to={base} end icon={<DynamicFeedRounded />} label="Feed" onClick={onNavigate} />
-          <NavItem to={`${base}/explore`} icon={<ExploreOutlined />} label="Explore" onClick={onNavigate} />
+          <NavItem to={base} end icon={<HomeOutlined />} label="Home" onClick={onNavigate} />
+          {/* Search is the all-posts list; it's "current" unless a pinned view/collection is. */}
+          <NavItem to={`${base}/search`} icon={<SearchRounded />} label="Search" active={onSearch && !pinActive} onClick={onNavigate} />
           {can(role, "member") && <NavItem to={`${base}/drafts`} icon={<EditNoteRounded />} label="My drafts" onClick={onNavigate} />}
           <NavItem to={`${base}/inbox`} icon={<InboxOutlined />} label="Inbox" badge={unread} onClick={onNavigate} />
           {can(role, "member") && <NavItem to={`${base}/import`} icon={<UploadFileOutlined />} label="Import deck" onClick={onNavigate} />}
@@ -237,7 +241,7 @@ function Rail({ onNavigate }: { onNavigate?: () => void }) {
             <NavItem
               key={`${item.kind}-${item.id}`}
               to={libraryHref(base, item)}
-              active={item.kind === "notebook" ? undefined : onSearch && (item.kind === "view" ? params.get("view") === item.id : !params.get("view") && specKey(fromSearchParams(params)) === specKey(fromSearchParams(collectionParams(item.id))))}
+              active={item.kind === "notebook" ? undefined : pinIsActive(item)}
               icon={PIN_ICONS[item.kind]}
               label={item.name}
               onClick={onNavigate}

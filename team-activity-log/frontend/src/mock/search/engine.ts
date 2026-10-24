@@ -505,6 +505,21 @@ export class SearchEngine {
       })
       .sort((a, b) => cmpDesc(a.post.publishedAt, b.post.publishedAt));
     const tags = new Map(this.data.tags(ctx.orgId).map((t) => [t.id, t]));
+    const card = (d: Derived): ExploreShelf["posts"][number] => {
+      const firstImg = d.images[0];
+      const text = (d.summary || d.body).replace(/\s+/g, " ").trim();
+      return {
+        id: d.post.id,
+        title: d.post.title,
+        workDate: d.post.workDate,
+        authorId: d.post.authorId,
+        excerpt: text.length > 240 ? `${text.slice(0, 240)}…` : text,
+        imageCount: d.images.length,
+        commentCount: d.post.counts.comments,
+        thumbUrl: firstImg?.asset.variants.find((v) => v.name === "small")?.url,
+        dominantColor: firstImg?.asset.dominantColors[0],
+      };
+    };
     const byTag = new Map<ID, Derived[]>();
     for (const d of visible) for (const t of d.post.tagIds) if (tags.has(t)) byTag.set(t, [...(byTag.get(t) ?? []), d]);
     const shelves: ExploreShelf[] = [...byTag.entries()].map(([tagId, list]) => {
@@ -514,27 +529,13 @@ export class SearchEngine {
         count: list.length,
         imageCount: imgs.length,
         lastActivity: list[0].lastActivity > (list[0].post.publishedAt ?? "") ? list[0].lastActivity : list[0].post.publishedAt ?? list[0].post.createdAt,
-        posts: list.slice(0, per).map((d) => {
-          const first = d.images[0];
-          const text = (d.summary || d.body).replace(/\s+/g, " ").trim();
-          return {
-            id: d.post.id,
-            title: d.post.title,
-            workDate: d.post.workDate,
-            authorId: d.post.authorId,
-            excerpt: text.length > 240 ? `${text.slice(0, 240)}…` : text,
-            imageCount: d.images.length,
-            commentCount: d.post.counts.comments,
-            thumbUrl: first?.asset.variants.find((v) => v.name === "small")?.url,
-            dominantColor: first?.asset.dominantColors[0],
-          };
-        }),
+        posts: list.slice(0, per).map(card),
         images: imgs.slice(0, per),
       };
     });
     shelves.sort((a, b) => b.lastActivity.localeCompare(a.lastActivity));
     const recent = visible.flatMap((d) => d.images.map((img) => this.galleryImage(d, img))).slice(0, 24);
-    return { shelves: shelves.slice(0, opts.maxShelves ?? 40), recent };
+    return { shelves: shelves.slice(0, opts.maxShelves ?? 40), recent, latest: visible.slice(0, per).map(card) };
   }
 
   private facets(

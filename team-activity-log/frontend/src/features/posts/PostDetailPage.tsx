@@ -72,7 +72,7 @@ export default function PostDetailPage() {
     );
   if (q.error)
     return q.error instanceof ApiError && q.error.status === 404 ? (
-      <EmptyState title="This post isn't available" body="It may have been deleted, hidden, or you may not have access." action={<Button component={RouterLink} to={wsPath(org, ws)}>Back to feed</Button>} />
+      <EmptyState title="This post isn't available" body="It may have been deleted, hidden, or you may not have access." action={<Button component={RouterLink} to={wsPath(org, ws)}>Back to Home</Button>} />
     ) : (
       <ErrorState error={q.error} onRetry={() => q.refetch()} />
     );
@@ -193,10 +193,10 @@ function PostView({ post, images }: { post: Post; images: ImageView[] }) {
   const location = useLocation();
   const origin = location.state as Partial<Origin> | null;
   const canGoBack = (window.history.state as { idx?: number } | null)?.idx ? true : false;
-  const backLabel = origin?.label ? `Back to ${origin.label}` : canGoBack ? "Back" : "Feed";
+  const backLabel = origin?.label ? `Back to ${origin.label}` : canGoBack ? "Back" : "Home";
   // Prefer real history: it returns to the exact page with its scroll position restored.
   const goBack = () => (canGoBack ? navigate(-1) : origin?.from ? navigate(origin.from) : navigate(base));
-  const showFeedLink = (canGoBack || !!origin?.from) && origin?.label !== "feed";
+  const showFeedLink = (canGoBack || !!origin?.from) && origin?.label !== "all posts";
 
   const run = (a: Parameters<typeof action.mutate>[0], done?: string, undo?: () => void) =>
     action.mutate(a, { onSuccess: () => done && notify(done, undo), onError: (e) => notify(errorMessage(e)) });
@@ -206,8 +206,8 @@ function PostView({ post, images }: { post: Post; images: ImageView[] }) {
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
         <Button startIcon={<ArrowBackRounded />} size="small" sx={{ ml: -1 }} onClick={goBack}>{backLabel}</Button>
         {showFeedLink && (
-          <Button component={RouterLink} to={base} size="small" color="inherit" sx={{ color: "text.secondary", fontWeight: 500 }}>
-            Feed
+          <Button component={RouterLink} to={`${base}/search`} size="small" color="inherit" sx={{ color: "text.secondary", fontWeight: 500 }}>
+            All posts
           </Button>
         )}
         <Box sx={{ flex: 1 }} />
