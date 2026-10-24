@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1000" viewBox="0 0 1400 1000">
+<defs><radialGradient id="g" cx="50%" cy="40%" r="70%"><stop offset="0" stop-color="hsl(211 15% 35%)"/><stop offset="1" stop-color="hsl(211 20% 8%)"/></radialGradient>
+<linearGradient id="m" x1="0" x2="1"><stop offset="0" stop-color="#9ca3af"/><stop offset=".5" stop-color="#e5e7eb"/><stop offset="1" stop-color="#6b7280"/></linearGradient></defs>
+<rect width="1400" height="1000" fill="url(#g)"/>
+<path d="M 763.4 1000 C 175.8 600.0, 826.3 500.0, 681.2 500.0" stroke="hsl(211 60% 45%)" stroke-width="8.24968095053889" fill="none"/><path d="M 1023.8 1000 C 1205.7 600.0, 805.6 500.0, 724.6 500.0" stroke="hsl(251 60% 45%)" stroke-width="7.160478859357982" fill="none"/><path d="M 972.6 1000 C 1258.4 600.0, 818.8 500.0, 666.5 500.0" stroke="hsl(291 60% 45%)" stroke-width="10.646019365308824" fill="none"/><path d="M 384.4 1000 C 1225.6 600.0, 303.5 500.0, 740.5 500.0" stroke="hsl(331 60% 45%)" stroke-width="7.5241146502309615" fill="none"/><path d="M 418.8 1000 C 1380.7 600.0, 429.2 500.0, 664.4 500.0" stroke="hsl(11 60% 45%)" stroke-width="10.05767471628047" fill="none"/><path d="M 312.4 1000 C 956.2 600.0, 945.1 500.0, 732.0 500.0" stroke="hsl(51 60% 45%)" stroke-width="10.966509773364766" fill="none"/>
+<rect x="420" y="300" width="560" height="300" rx="16" fill="url(#m)" stroke="#374151" stroke-width="4"/>
+<circle cx="910" cy="360" r="8" fill="#22c55e"/>
+<text x="700" y="470" font-size="40" text-anchor="middle" fill="#111827" font-family="Helvetica">DET-B  S/N 0119</text>
+</svg>

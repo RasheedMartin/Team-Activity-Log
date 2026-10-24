@@ -1,42 +1,26 @@
-# =========================
-# Stage 1: Build frontend
-# =========================
-FROM node:20-alpine AS frontend-build
+# One image: the React app built in live mode, served by the FastAPI backend (same origin, so
+# session cookies stay first-party). Build context: this directory (team-activity-log/).
 
+# ---- frontend ----
+FROM node:22-slim AS web
 WORKDIR /app/frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY frontend/ ./
+ENV VITE_API_MODE=live
+RUN npx vite build
 
-# Declare build arg
-ARG VITE_API_URL
-ENV VITE_API_URL=$VITE_API_URL
-
-# Install frontend dependencies
-COPY frontend/package*.json ./
-RUN npm install
-
-# Copy frontend code and build
-COPY frontend/ .
-RUN npm run build   # creates 'dist' folder for Vite
-
-# =========================
-# Stage 2: Build backend
-# =========================
-FROM python:3-alpine
-
-WORKDIR /app
-
-# Install backend dependencies
-COPY backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy backend code
-COPY backend/ .
-
-# Copy built frontend into backend folder
-COPY --from=frontend-build /app/frontend/dist /app/frontend/dist
-
-# Expose FastAPI port
+# ---- backend ----
+FROM python:3.13-slim
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+WORKDIR /app/backend
+COPY backend/pyproject.toml backend/README.md ./
+COPY backend/src ./src
+RUN pip install . && rm -rf src
+COPY --from=web /app/frontend/dist /app/frontend/dist
+ENV ENV=production FRONTEND_DIST=/app/frontend/dist
+RUN useradd --create-home app
+USER app
 EXPOSE 8000
-
-# Start FastAPI
-CMD ["uvicorn", "src.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-
+# Migrations are idempotent, so running them on every start is safe.
+CMD ["sh", "-c", "tal migrate && tal serve --port ${PORT:-8000}"]

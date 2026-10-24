@@ -1,0 +1,11 @@
+.venv/
+venv/
+.devservices/
+.env
+.env.*
+!.env.example
+!.env.railway.example
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/

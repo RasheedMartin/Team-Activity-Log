@@ -1,0 +1,366 @@
+[
+  {
+    "file": "fig-01-chart.svg",
+    "type": "chart",
+    "width": 1200,
+    "height": 800,
+    "title": "Detector B gain vs. run",
+    "ocrText": "Detector B gain vs. run Time (s) Rate (Hz)",
+    "dominantColors": [
+      "#ffffff",
+      "#2563eb"
+    ],
+    "bytes": 3916
+  },
+  {
+    "file": "fig-02-chart.svg",
+    "type": "chart",
+    "width": 1600,
+    "height": 900,
+    "title": "Cooldown curve, cryostat 2",
+    "ocrText": "Cooldown curve, cryostat 2 Energy (keV) Counts",
+    "dominantColors": [
+      "#ffffff",
+      "#2563eb"
+    ],
+    "bytes": 5985
+  },
+  {
+    "file": "fig-03-chart.svg",
+    "type": "chart",
+    "width": 1000,
+    "height": 1000,
+    "title": "Calibration spectrum, Co-60",
+    "ocrText": "Calibration spectrum, Co-60 Temperature (K) Resistance (Ω)",
+    "dominantColors": [
+      "#ffffff",
+      "#2563eb"
+    ],
+    "bytes": 13853
+  },
+  {
+    "file": "fig-04-chart.svg",
+    "type": "chart",
+    "width": 1400,
+    "height": 1000,
+    "title": "Pedestal stability",
+    "ocrText": "Pedestal stability Channel ADC value",
+    "dominantColors": [
+      "#ffffff",
+      "#2563eb"
+    ],
+    "bytes": 45354
+  },
+  {
+    "file": "fig-05-photo.svg",
+    "type": "photo",
+    "width": 1280,
+    "height": 720,
+    "title": "Beam profile scan",
+    "ocrText": "DET-B S/N",
+    "dominantColors": [
+      "#1f2937",
+      "#9ca3af"
+    ],
+    "bytes": 1578
+  },
+  {
+    "file": "fig-06-screenshot.svg",
+    "type": "screenshot",
+    "width": 1200,
+    "height": 800,
+    "title": "Timing resolution",
+    "ocrText": "Timing resolution run ch OK WARN rate high ERR timeout",
+    "dominantColors": [
+      "#111827",
+      "#d1d5db"
+    ],
+    "bytes": 2153
+  },
+  {
+    "file": "fig-07-diagram.svg",
+    "type": "diagram",
+    "width": 1600,
+    "height": 900,
+    "title": "Noise spectrum after shielding",
+    "ocrText": "Noise spectrum after shielding Source Collimator Target Detector A Detector B DAQ",
+    "dominantColors": [
+      "#ffffff",
+      "#eff6ff"
+    ],
+    "bytes": 2231
+  },
+  {
+    "file": "fig-08-chart.svg",
+    "type": "chart",
+    "width": 1000,
+    "height": 1000,
+    "title": "Trigger efficiency turn-on",
+    "ocrText": "Trigger efficiency turn-on Position (mm) Efficiency",
+    "dominantColors": [
+      "#ffffff",
+      "#2563eb"
+    ],
+    "bytes": 3903
+  },
+  {
+    "file": "fig-09-chart.svg",
+    "type": "chart",
+    "width": 1400,
+    "height": 1000,
+    "title": "Laser alignment residuals",
+    "ocrText": "Laser alignment residuals Time (s) Rate (Hz)",
+    "dominantColors": [
+      "#ffffff",
+      "#2563eb"
+    ],
+    "bytes": 5989
+  },
+  {
+    "file": "fig-10-chart.svg",
+    "type": "chart",
+    "width": 1280,
+    "height": 720,
+    "title": "Vacuum pressure log",
+    "ocrText": "Vacuum pressure log Energy (keV) Counts",
+    "dominantColors": [
+      "#ffffff",
+      "#2563eb"
+    ],
+    "bytes": 13884
+  },
+  {
+    "file": "fig-11-chart.svg",
+    "type": "chart",
+    "width": 1200,
+    "height": 800,
+    "title": "Detector B gain vs. run",
+    "ocrText": "Detector B gain vs. run Temperature (K) Resistance (Ω)",
+    "dominantColors": [
+      "#ffffff",
+      "#2563eb"
+    ],
+    "bytes": 45260
+  },
+  {
+    "file": "fig-12-photo.svg",
+    "type": "photo",
+    "width": 1600,
+    "height": 900,
+    "title": "Cooldown curve, cryostat 2",
+    "ocrText": "DET-B S/N",
+    "dominantColors": [
+      "#1f2937",
+      "#9ca3af"
+    ],
+    "bytes": 1578
+  },
+  {
+    "file": "fig-13-screenshot.svg",
+    "type": "screenshot",
+    "width": 1000,
+    "height": 1000,
+    "title": "Calibration spectrum, Co-60",
+    "ocrText": "Calibration spectrum, Co-60 run ch OK WARN rate high ERR timeout",
+    "dominantColors": [
+      "#111827",
+      "#d1d5db"
+    ],
+    "bytes": 2174
+  },
+  {
+    "file": "fig-14-diagram.svg",
+    "type": "diagram",
+    "width": 1400,
+    "height": 1000,
+    "title": "Pedestal stability",
+    "ocrText": "Pedestal stability Source Collimator Target Detector A Detector B DAQ",
+    "dominantColors": [
+      "#ffffff",
+      "#eff6ff"
+    ],
+    "bytes": 2219
+  },
+  {
+    "file": "fig-15-chart.svg",
+    "type": "chart",
+    "width": 1280,
+    "height": 720,
+    "title": "Beam profile scan",
+    "ocrText": "Beam profile scan Bias voltage (V) Leakage current (nA)",
+    "dominantColors": [
+      "#ffffff",
+      "#2563eb"
+    ],
+    "bytes": 5483
+  },
+  {
+    "file": "fig-16-chart.svg",
+    "type": "chart",
+    "width": 1200,
+    "height": 800,
+    "title": "Timing resolution",
+    "ocrText": "Timing resolution Position (mm) Efficiency",
+    "dominantColors": [
+      "#ffffff",
+      "#2563eb"
+    ],
+    "bytes": 5974
+  },
+  {
+    "file": "fig-17-chart.svg",
+    "type": "chart",
+    "width": 1600,
+    "height": 900,
+    "title": "Noise spectrum after shielding",
+    "ocrText": "Noise spectrum after shielding Time (s) Rate (Hz)",
+    "dominantColors": [
+      "#ffffff",
+      "#2563eb"
+    ],
+    "bytes": 13930
+  },
+  {
+    "file": "fig-18-chart.svg",
+    "type": "chart",
+    "width": 1000,
+    "height": 1000,
+    "title": "Trigger efficiency turn-on",
+    "ocrText": "Trigger efficiency turn-on Energy (keV) Counts",
+    "dominantColors": [
+      "#ffffff",
+      "#2563eb"
+    ],
+    "bytes": 45192
+  },
+  {
+    "file": "fig-19-photo.svg",
+    "type": "photo",
+    "width": 1400,
+    "height": 1000,
+    "title": "Laser alignment residuals",
+    "ocrText": "DET-B S/N",
+    "dominantColors": [
+      "#1f2937",
+      "#9ca3af"
+    ],
+    "bytes": 1587
+  },
+  {
+    "file": "fig-20-screenshot.svg",
+    "type": "screenshot",
+    "width": 1280,
+    "height": 720,
+    "title": "Vacuum pressure log",
+    "ocrText": "Vacuum pressure log run ch OK WARN rate high ERR timeout",
+    "dominantColors": [
+      "#111827",
+      "#d1d5db"
+    ],
+    "bytes": 2168
+  },
+  {
+    "file": "fig-21-diagram.svg",
+    "type": "diagram",
+    "width": 1200,
+    "height": 800,
+    "title": "Detector B gain vs. run",
+    "ocrText": "Detector B gain vs. run Source Collimator Target Detector A Detector B DAQ",
+    "dominantColors": [
+      "#ffffff",
+      "#eff6ff"
+    ],
+    "bytes": 2217
+  },
+  {
+    "file": "fig-22-chart.svg",
+    "type": "chart",
+    "width": 1600,
+    "height": 900,
+    "title": "Cooldown curve, cryostat 2",
+    "ocrText": "Cooldown curve, cryostat 2 Wavelength (nm) Intensity (a.u.)",
+    "dominantColors": [
+      "#ffffff",
+      "#2563eb"
+    ],
+    "bytes": 7096
+  },
+  {
+    "file": "fig-23-chart.svg",
+    "type": "chart",
+    "width": 1000,
+    "height": 1000,
+    "title": "Calibration spectrum, Co-60",
+    "ocrText": "Calibration spectrum, Co-60 Bias voltage (V) Leakage current (nA)",
+    "dominantColors": [
+      "#ffffff",
+      "#2563eb"
+    ],
+    "bytes": 5981
+  },
+  {
+    "file": "fig-24-chart.svg",
+    "type": "chart",
+    "width": 1400,
+    "height": 1000,
+    "title": "Pedestal stability",
+    "ocrText": "Pedestal stability Position (mm) Efficiency",
+    "dominantColors": [
+      "#ffffff",
+      "#2563eb"
+    ],
+    "bytes": 13893
+  },
+  {
+    "file": "fig-25-chart.svg",
+    "type": "chart",
+    "width": 1280,
+    "height": 720,
+    "title": "Beam profile scan",
+    "ocrText": "Beam profile scan Time (s) Rate (Hz)",
+    "dominantColors": [
+      "#ffffff",
+      "#2563eb"
+    ],
+    "bytes": 45278
+  },
+  {
+    "file": "fig-26-photo.svg",
+    "type": "photo",
+    "width": 1200,
+    "height": 800,
+    "title": "Timing resolution",
+    "ocrText": "DET-B S/N",
+    "dominantColors": [
+      "#1f2937",
+      "#9ca3af"
+    ],
+    "bytes": 1573
+  },
+  {
+    "file": "fig-27-screenshot.svg",
+    "type": "screenshot",
+    "width": 1600,
+    "height": 900,
+    "title": "Noise spectrum after shielding",
+    "ocrText": "Noise spectrum after shielding run ch OK WARN rate high ERR timeout",
+    "dominantColors": [
+      "#111827",
+      "#d1d5db"
+    ],
+    "bytes": 2155
+  },
+  {
+    "file": "fig-28-diagram.svg",
+    "type": "diagram",
+    "width": 1000,
+    "height": 1000,
+    "title": "Trigger efficiency turn-on",
+    "ocrText": "Trigger efficiency turn-on Source Collimator Target Detector A Detector B DAQ",
+    "dominantColors": [
+      "#ffffff",
+      "#eff6ff"
+    ],
+    "bytes": 2222
+  }
+]

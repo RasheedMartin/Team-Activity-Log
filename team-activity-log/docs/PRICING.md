@@ -1,0 +1,59 @@
+# Pricing (proposal — owner to confirm)
+
+Status: **draft**. Numbers are a starting point to test, not a decision. The landing page reads
+`frontend/src/app/pricing.ts`; the backend enforces limits from `backend/src/tal/plans.py`.
+Keep the two in sync (later: the landing page fetches plans from `GET /v1/plans`).
+
+## What we charge for
+
+- **Value metric: active members (seats).** The product gets more valuable with every teammate
+  who posts and searches. It's what buyers expect from team tools (Notion, Linear, Slack).
+- **Guardrail: storage.** Images and imported decks are the real cost (object storage, the search
+  index, OCR). Storage is pooled per org and grows with seats, so it rarely bites, but it caps abuse.
+- **Never limited: search history.** "Find it months later" is the product. A free plan that
+  forgets old posts would undercut the pitch.
+
+## Plans
+
+| | **Free** | **Team** | **Business** | **Enterprise** |
+|---|---|---|---|---|
+| Price | $0 | **$8** /member/mo yearly ($10 monthly) | **$16** /member/mo yearly ($20 monthly) | Custom |
+| Members | up to 5 | unlimited | unlimited | unlimited |
+| Workspaces | 1 | unlimited | unlimited | unlimited |
+| Storage (pooled) | 2 GB | 10 GB / member | 25 GB / member | custom |
+| Import slides | 5 decks / month | unlimited | unlimited | unlimited |
+| Search, notebooks, present | ✓ | ✓ | ✓ | ✓ |
+| Private workspaces | — | ✓ | ✓ | ✓ |
+| Guests (read/comment only) | — | ✓ | ✓ | ✓ |
+| SSO (SAML / OIDC), SCIM | — | — | ✓ | ✓ |
+| Audit log, retention controls | — | — | ✓ | ✓ |
+| Support | community | email | priority | dedicated + SLA |
+| Hosting | cloud | cloud | cloud | cloud, region pinning, or self-hosted |
+
+**Academic & nonprofit:** 50% off Team and Business for universities, national labs, and
+registered nonprofits. Research groups are the first market; this removes the budget objection.
+
+**Trial:** Team features free for 14 days on a new org, then it falls back to Free (nothing deleted;
+over-limit orgs become read-only for new uploads until they upgrade or trim).
+
+## Billing rules
+
+- Billable member = active membership in the billing period (invited-not-accepted and deactivated
+  members are free). Viewers count as members on Team; guests are free.
+- Yearly billing is prorated when seats are added; removals take effect at renewal.
+- Downgrades never delete data. Over a limit → new uploads/imports are blocked with a clear message.
+
+## Data the backend keeps (already in the schema)
+
+- `organizations.plan` (`free | team | business | enterprise`), `organizations.billing_status`,
+  `organizations.trial_ends_at`, `organizations.billing_customer_id` (payment provider id),
+  `organizations.storage_quota_bytes` (override; null = derive from plan × seats).
+- Entitlements are code (`plans.py`), not rows, so changing a plan is a deploy, not a migration.
+- Payment provider: **[OPEN]** Stripe Billing is the default assumption (per-seat prices, customer
+  portal, webhooks → `billing_status`).
+
+## Open questions
+
+1. Are viewers billable? (Proposed: yes on Team; free read-only *guests* cover outside collaborators.)
+2. Free-plan limit: 5 members or 10? Labs are often 6–12 people; 5 pushes most real teams to Team.
+3. Per-seat vs flat per-lab pricing for academia (some PIs prefer one fixed annual invoice).

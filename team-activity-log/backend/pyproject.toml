@@ -1,40 +1,47 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "activity-log-backend"
-version = "0.1.0"
-description = "FastAPI backend for Activity Log"
+name = "tal-backend"
+version = "1.0.0"
+description = "Team Activity Log API: FastAPI over Postgres (truth) and Elasticsearch (search)"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = { text = "MIT" }
-
-authors = [
-  { name = "Rasheed Martin" }
-]
-
+authors = [{ name = "Rasheed Martin" }]
 dependencies = [
-  "fastapi>=0.110",
-  "uvicorn[standard]>=0.27",
-  "httpx>=0.27",
-  "pydantic>=2.0",
-  "python-dotenv>=1.0",
-  "dotenv"
+  "fastapi>=0.121",  # Depends(scope="function")
+  "uvicorn[standard]>=0.30",
+  "pydantic-settings>=2.4",
+  "sqlalchemy[asyncio]>=2.0.35",
+  "asyncpg>=0.30",
+  "alembic>=1.13",
+  "elasticsearch[async]>=8.15,<9",
+  "argon2-cffi>=23.1",
+  "pillow>=11",
+  "boto3>=1.35",
 ]
 
 [project.optional-dependencies]
-dev = [
-  "pytest>=8.0",
-  "ruff>=0.3",
-  "mypy>=1.8",
-]
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "httpx>=0.27", "ruff>=0.6"]
 
-[project.urls]
-Homepage = "https://github.com/yourname/portfolio-backend"
+[project.scripts]
+tal = "tal.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["tal*"]
+
+[tool.setuptools.package-data]
+tal = ["migrations/*.py", "migrations/*.mako", "migrations/versions/*.py"]
 
 [tool.ruff]
-line-length = 88
-target-version = "py310"
-select = ["E", "F", "I"]
-fix = true
+line-length = 200
+target-version = "py311"
+src = ["src", "tests"]
+extend-exclude = ["src/app"]  # the v0 prototype, kept as-is until it is retired
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["B008", "E501"]  # Depends() in defaults is the FastAPI idiom; long lines match the frontend style
