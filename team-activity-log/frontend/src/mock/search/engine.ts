@@ -7,6 +7,8 @@ import type {
   DateField,
   FilterGroup,
   DateRangeValue,
+  ExploreResponse,
+  ExploreShelf,
   FacetBucket,
   FilterSpec,
   GalleryImage,
@@ -488,6 +490,40 @@ export class SearchEngine {
       nextCursor,
       tookMs: Math.round(performance.now() - t0),
     };
+  }
+
+  /** Discovery shelves: one per tag with posts in scope, ordered by most recent activity. */
+  explore(ctx: EngineContext, opts: { perShelf?: number; maxShelves?: number } = {}): ExploreResponse {
+    this.ensureIndex();
+    const per = opts.perShelf ?? 12;
+    const ws = new Set(ctx.workspaceIds);
+    const now = (ctx.now ?? new Date()).getTime();
+    const visible = [...this.derived.values()]
+      .filter((d) => {
+        const p = d.post as Post & { indexedAt?: number };
+        return p.orgId === ctx.orgId && ws.has(p.workspaceId) && p.visibility === "visible" && !(p.indexedAt && p.indexedAt > now);
+      })
+      .sort((a, b) => cmpDesc(a.post.publishedAt, b.post.publishedAt));
+    const tags = new Map(this.data.tags(ctx.orgId).map((t) => [t.id, t]));
+    const byTag = new Map<ID, Derived[]>();
+    for (const d of visible) for (const t of d.post.tagIds) if (tags.has(t)) byTag.set(t, [...(byTag.get(t) ?? []), d]);
+    const shelves: ExploreShelf[] = [...byTag.entries()].map(([tagId, list]) => {
+      const imgs = list.flatMap((d) => d.images.map((img) => this.galleryImage(d, img)));
+      return {
+        tag: tags.get(tagId)!,
+        count: list.length,
+        imageCount: imgs.length,
+        lastActivity: list[0].lastActivity > (list[0].post.publishedAt ?? "") ? list[0].lastActivity : list[0].post.publishedAt ?? list[0].post.createdAt,
+        posts: list.slice(0, per).map((d) => {
+          const first = d.images[0];
+          return { id: d.post.id, title: d.post.title, workDate: d.post.workDate, authorId: d.post.authorId, thumbUrl: first?.asset.variants.find((v) => v.name === "small")?.url, dominantColor: first?.asset.dominantColors[0] };
+        }),
+        images: imgs.slice(0, per),
+      };
+    });
+    shelves.sort((a, b) => b.lastActivity.localeCompare(a.lastActivity));
+    const recent = visible.flatMap((d) => d.images.map((img) => this.galleryImage(d, img))).slice(0, 24);
+    return { shelves: shelves.slice(0, opts.maxShelves ?? 40), recent };
   }
 
   private facets(

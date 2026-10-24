@@ -21,6 +21,16 @@ export const searchHandlers = [
     }),
   ),
   http.get(
+    "/v1/orgs/:org/workspaces/:ws/explore",
+    route(({ cookies, params }) => {
+      const ctx = workspaceCtx(cookies, params.org as string, params.ws as string);
+      const res = engine.explore({ orgId: ctx.org.id, workspaceIds: [ctx.ws.id], me: ctx.user.id, canSeeHidden: false });
+      const groups = new Map(db.t.tagGroups.filter((g) => g.orgId === ctx.org.id).map((g) => [g.id, g.name]));
+      res.shelves.forEach((sh) => (sh.groupName = (sh.tag.groupId && groups.get(sh.tag.groupId)) || "Other"));
+      return HttpResponse.json(res);
+    }),
+  ),
+  http.get(
     "/v1/orgs/:org/workspaces/:ws/suggest",
     route(({ cookies, params, request }) => {
       const ctx = workspaceCtx(cookies, params.org as string, params.ws as string);

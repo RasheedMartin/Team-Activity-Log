@@ -29,6 +29,7 @@ const ImportPage = lazy(() => import("./features/import/ImportPage"));
 const AdminPage = lazy(() => import("./features/admin/AdminPage"));
 const UserPanelPage = lazy(() => import("./features/me/UserPanelPage"));
 const DevPage = lazy(() => import("./features/dev/DevPage"));
+const ExplorePage = lazy(() => import("./features/explore/ExplorePage"));
 
 export const Loading = () => <LinearProgress sx={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 2000, height: 2 }} />;
 
@@ -80,6 +81,7 @@ export function App() {
       <Route path="/o/:org/w/:ws" element={<RequireAuth><WorkspaceRoute /></RequireAuth>}>
         <Route index element={<SearchPage />} />
         <Route path="search" element={<SearchPage />} />
+        <Route path="explore" element={page(<ExplorePage />)} />
         <Route path="new" element={page(<ComposerPage />)} />
         <Route path="p/:postId" element={page(<PostDetailPage />)} />
         <Route path="p/:postId/edit" element={page(<ComposerPage />)} />

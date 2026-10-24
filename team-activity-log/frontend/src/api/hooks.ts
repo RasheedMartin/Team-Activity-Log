@@ -13,6 +13,7 @@ import type {
   Comment,
   DevEmail,
   DraftSummary,
+  ExploreResponse,
   FilterSpec,
   ID,
   ImageView,
@@ -417,6 +418,9 @@ export function useSearch(orgId: ID, wsId: ID, spec: FilterSpec, enabled = true)
     staleTime: 15_000,
   });
 }
+
+export const useExplore = (orgId: ID, wsId: ID) =>
+  useQuery({ queryKey: ["org", orgId, "ws", wsId, "explore"], queryFn: ({ signal }) => get<ExploreResponse>(`${W(orgId, wsId)}/explore`, signal), staleTime: 60_000 });
 
 /** Result counts for several specs at once (zero-results suggestions). */
 export const useSearchCounts = (orgId: ID, wsId: ID, specs: FilterSpec[], enabled: boolean) =>

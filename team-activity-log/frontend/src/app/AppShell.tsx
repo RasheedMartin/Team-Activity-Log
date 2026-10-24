@@ -6,6 +6,7 @@ import {
   DeleteOutlineRounded,
   DynamicFeedRounded,
   EditNoteRounded,
+  ExploreOutlined,
   ExpandMoreRounded,
   InboxOutlined,
   LogoutRounded,
@@ -202,6 +203,7 @@ function Rail({ onNavigate }: { onNavigate?: () => void }) {
       <Box sx={{ flex: 1, overflow: "auto", px: 1 }}>
         <List dense disablePadding component="nav" aria-label="Workspace">
           <NavItem to={base} end icon={<DynamicFeedRounded />} label="Feed" onClick={onNavigate} />
+          <NavItem to={`${base}/explore`} icon={<ExploreOutlined />} label="Explore" onClick={onNavigate} />
           {can(role, "member") && <NavItem to={`${base}/drafts`} icon={<EditNoteRounded />} label="My drafts" onClick={onNavigate} />}
           <NavItem to={`${base}/inbox`} icon={<InboxOutlined />} label="Inbox" badge={unread} onClick={onNavigate} />
           {can(role, "member") && <NavItem to={`${base}/import`} icon={<UploadFileOutlined />} label="Import deck" onClick={onNavigate} />}

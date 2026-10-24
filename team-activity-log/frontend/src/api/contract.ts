@@ -421,6 +421,22 @@ export interface SearchResponse {
   tookMs: number;
 }
 
+/** Explore (owner request): discovery shelves grouped by tag, newest activity first.
+ *  Backend: ES terms agg on tags.id (filtered like search) with a top_hits sub-agg. */
+export interface ExploreShelf {
+  tag: Tag;
+  groupName?: string;
+  count: number;
+  imageCount: number;
+  lastActivity: ISODateTime;
+  posts: { id: ID; title: string; workDate: ISODate; authorId: ID; thumbUrl?: string; dominantColor?: string }[];
+  images: GalleryImage[];
+}
+export interface ExploreResponse {
+  shelves: ExploreShelf[];
+  recent: GalleryImage[];
+}
+
 export interface SuggestResponse {
   tags: Tag[];
   people: User[];

@@ -50,3 +50,9 @@ Additions only; nothing in §A7 was removed or renamed.
 - **Mock engine performance:** derived docs build eagerly (55 ms for 5,000 posts); the full-text index builds in idle time after first render (≈330 ms) so the feed isn't delayed. Production build on the busy scenario: reload → results 911 ms; searches 3–41 ms; scroll 60 fps.
 - **Peek pane**: inline on ≥ 1536 px screens, a non-modal drawer below that; j/k/Enter keep working while it's open.
 - Bundle: only MUI is vendor-split; the editor and the mock server are lazy chunks (the mock never loads in live mode).
+
+## Explore (owner request, between UI-3 and UI-4)
+
+- New route `GET /workspaces/{ws}/explore` → `ExploreResponse` (shelves per tag with recent posts and images). Backend: ES `terms` agg on `tags.id` + `top_hits`, same security filters as search; tag group names hydrated from Postgres.
+- Shelves are ordered by most recent activity and can be narrowed by tag group. "Slideshow" is a reusable `ImageSlideshow` over any `FilterSpec` (gallery query, oldest first); UI-5 reuses it for presenting selections.
+- Notebooks (stitching posts into one document) are planned with UI-5 collections/present/export.
