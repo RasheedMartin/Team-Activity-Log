@@ -1,7 +1,14 @@
 import { expect, test, type Page } from "@playwright/test";
 import { openScenario } from "./helpers";
 
-const deck = (name: string, size = 3_000_000) => ({ name, mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", buffer: Buffer.alloc(size, 7) });
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
+const PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+const FIXTURE = readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), "fixtures", "Lab_Notes_2021.pptx"));
+/** A real .pptx (8 slides in 3 sections; see scripts/make-test-deck.mjs), or garbage bytes. */
+const deck = (name: string, real = true) => ({ name, mimeType: PPTX_MIME, buffer: real ? FIXTURE : Buffer.alloc(3_000_000, 7) });
+const EXPECTED_ITEMS: Record<string, number> = { "One post per slide": 8, "One post for the deck": 1, "Group by section": 3 };
 
 async function startImport(page: Page, file: ReturnType<typeof deck>, mode: string) {
   await page.getByRole("link", { name: "Import deck" }).click();
@@ -76,8 +83,8 @@ for (const mode of ["One post per slide", "One post for the deck", "Group by sec
     await startImport(page, deck("Lab_Notes_2021.pptx"), mode);
     await expect(page.getByRole("table", { name: "Posts to create" })).toBeVisible({ timeout: 20_000 });
     const rows = page.getByRole("table", { name: "Posts to create" }).locator("tbody tr");
-    const n = await rows.count();
-    expect(n).toBeGreaterThan(0);
+    await expect(rows).toHaveCount(EXPECTED_ITEMS[mode]);
+    const n = EXPECTED_ITEMS[mode];
     // Review edit: retitle the first item.
     await page.getByRole("textbox", { name: /^Title for slides/ }).first().fill("Imported overview");
     if (mode === "One post per slide") {
@@ -98,12 +105,19 @@ for (const mode of ["One post per slide", "One post for the deck", "Group by sec
     await expect(page.getByText("All imported drafts published")).toBeVisible();
     await page.getByRole("link", { name: "Open collection" }).click();
     await expect(page.locator("[data-post-id]").first()).toBeVisible();
+    if (mode === "One post per slide") {
+      // Real content from the deck, not canned text: slide 2's caption and picture. (Slide 2's
+      // post was renamed by the merge/split above.)
+      await page.locator("[data-post-id]").filter({ hasText: "Imported overview (slide 2)" }).first().getByRole("heading").click();
+      await expect(page.getByText("Curve from run 4512")).toBeVisible();
+      await expect(page.locator("figure img")).toHaveCount(1);
+    }
   });
 }
 
 test("a damaged file fails clearly and lets you retry", async ({ page }) => {
   await openScenario(page, "small");
-  await startImport(page, deck("corrupt_notes.pptx"), "One post per slide");
+  await startImport(page, deck("Renamed_spreadsheet.pptx", false), "One post per slide");
   await expect(page.getByText(/isn't a valid .pptx/)).toBeVisible({ timeout: 20_000 });
   await page.getByRole("button", { name: "Try another file" }).click();
   await expect(page.getByRole("button", { name: "Start import" })).toBeVisible();
@@ -111,13 +125,13 @@ test("a damaged file fails clearly and lets you retry", async ({ page }) => {
 
 test("delete a whole import removes its posts", async ({ page }) => {
   await openScenario(page, "small");
-  await startImport(page, deck("Old_Deck.pptx", 3_200_000), "One post per slide");
+  await startImport(page, deck("Old_Deck.pptx"), "One post per slide");
   await page.getByRole("button", { name: /^Create \d+ drafts?$/ }).click({ timeout: 20_000 });
   await page.getByRole("button", { name: "Delete this import" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
   await expect(page.getByText("Import deleted")).toBeVisible();
   await page.getByRole("link", { name: "My drafts" }).click();
-  await expect(page.getByText("Slide 8 (no title)")).toHaveCount(0);
+  await expect(page.getByText("Cooldown overview")).toHaveCount(0);
 });
 
 test("no duplicate notebooks; back from a post returns to the notebook", async ({ page }) => {

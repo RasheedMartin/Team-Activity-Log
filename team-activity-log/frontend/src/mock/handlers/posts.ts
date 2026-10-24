@@ -1,9 +1,10 @@
 import { http, HttpResponse } from "msw";
-import type { Asset, Block, DraftSummary, ImageType, Post, PostDetail, PostPatch, PostRevision } from "../../api/contract";
+import type { Asset, Block, DraftSummary, Post, PostDetail, PostPatch, PostRevision } from "../../api/contract";
 import { todayISO } from "../../lib/dates";
 import { uuidv7 } from "../../lib/ids";
 import { isDocEmpty } from "../../lib/prosemirror";
-import { db, type AssetRow, type PostRow } from "../db";
+import { createAsset } from "../assets";
+import { db, type PostRow } from "../db";
 import {
   assetView,
   canEditPost,
@@ -51,63 +52,6 @@ function changed(id: string, post: PostRow) {
   reindex(id);
   emit(post.workspaceId, { type: "post", postId: id });
 }
-
-// ---- image processing (the §B7 worker, simulated) ----
-
-async function sha256Hex(blob: Blob) {
-  const buf = await crypto.subtle.digest("SHA-256", await blob.arrayBuffer());
-  return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-async function inspect(blob: Blob): Promise<{ width: number; height: number; color: string }> {
-  const url = URL.createObjectURL(blob);
-  try {
-    const img = new Image();
-    img.src = url;
-    await img.decode();
-    const width = img.naturalWidth || 800;
-    const height = img.naturalHeight || 600;
-    let color = "#808080";
-    try {
-      const c = document.createElement("canvas");
-      c.width = c.height = 8;
-      const ctx = c.getContext("2d")!;
-      ctx.drawImage(img, 0, 0, 8, 8);
-      const d = ctx.getImageData(0, 0, 8, 8).data;
-      let r = 0,
-        g = 0,
-        b = 0;
-      for (let i = 0; i < d.length; i += 4) {
-        r += d[i];
-        g += d[i + 1];
-        b += d[i + 2];
-      }
-      const n = d.length / 4;
-      color = `#${[r, g, b].map((v) => Math.round(v / n).toString(16).padStart(2, "0")).join("")}`;
-    } catch {
-      // tainted canvas or unsupported: keep the neutral placeholder color
-    }
-    return { width, height, color };
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
-
-function guessType(filename: string, mime: string): ImageType {
-  const f = filename.toLowerCase();
-  if (/screen ?shot|capture|screenshot/.test(f)) return "screenshot";
-  if (/diagram|schematic|layout/.test(f)) return "diagram";
-  if (mime === "image/jpeg" || /img_|dsc|photo/.test(f)) return "photo";
-  return "chart";
-}
-
-const CANNED_OCR: Record<ImageType, string> = {
-  chart: "Counts Energy (keV) run calibration peak",
-  screenshot: "run status OK rate trigger",
-  diagram: "Source Detector DAQ",
-  photo: "",
-  table: "run channel value",
-};
 
 const pendingUploads = new Map<string, { orgId: string; filename: string; mime: string; bytes: number; blob?: Blob; sourceKind: Asset["metadata"]["sourceKind"] }>();
 const MAX_UPLOAD = 25 * 1024 * 1024;
@@ -328,41 +272,8 @@ export const postHandlers = [
       const up = pendingUploads.get(params.id as string);
       if (!up || up.orgId !== ctx.org.id || !up.blob) return fail(409, "incomplete", "Upload didn't finish. Retry.");
       pendingUploads.delete(params.id as string);
-      const sha = await sha256Hex(up.blob);
-      const existing = db.t.assets.find((a) => a.orgId === ctx.org.id && a.sha256 === sha);
-      if (existing) return HttpResponse.json(assetView(existing)); // dedupe by content hash within the org
-      const { width, height, color } = await inspect(up.blob);
-      const type = guessType(up.filename, up.mime);
-      const scale = (w: number) => ({ width: Math.min(w, width), height: Math.round((height * Math.min(w, width)) / width) });
-      const row: AssetRow = db.t.assets.put({
-        id: uuidv7(),
-        orgId: ctx.org.id,
-        kind: "image",
-        mime: up.mime,
-        bytes: up.blob.size,
-        width,
-        height,
-        sha256: sha,
-        originalFilename: up.filename,
-        dominantColors: [color],
-        variants: [
-          { name: "thumb", url: "", ...scale(320) },
-          { name: "small", url: "", ...scale(640) },
-          { name: "medium", url: "", ...scale(1280) },
-          { name: "original", url: "", width, height },
-        ],
-        processing: "pending",
-        metadata: { ocrState: "pending", detectedType: type, sourceKind: up.sourceKind, ...(type === "photo" ? { exif: { capturedAt: new Date(Date.now() - 3_600_000).toISOString(), cameraMake: "Canon", cameraModel: "EOS R6" } } : {}) },
-        blob: up.blob,
-      });
-      // The worker finishes thumbnails/OCR shortly after; the image is usable immediately.
-      setTimeout(() => {
-        const a = db.t.assets.get(row.id);
-        if (!a) return;
-        db.t.assets.put({ ...a, processing: "ready", metadata: { ...a.metadata, ocrState: "ready", ocrText: CANNED_OCR[type] } });
-        db.t.images.filter((i) => i.assetId === row.id && !!i.postId).forEach((i) => reindex(i.postId!));
-      }, 1200);
-      return HttpResponse.json(assetView(row), { status: 201 });
+      const { asset, created } = await createAsset(ctx.org.id, up.blob, up.filename, up.sourceKind);
+      return HttpResponse.json(assetView(asset), { status: created ? 201 : 200 });
     }),
   ),
 

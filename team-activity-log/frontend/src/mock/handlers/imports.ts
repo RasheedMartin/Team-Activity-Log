@@ -1,98 +1,109 @@
 import { http, HttpResponse } from "msw";
 import type { Block, ImportItem, ImportJob, ImportMode } from "../../api/contract";
-import { addDays, todayISO } from "../../lib/dates";
 import { uuidv7 } from "../../lib/ids";
-import { doc, heading, paragraph, bulletList } from "../../lib/prosemirror";
+import { doc, heading } from "../../lib/prosemirror";
+import { createAsset } from "../assets";
 import { db, type ImportJobRow } from "../db";
+import { parsePptx, type ParsedDeck, type ParsedSlide } from "../pptx";
 import { emit, fail, now, orgCtx, reindex, route, workspaceCtx } from "../server";
 
-// Real PPTX parsing is backend work (§B13 B-5). The mock simulates the job lifecycle with
-// canned slides so the wizard, review grid, and commit can be built end to end.
+// The import reads the real .pptx in the browser (src/mock/pptx.ts) so decks can be tried for
+// real before the backend worker exists; the job lifecycle mirrors §W5.3.
 
-interface CannedSlide {
-  n: number;
-  title: string;
-  section: string;
-  text: string[];
-  images: number;
-  date?: string;
-  warnings: string[];
+/** Group slides into posts for a mode. */
+function groupsFor(mode: ImportMode, deck: ParsedDeck): { title: string; slides: ParsedSlide[]; note?: string }[] {
+  const s = deck.slides;
+  if (mode === "per_slide") return s.map((x) => ({ title: x.title, slides: [x] }));
+  if (mode === "whole_deck") return [{ title: s.find((x) => x.title)?.title ?? "", slides: s }];
+  // by_section: PowerPoint Sections if the deck has them, else section-header slides, else per slide.
+  const groups: { title: string; slides: ParsedSlide[]; note?: string }[] = [];
+  if (deck.hasSections) {
+    for (const x of s) {
+      const last = groups[groups.length - 1];
+      if (last && last.title === (x.section ?? "")) last.slides.push(x);
+      else groups.push({ title: x.section ?? "", slides: [x] });
+    }
+    return groups;
+  }
+  if (s.some((x) => x.isSectionHeader)) {
+    for (const x of s) {
+      if (x.isSectionHeader || !groups.length) groups.push({ title: x.title, slides: [x] });
+      else groups[groups.length - 1].slides.push(x);
+    }
+    return groups;
+  }
+  return s.map((x, i) => ({ title: x.title, slides: [x], note: i === 0 ? "No sections in this deck; each slide is its own post" : undefined }));
 }
 
-function cannedSlides(count: number, base: string): CannedSlide[] {
-  const sections = ["Cooldown", "Calibration", "Beam test", "Analysis", "Upgrades"];
-  return Array.from({ length: count }, (_, i) => {
-    const section = sections[Math.floor((i / count) * sections.length)];
-    const first = i % Math.ceil(count / sections.length) === 0;
-    const guessed = i % 3 !== 2 ? addDays(base, i * 3) : undefined;
-    const warnings: string[] = [];
-    if (i % 11 === 5) warnings.push("SmartArt rendered as an image");
-    if (i % 17 === 8) warnings.push("Animation not preserved");
-    if (i % 13 === 3) warnings.push("Image is 48 MP; downscaled for display");
-    const untitled = i % 19 === 7;
-    if (untitled) warnings.push("No title on this slide");
+function itemsFor(mode: ImportMode, deck: ParsedDeck, defaults: ImportJob["defaults"]): ImportItem[] {
+  return groupsFor(mode, deck).map((g) => {
+    const dated = defaults.guessDates ? g.slides.find((x) => x.date) : undefined;
     return {
-      n: i + 1,
-      title: untitled ? "" : first ? `${section}: overview` : `${section} — ${["status", "results", "plots", "open issues", "next steps"][i % 5]}`,
-      section,
-      text: [`${guessed ? `${guessed}: ` : ""}Notes from the ${section.toLowerCase()} work.`, "Gain stable within 1%; see plot.", "Follow up on channel 12 noise."],
-      images: i % 4 === 0 ? 0 : 1 + (i % 2),
-      date: guessed,
-      warnings,
+      id: uuidv7(),
+      slideNumbers: g.slides.map((x) => x.n),
+      proposedTitle: g.title,
+      proposedDate: dated?.date ?? defaults.baseDate ?? new Date().toISOString().slice(0, 10),
+      dateSource: dated ? "guessed" : defaults.baseDate ? "user" : "import_fallback",
+      imageCount: g.slides.reduce((n, x) => n + x.images.length, 0),
+      warnings: [...(g.note ? [g.note] : []), ...g.slides.flatMap((x) => x.warnings.map((w) => (g.slides.length > 1 ? `Slide ${x.n}: ${w}` : w)))],
+      included: true,
     };
   });
 }
 
-function itemsFor(mode: ImportMode, slides: CannedSlide[], defaults: ImportJob["defaults"]): ImportItem[] {
-  const fallback = defaults.baseDate ?? todayISO();
-  const mk = (group: CannedSlide[], title: string): ImportItem => {
-    const dated = defaults.guessDates ? group.find((s) => s.date) : undefined;
-    return {
-      id: uuidv7(),
-      slideNumbers: group.map((s) => s.n),
-      proposedTitle: title,
-      proposedDate: dated?.date ?? fallback,
-      dateSource: dated ? "guessed" : defaults.baseDate ? "user" : "import_fallback",
-      imageCount: group.reduce((n, s) => n + s.images, 0),
-      warnings: group.flatMap((s) => s.warnings.map((w) => (group.length > 1 ? `Slide ${s.n}: ${w}` : w))),
-      included: true,
-    };
-  };
-  if (mode === "whole_deck") return [mk(slides, defaults.collectionName.replace(/\.pptx$/i, ""))];
-  if (mode === "by_section") {
-    const groups = new Map<string, CannedSlide[]>();
-    slides.forEach((s) => groups.set(s.section, [...(groups.get(s.section) ?? []), s]));
-    return [...groups.entries()].map(([section, g]) => mk(g, section));
-  }
-  return slides.map((s) => mk([s], s.title));
-}
-
 const view = (j: ImportJobRow): ImportJob => {
-  const { userId: _u, orgId: _o, ...rest } = j;
+  const { userId: _u, orgId: _o, sourceBlob: _b, ...rest } = j;
   void _u;
   void _o;
+  void _b;
   return rest;
 };
 
-function advance(jobId: string, slides: CannedSlide[]) {
-  const step = () => {
-    const j = db.t.importJobs.get(jobId);
-    if (!j || j.status !== "parsing") return;
-    if (/corrupt/i.test(j.sourceFilename) && j.progress > 0.3) {
-      db.t.importJobs.update(jobId, { status: "failed", error: "The file isn't a valid .pptx (zip directory is damaged). Re-export it from PowerPoint and try again." });
-      return;
-    }
-    const progress = Math.min(1, j.progress + 0.08 + Math.random() * 0.1);
-    if (progress >= 1) db.t.importJobs.update(jobId, { progress: 1, status: "review", items: itemsFor(j.mode, slides, j.defaults) });
-    else {
-      db.t.importJobs.update(jobId, { progress });
-      setTimeout(step, 350);
-    }
-  };
-  setTimeout(step, 350);
+// Parsed decks are kept in memory; after a reload they're re-parsed from the temp blob.
+const decks = new Map<string, ParsedDeck>();
+async function deckFor(j: ImportJobRow): Promise<ParsedDeck> {
+  const cached = decks.get(j.id);
+  if (cached) return cached;
+  if (!j.sourceBlob) throw new Error("The uploaded file is no longer available. Start the import again.");
+  const d = await parsePptx(j.sourceBlob);
+  decks.set(j.id, d);
+  return d;
 }
 
-const slideCache = new Map<string, CannedSlide[]>();
+async function parseJob(jobId: string) {
+  const j = db.t.importJobs.get(jobId);
+  if (!j?.sourceBlob) return;
+  let last = 0;
+  try {
+    const deck = await parsePptx(j.sourceBlob, (f) => {
+      if (f - last < 0.05 && f < 1) return;
+      last = f;
+      db.t.importJobs.update(jobId, { progress: 0.1 + f * 0.85 });
+    });
+    decks.set(jobId, deck);
+    const cur = db.t.importJobs.get(jobId)!;
+    db.t.importJobs.update(jobId, { status: "review", progress: 1, slideCount: deck.slides.length, items: itemsFor(cur.mode, deck, cur.defaults) });
+  } catch (e) {
+    db.t.importJobs.update(jobId, { status: "failed", error: e instanceof Error ? e.message : String(e) });
+  }
+  await db.flush();
+}
+
+/** Blocks for one post: per slide a break (with presenter notes), heading when several slides, text, images. */
+async function blocksFor(orgId: string, postId: string, slides: ParsedSlide[]): Promise<Block[]> {
+  const blocks: Block[] = [];
+  for (const [k, sl] of slides.entries()) {
+    if (k > 0 || sl.notes) blocks.push({ id: uuidv7(), type: "slide_break", notes: sl.notes || undefined });
+    const content = [...(slides.length > 1 && sl.title ? [heading(sl.title)] : []), ...sl.content];
+    if (content.length) blocks.push({ id: uuidv7(), type: "text", doc: doc(...content) });
+    for (const img of sl.images) {
+      const { asset } = await createAsset(orgId, img.blob, img.name, "pptx_import"); // deduped by hash within the org
+      const inst = db.t.images.put({ id: uuidv7(), assetId: asset.id, postId, tags: [], customFields: {}, caption: `Slide ${sl.n}` });
+      blocks.push({ id: uuidv7(), type: "image", imageInstanceId: inst.id });
+    }
+  }
+  return blocks;
+}
 
 export const importHandlers = [
   http.post(
@@ -101,7 +112,6 @@ export const importHandlers = [
       const ctx = workspaceCtx(cookies, params.org as string, params.ws as string, "member");
       const body = (await request.json()) as { filename: string; bytes: number; mode: ImportMode; defaults: ImportJob["defaults"] };
       if (!/\.pptx$/i.test(body.filename)) fail(415, "unsupported_type", "Choose a .pptx file (PowerPoint 2007 or newer)");
-      const slideCount = /800/.test(body.filename) ? 800 : Math.max(8, Math.min(60, Math.round(body.bytes / 400_000)));
       const job = db.t.importJobs.put({
         id: uuidv7(),
         userId: ctx.user.id,
@@ -112,11 +122,10 @@ export const importHandlers = [
         mode: body.mode,
         sourceFilename: body.filename,
         sourceBytes: body.bytes,
-        slideCount,
+        slideCount: 0,
         defaults: body.defaults,
         items: [],
       });
-      slideCache.set(job.id, cannedSlides(slideCount, addDays(todayISO(), -slideCount * 3 - 400)));
       return HttpResponse.json(view(job), { status: 201 });
     }),
   ),
@@ -126,9 +135,10 @@ export const importHandlers = [
       const ctx = orgCtx(cookies, params.org as string, "member");
       const j = db.t.importJobs.get(params.id as string);
       if (!j || j.orgId !== ctx.org.id) fail(404, "not_found", "Import not found");
-      await request.arrayBuffer(); // held in temp storage only; not retained (§W5.4)
-      db.t.importJobs.update(j!.id, { status: "parsing", progress: 0.05 });
-      advance(j!.id, slideCache.get(j!.id) ?? cannedSlides(j!.slideCount, todayISO()));
+      // Held in temp storage only until commit; not retained (§W5.4).
+      const blob = await request.blob();
+      db.t.importJobs.update(j!.id, { status: "parsing", progress: 0.05, sourceBlob: blob, sourceBytes: blob.size });
+      void parseJob(j!.id);
       return HttpResponse.json(view(db.t.importJobs.get(j!.id)!));
     }),
   ),
@@ -149,39 +159,32 @@ export const importHandlers = [
       if (!j || j.orgId !== ctx.org.id) fail(404, "not_found", "Import not found");
       if (j!.status !== "review") fail(409, "not_in_review", "This import can't be edited now");
       const body = (await request.json()) as { items?: ImportItem[]; mode?: ImportMode };
-      const slides = slideCache.get(j!.id) ?? cannedSlides(j!.slideCount, todayISO());
-      const items = body.mode && body.mode !== j!.mode ? itemsFor(body.mode, slides, j!.defaults) : (body.items ?? j!.items);
+      const items = body.mode && body.mode !== j!.mode ? itemsFor(body.mode, await deckFor(j!), j!.defaults) : (body.items ?? j!.items);
       return HttpResponse.json(view(db.t.importJobs.update(j!.id, { items, mode: body.mode ?? j!.mode })!));
     }),
   ),
   http.post(
     "/v1/orgs/:org/imports/:id/commit",
-    route(({ cookies, params }) => {
+    route(async ({ cookies, params }) => {
       const ctx = orgCtx(cookies, params.org as string, "member");
       const j = db.t.importJobs.get(params.id as string);
       if (!j || j.orgId !== ctx.org.id) fail(404, "not_found", "Import not found");
       if (j!.status === "done") return HttpResponse.json(view(j!)); // idempotent
       if (j!.status !== "review") fail(409, "not_in_review", "Nothing to commit yet");
-      const slides = slideCache.get(j!.id) ?? cannedSlides(j!.slideCount, todayISO());
-      const assets = db.t.assets.filter((a) => a.orgId === ctx.org.id && !a.blob);
+      const deck = await deckFor(j!);
+      const bySlide = new Map(deck.slides.map((x) => [x.n, x]));
+      const fileSha = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", await j!.sourceBlob!.arrayBuffer())), (b) => b.toString(16).padStart(2, "0")).join("");
       const coll = db.t.collections.put({ id: uuidv7(), workspaceId: j!.workspaceId, name: j!.defaults.collectionName || j!.sourceFilename, kind: "deck_import", postIds: [], createdBy: ctx.user.id, updatedAt: now() });
       const postIds: string[] = [];
-      const sha = j!.id.replace(/-/g, "").padEnd(64, "0");
-      const items = j!.items.map((item) => {
-        if (!item.included) return item;
+      const items: ImportItem[] = [];
+      for (const item of j!.items) {
+        if (!item.included) {
+          items.push(item);
+          continue;
+        }
         const postId = uuidv7();
-        const blocks: Block[] = [];
-        item.slideNumbers.forEach((n, idx) => {
-          const s = slides[n - 1];
-          if (!s) return;
-          if (idx > 0) blocks.push({ id: uuidv7(), type: "slide_break", notes: `Speaker notes for slide ${n}` });
-          blocks.push({ id: uuidv7(), type: "text", doc: doc(...(item.slideNumbers.length > 1 && s.title ? [heading(s.title)] : []), paragraph(s.text[0]), bulletList(s.text.slice(1))) });
-          for (let k = 0; k < s.images && assets.length; k++) {
-            const asset = assets[(n * 7 + k) % assets.length];
-            const inst = db.t.images.put({ id: uuidv7(), assetId: asset.id, postId, tags: [], customFields: {}, caption: `Slide ${n}` });
-            blocks.push({ id: uuidv7(), type: "image", imageInstanceId: inst.id });
-          }
-        });
+        const slides = item.slideNumbers.map((n) => bySlide.get(n)).filter((x): x is ParsedSlide => !!x);
+        const blocks = await blocksFor(ctx.org.id, postId, slides);
         const t = now();
         db.t.posts.put({
           id: postId,
@@ -195,7 +198,7 @@ export const importHandlers = [
           authorId: ctx.user.id,
           coAuthorIds: [],
           tagIds: j!.defaults.tagIds,
-          blocks,
+          blocks: blocks.length ? blocks : [{ id: uuidv7(), type: "text", doc: doc() }],
           revision: 0,
           version: 1,
           createdAt: t,
@@ -203,14 +206,16 @@ export const importHandlers = [
           counts: { comments: 0, reactions: 0, images: blocks.filter((b) => b.type === "image").length },
           reactions: {},
           collectionIds: [coll.id],
-          source: { kind: "import", importJobId: j!.id, fileName: j!.sourceFilename, fileSha256: sha, slide: item.slideNumbers[0], slideCount: j!.slideCount },
+          source: { kind: "import", importJobId: j!.id, fileName: j!.sourceFilename, fileSha256: fileSha, slide: item.slideNumbers[0], slideCount: j!.slideCount },
         });
         postIds.push(postId);
-        return { ...item, postId };
-      });
+        items.push({ ...item, postId });
+      }
       db.t.collections.update(coll.id, { postIds });
       const report = { created: postIds.length, skipped: j!.items.filter((i) => !i.included).length, warnings: j!.items.reduce((n, i) => n + i.warnings.length, 0) };
-      return HttpResponse.json(view(db.t.importJobs.update(j!.id, { status: "done", items, collectionId: coll.id, report })!));
+      // The original deck leaves temp storage at commit (§W5.4).
+      decks.delete(j!.id);
+      return HttpResponse.json(view(db.t.importJobs.update(j!.id, { status: "done", items, collectionId: coll.id, report, sourceBlob: undefined })!));
     }),
   ),
   http.post(

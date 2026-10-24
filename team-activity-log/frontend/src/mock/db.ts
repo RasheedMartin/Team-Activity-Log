@@ -80,6 +80,8 @@ export interface MetaRow {
 export interface ImportJobRow extends ImportJob {
   userId: ID;
   orgId: ID;
+  /** The uploaded deck, in "temp storage" until commit (§W5.4: originals aren't retained). */
+  sourceBlob?: Blob;
 }
 export interface DraftOrderRow {
   id: ID;

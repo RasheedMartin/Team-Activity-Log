@@ -14,7 +14,8 @@
     "e2e": "playwright test",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
-    "gen:assets": "node scripts/gen-mock-assets.mjs"
+    "gen:assets": "node scripts/gen-mock-assets.mjs",
+    "gen:test-deck": "node scripts/make-test-deck.mjs"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -35,6 +36,7 @@
     "@tiptap/starter-kit": "^3.20.0",
     "@tiptap/suggestion": "^3.32.0",
     "dexie": "^4.4.7",
+    "jszip": "^3.10.1",
     "minisearch": "^7.2.0",
     "msw": "^2.15.0",
     "react": "^19.1.1",
