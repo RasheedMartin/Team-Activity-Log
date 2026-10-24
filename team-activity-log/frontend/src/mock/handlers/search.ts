@@ -125,6 +125,20 @@ export const searchHandlers = [
       return HttpResponse.json(c, { status: 201 });
     }),
   ),
+  http.get(
+    "/v1/orgs/:org/workspaces/:ws/collections/:id/entries",
+    route(({ cookies, params }) => {
+      const ctx = workspaceCtx(cookies, params.org as string, params.ws as string);
+      const c = db.t.collections.get(params.id as string);
+      if (!c || c.workspaceId !== ctx.ws.id) fail(404, "not_found", "Collection not found");
+      // In collection order; posts the caller can't see (drafts of others, deleted) are skipped.
+      const entries = c!.postIds
+        .map((id) => db.t.posts.get(id))
+        .filter((p) => !!p && !p.deletedAt && (p.status === "published" || p.authorId === ctx.user.id) && (p.visibility === "visible" || p.authorId === ctx.user.id || roleAtLeast(ctx.role, "admin")))
+        .map((p) => ({ id: p!.id, title: p!.title, workDate: p!.workDate, authorId: p!.authorId }));
+      return HttpResponse.json(entries);
+    }),
+  ),
   http.patch(
     "/v1/orgs/:org/workspaces/:ws/collections/:id",
     route(async ({ cookies, params, request }) => {

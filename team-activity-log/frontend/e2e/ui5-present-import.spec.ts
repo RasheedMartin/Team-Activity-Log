@@ -56,11 +56,15 @@ test("select posts → notebook → reorder → present", async ({ page }) => {
   await page.getByRole("button", { name: "Create notebook" }).click();
   await expect(page).toHaveURL(/\/notebooks\//);
   await expect(page.getByLabel("Notebook title")).toHaveValue("Cooldown notebook");
-  await expect(page.locator("[data-nb-section]")).toHaveCount(3);
+  await expect(page.getByText("Entry 1 of 3").first()).toBeVisible(); // reader: one entry at a time
   await expect(page.getByRole("link", { name: "Cooldown notebook" })).toBeVisible(); // in the rail
   const first = await page.locator("[data-nb-section] h2").first().innerText();
+  await page.getByRole("button", { name: "Next" }).first().click();
+  await expect(page.getByText("Entry 2 of 3").first()).toBeVisible();
+  await page.getByRole("button", { name: "Continuous" }).click();
+  await expect(page.locator("[data-nb-section]")).toHaveCount(3);
   await page.getByRole("button", { name: "Edit" }).click();
-  await page.getByRole("button", { name: /Move .* down/ }).first().click();
+  await page.getByRole("button", { name: `Move ${first} down`, exact: true }).click();
   await expect(page.locator("[data-nb-section] h2").nth(1)).toHaveText(first);
   await page.getByRole("button", { name: "Present" }).click();
   await expect(page.getByText(/^1 \/ \d+$/)).toBeVisible();
@@ -139,7 +143,38 @@ test("no duplicate notebooks; back from a post returns to the notebook", async (
   await page.getByRole("button", { name: "Open it" }).click();
   await expect(page).toHaveURL(firstUrl);
   // Back from a post goes to the notebook, not the feed.
+  await page.getByRole("button", { name: "Next" }).first().click();
+  const entryUrl = page.url();
   await page.locator("[data-nb-section] h2 a").first().click();
   await page.getByRole("button", { name: `Back to ${name}` }).click();
-  await expect(page).toHaveURL(new RegExp(`${firstUrl.split("/").pop()}#nb-`));
+  await expect(page).toHaveURL(entryUrl); // the same entry you left from
+});
+
+test("notebook contents land exactly on the entry (reader and continuous)", async ({ page }) => {
+  await openScenario(page, "busy");
+  await page.getByRole("link", { name: "Explore" }).click();
+  await page.getByRole("region", { name: /^Tag / }).first().getByRole("button", { name: /Notebook/ }).click();
+  await expect(page).toHaveURL(/\/notebooks\//);
+  const toc = page.getByRole("navigation", { name: "Contents" }).getByRole("button");
+  await expect(toc.nth(10)).toBeVisible();
+  const n = await toc.count();
+  for (const i of [5, Math.min(40, n - 1), 1]) {
+    const title = (await toc.nth(i).locator(".MuiListItemText-primary").innerText()).trim();
+    await toc.nth(i).click();
+    await expect(page.locator("[data-nb-section] h2")).toHaveText(title);
+    await expect(page.getByText(`Entry ${i + 1} of ${n}`).first()).toBeVisible();
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  }
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByText(`Entry 3 of ${n}`).first()).toBeVisible();
+  // Continuous: once every entry has loaded, jumps land on the entry.
+  await page.getByRole("button", { name: "Continuous" }).click();
+  await expect(page.getByText(/^Loading \d+ of \d+ entries/)).toHaveCount(0, { timeout: 45_000 });
+  await expect(page.locator("[data-nb-section]")).toHaveCount(n);
+  for (const i of [5, Math.min(40, n - 1)]) {
+    await toc.nth(i).click();
+    const id = (await page.locator("[data-nb-section]").nth(i).getAttribute("data-nb-section"))!;
+    const top = await page.evaluate((x) => Math.round(document.getElementById(`nb-${x}`)!.getBoundingClientRect().top), id);
+    expect(Math.abs(top - 16)).toBeLessThan(4);
+  }
 });

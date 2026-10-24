@@ -7,6 +7,7 @@ import { useNotify } from "../../components/notify";
 import { ErrorState, PageHeader } from "../../components/ui";
 import { timeAgo } from "../../lib/dates";
 import { errorMessage } from "../../lib/format";
+import { useOrigin } from "../../app/origin";
 
 /** Admin view of hidden and deleted posts (§W2.8, §A5). */
 export default function TrashPage() {
@@ -15,6 +16,7 @@ export default function TrashPage() {
   const action = usePostAction(org.id);
   const notify = useNotify();
   const { data: people = [] } = usePeople(org.id);
+  const origin = useOrigin("Hidden & deleted");
   if (!can(role, "admin")) return <Navigate to={wsPath(org, ws)} replace />;
   const name = (id?: string) => people.find((p) => p.id === id)?.name ?? "someone";
   const section = (title: string, list: Post[], kind: "deleted" | "hidden") => (
@@ -36,7 +38,7 @@ export default function TrashPage() {
                 }
               >
                 <ListItemText
-                  primary={<RouterLink to={wsPath(org, ws, `/p/${p.id}`)} style={{ color: "inherit" }}>{p.title || "Untitled"}</RouterLink>}
+                  primary={<RouterLink to={wsPath(org, ws, `/p/${p.id}`)} state={origin} style={{ color: "inherit" }}>{p.title || "Untitled"}</RouterLink>}
                   secondary={kind === "deleted" ? `by ${name(p.authorId)} · deleted ${timeAgo(p.deletedAt!)}` : `by ${name(p.authorId)} · hidden by ${name(p.hiddenBy)}${p.hiddenReason ? `: “${p.hiddenReason}”` : ""}`}
                   sx={{ pr: 10 }}
                 />

@@ -7,6 +7,7 @@ import { useImage, useSearch } from "../../api/hooks";
 import { useWs, wsPath } from "../../app/session";
 import { AnnotationLayer } from "../../components/AnnotationLayer";
 import { useFit } from "../../lib/useFit";
+import { useOrigin } from "../../app/origin";
 
 const AUTOPLAY_MS = 5000;
 
@@ -26,6 +27,7 @@ export function ImageSlideshow({ title, spec, onClose }: { title: string; spec: 
   const fit = useFit<HTMLDivElement>(cur ? cur.width / cur.height : 4 / 3);
   const reduced = me.preferences.reducedMotion;
   const strip = useRef<HTMLDivElement>(null);
+  const origin = useOrigin(title);
 
   const go = useCallback(
     (d: number) => {
@@ -91,7 +93,7 @@ export function ImageSlideshow({ title, spec, onClose }: { title: string; spec: 
           </IconButton>
         </Tooltip>
         {cur && (
-          <Button component={RouterLink} to={wsPath(org, ws, `/p/${cur.postId}`)} startIcon={<OpenInNewRounded />} sx={{ color: "#c2c7cf" }}>
+          <Button component={RouterLink} to={wsPath(org, ws, `/p/${cur.postId}`)} state={origin} startIcon={<OpenInNewRounded />} sx={{ color: "#c2c7cf" }}>
             Open post
           </Button>
         )}

@@ -466,6 +466,14 @@ export interface Collection {
   createdBy: ID;
 }
 
+/** Lightweight table-of-contents row for a collection/notebook (no post bodies). */
+export interface CollectionEntry {
+  id: ID;
+  title: string;
+  workDate: ISODate;
+  authorId: ID;
+}
+
 // ---- Import (v5) ----
 
 export type ImportMode = "per_slide" | "whole_deck" | "by_section";

@@ -10,6 +10,7 @@ import { useWs, wsPath } from "../../app/session";
 import { EmptyState, ErrorState, PageHeader, TagDot } from "../../components/ui";
 import { formatDay, timeAgo } from "../../lib/dates";
 import { toSearchParams, toggleFacetValue } from "../../lib/filterSpec";
+import { useOrigin } from "../../app/origin";
 import { GalleryViewer } from "../search/Results";
 import { ImageSlideshow } from "./ImageSlideshow";
 
@@ -34,6 +35,7 @@ function Shelf({ shelf, onSlideshow, onImage }: { shelf: ExploreShelf; onSlidesh
   const { org, ws } = useWs();
   const { data: people = [] } = usePeople(org.id);
   const navigate = useNavigate();
+  const origin = useOrigin("Explore");
   const notify = useNotify();
   const create = useCreateCollection(org.id, ws.id);
   const [making, setMaking] = useState(false);
@@ -92,6 +94,7 @@ function Shelf({ shelf, onSlideshow, onImage }: { shelf: ExploreShelf; onSlidesh
             key={p.id}
             component={RouterLink}
             to={wsPath(org, ws, `/p/${p.id}`)}
+            state={origin}
             sx={{ flexShrink: 0, width: 200, height: 126, borderRadius: 1, border: 1, borderColor: "divider", bgcolor: "background.paper", p: 1.25, display: "flex", flexDirection: "column", alignItems: "flex-start", justifyContent: "space-between", textAlign: "left", scrollSnapAlign: "start", "&:hover": { bgcolor: "action.hover" } }}
           >
             <Typography variant="body2" sx={{ fontWeight: 600, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{p.title}</Typography>
@@ -114,6 +117,7 @@ export default function ExplorePage() {
   const groups = useMemo(() => ["All", ...new Set((q.data?.shelves ?? []).map((s) => s.groupName ?? "Other"))], [q.data]);
   const shelves = (q.data?.shelves ?? []).filter((s) => group === "All" || s.groupName === group);
   const slideShelf = q.data?.shelves.find((s) => s.tag.id === slideTag);
+  const exploreOrigin = useOrigin("Explore");
 
   return (
     <Box sx={{ maxWidth: 1180, width: "100%", mx: "auto", px: { xs: 1.5, sm: 3 }, py: 3 }}>
@@ -142,7 +146,7 @@ export default function ExplorePage() {
         ))
       )}
       {slideTag && slideShelf && <ImageSlideshow title={`#${slideShelf.tag.name}`} spec={tagSpec(slideTag)} onClose={() => setParams({})} />}
-      <GalleryViewer img={viewer} onClose={() => setViewer(null)} />
+      <GalleryViewer img={viewer} onClose={() => setViewer(null)} origin={exploreOrigin} />
     </Box>
   );
 }

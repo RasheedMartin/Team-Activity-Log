@@ -42,9 +42,11 @@ interface Props {
   /** Selection mode (§W5.2): a checkbox that doesn't navigate. */
   selected?: boolean;
   onToggleSelect?: () => void;
+  /** Router state for the link (where the post was opened from). */
+  linkState?: unknown;
 }
 
-export const PostCard = memo(function PostCard({ hit, href, author, tags, focused, comfortable, onTagClick, selected, onToggleSelect }: Props) {
+export const PostCard = memo(function PostCard({ hit, href, author, tags, focused, comfortable, onTagClick, selected, onToggleSelect, linkState }: Props) {
   const theme = useTheme();
   const { post } = hit;
   const body = hit.highlights.find((h) => h.field !== "title");
@@ -57,6 +59,7 @@ export const PostCard = memo(function PostCard({ hit, href, author, tags, focuse
     <Box
       component={RouterLink}
       to={href}
+      state={linkState}
       data-post-id={post.id}
       // The selection checkbox lives inside the card link: let it toggle without navigating.
       onClick={(e: React.MouseEvent) => (e.target as HTMLElement).closest("input[type=checkbox]") && e.preventDefault()}

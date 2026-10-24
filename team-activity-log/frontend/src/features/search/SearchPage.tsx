@@ -2,7 +2,7 @@ import { CheckBoxOutlined, FilterListRounded, GridViewRounded, TableRowsOutlined
 import { Box, Button, Drawer, IconButton, MenuItem, Skeleton, Stack, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography, useMediaQuery, useTheme } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useNavigationType, useSearchParams } from "react-router-dom";
 import type { Condition, DateField, FilterSpec, GalleryImage, ID, Interval, Post, SavedView, SearchHit, SearchResponse, Sort } from "../../api/contract";
 import { removeFromOverlay, useCollections, useOverlay, usePeople, useSavedViews, useSearch, useSearchCounts, useTags } from "../../api/hooks";
 import { useWs, wsPath } from "../../app/session";
@@ -20,6 +20,7 @@ import {
   toSearchParams,
   toggleFacetValue,
 } from "../../lib/filterSpec";
+import { useOrigin } from "../../app/origin";
 import { SelectionTray } from "../collections/SelectionTray";
 import { AdvancedFilters } from "./AdvancedFilters";
 import { ChipsBar, SavedViewsMenu, SaveViewDialog } from "./ChipsBar";
@@ -78,6 +79,9 @@ export function SearchPage() {
   const people = useMemo(() => new Map(peopleList.map((p) => [p.id, p])), [peopleList]);
   const ctx: DescribeCtx = useMemo(() => ({ tags, people, collections: new Map(collections.map((c) => [c.id, c])), meId: me.user.id }), [tags, people, collections, me.user.id]);
   const activeView = views.find((v) => v.id === activeViewId);
+  // "Back to …" label for posts opened from here: a saved view, a collection, the feed, or results.
+  const onlyCollection = !spec.q && !spec.none?.length && !spec.any?.length && !spec.where && spec.all?.length === 1 && spec.all[0].field === "collection" ? collections.find((c) => (spec.all![0].value as string[])?.[0] === c.id) : undefined;
+  const origin = useOrigin(activeView?.name ?? onlyCollection?.name ?? (isEmptySpec(spec) ? "feed" : "results"));
 
   // Optimistic overlay (§B6): just-published posts lead the unfiltered feed until search has them.
   const { data: overlay } = useOverlay(org.id, ws.id);
@@ -149,7 +153,7 @@ export function SearchPage() {
         if (e.key === "j" && next >= hits.length - 3 && search.hasNextPage) void search.fetchNextPage();
       } else if (e.key === "Enter" && focused >= 0) {
         e.preventDefault();
-        navigate(wsPath(org, ws, `/p/${hits[focused].post.id}`));
+        navigate(wsPath(org, ws, `/p/${hits[focused].post.id}`), { state: origin });
       } else if (e.key === " " && focused >= 0) {
         e.preventDefault();
         const id = hits[focused].post.id;
@@ -164,7 +168,12 @@ export function SearchPage() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [hits, focused, peek, view, navigate, org, ws, search, me.preferences.shortcuts, toggleSelected]);
+  }, [hits, focused, peek, view, navigate, org, ws, search, me.preferences.shortcuts, toggleSelected, origin]);
+
+  // Back/forward restores the list position by anchor (see ResultsList).
+  const navType = useNavigationType();
+  const location = useLocation();
+  const scrollKey = `tal.scroll.${location.key}`;
 
   const onEndReached = useCallback(() => {
     if (search.hasNextPage && !search.isFetchingNextPage) void search.fetchNextPage();
@@ -392,6 +401,9 @@ export function SearchPage() {
                   onEndReached={onEndReached}
                   onTagClick={(id) => setSpec(toggleFacetValue(spec, "tag", id, "include"))}
                   selection={selection}
+                  origin={origin}
+                  scrollKey={scrollKey}
+                  restore={navType === "POP"}
                 />
               )}
               {search.isFetchingNextPage && <Skeleton variant="rounded" height={64} sx={{ mt: 1 }} />}
@@ -399,7 +411,7 @@ export function SearchPage() {
                 <Button size="small" sx={{ mt: 1 }} onClick={() => (search.refetch(), notify("Retrying…"))}>Couldn't load more. Retry</Button>
               )}
             </Box>
-            {peek && xwide && <PeekPane postId={peek} people={people} tags={tags} onClose={() => setPeek(null)} />}
+            {peek && xwide && <PeekPane postId={peek} people={people} tags={tags} onClose={() => setPeek(null)} origin={origin} />}
           </Box>
         </Box>
       </Box>
@@ -411,7 +423,7 @@ export function SearchPage() {
       )}
       {peek && !xwide && (
         <Drawer className="peek-drawer" anchor="right" open onClose={() => setPeek(null)} disableEnforceFocus disableAutoFocus slotProps={{ paper: { sx: { width: { xs: "100%", sm: 420 } } } }}>
-          <PeekPane postId={peek} people={people} tags={tags} onClose={() => setPeek(null)} />
+          <PeekPane postId={peek} people={people} tags={tags} onClose={() => setPeek(null)} origin={origin} />
         </Drawer>
       )}
       {advanced && <AdvancedFilters open onClose={() => setAdvanced(false)} value={spec.where} onApply={(where) => setSpec({ ...spec, where, cursor: undefined })} ctx={ctx} />}
@@ -429,7 +441,7 @@ export function SearchPage() {
           }}
         />
       )}
-      <GalleryViewer img={viewer} onClose={() => setViewer(null)} />
+      <GalleryViewer img={viewer} onClose={() => setViewer(null)} origin={origin} />
       <SelectionTray selected={[...picked.keys()]} posts={picked} onClear={() => (setPicked(new Map()), setSelecting(false))} />
     </Box>
   );

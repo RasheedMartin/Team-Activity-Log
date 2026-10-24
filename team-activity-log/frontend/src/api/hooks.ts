@@ -10,6 +10,7 @@ import {
 import { api, del, get, patch, post, put } from "./client";
 import type {
   Collection,
+  CollectionEntry,
   Comment,
   DevEmail,
   DraftSummary,
@@ -481,6 +482,13 @@ export function useDeleteCollection(orgId: ID, wsId: ID) {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (id: ID) => del(`${W(orgId, wsId)}/collections/${id}`), onSuccess: () => qc.invalidateQueries({ queryKey: qk.collections(orgId, wsId) }) });
 }
+
+export const useCollectionEntries = (orgId: ID, wsId: ID, id: ID | undefined) =>
+  useQuery({
+    queryKey: [...qk.collections(orgId, wsId), id, "entries"],
+    queryFn: ({ signal }) => get<CollectionEntry[]>(`${W(orgId, wsId)}/collections/${id}/entries`, signal),
+    enabled: !!id,
+  });
 
 /** All post IDs matching a spec (paged through search), for "make a notebook from this tag/search". */
 export async function collectPostIds(orgId: ID, wsId: ID, spec: FilterSpec, max = 1000): Promise<ID[]> {

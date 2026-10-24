@@ -6,6 +6,7 @@ import { useMarkRead, useNotifications, usePeople } from "../../api/hooks";
 import { useWs, wsPath } from "../../app/session";
 import { EmptyState, ErrorState, PageHeader, UserAvatar } from "../../components/ui";
 import { timeAgo } from "../../lib/dates";
+import { useOrigin } from "../../app/origin";
 
 /** Mentions and replies (§W3.5). Quiet: no push, no red badges — a dot in the rail at most. */
 export default function InboxPage() {
@@ -15,6 +16,7 @@ export default function InboxPage() {
   const navigate = useNavigate();
   const { data: people = [] } = usePeople(org.id);
   const [filter, setFilter] = useState<"unread" | "all">("unread");
+  const origin = useOrigin("Inbox");
   const all = (q.data ?? []).filter((n) => n.workspaceId === ws.id);
   const list = filter === "unread" ? all.filter((n) => !n.readAt) : all;
   const unread = all.filter((n) => !n.readAt).length;
@@ -52,7 +54,7 @@ export default function InboxPage() {
                   divider={i < list.length - 1}
                   onClick={() => {
                     if (!n.readAt) mark.mutate([n.id]);
-                    navigate(`${wsPath(org, ws, `/p/${n.postId}`)}#comment-${n.commentId}`);
+                    navigate(`${wsPath(org, ws, `/p/${n.postId}`)}#comment-${n.commentId}`, { state: origin });
                   }}
                   sx={{ alignItems: "flex-start", py: 1.25 }}
                 >

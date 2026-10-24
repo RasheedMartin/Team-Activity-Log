@@ -11,6 +11,7 @@ import { RichText } from "../../components/RichText";
 import { TagChip, UserAvatar } from "../../components/ui";
 import { formatDay } from "../../lib/dates";
 import { useFit } from "../../lib/useFit";
+import type { Origin } from "../../app/origin";
 import { AnnotatedImage } from "../posts/editor/ImageBlock";
 import { PostCard } from "../posts/PostCard";
 
@@ -39,9 +40,13 @@ interface ListProps {
   onEndReached: () => void;
   onTagClick: (id: ID) => void;
   selection?: { ids: Set<ID>; toggle: (hit: SearchHit) => void };
+  origin?: Origin;
+  /** Session key for this history entry, and whether to restore (back/forward). */
+  scrollKey?: string;
+  restore?: boolean;
 }
 
-export function ResultsList({ hits, people, tags, focused, setFocused, comfortable, onEndReached, onTagClick, selection }: ListProps) {
+export function ResultsList({ hits, people, tags, focused, setFocused, comfortable, onEndReached, onTagClick, selection, origin, scrollKey, restore }: ListProps) {
   const { org, ws } = useWs();
   const ref = useRef<HTMLDivElement>(null);
   const scrollMargin = useScrollMargin(ref);
@@ -51,8 +56,53 @@ export function ResultsList({ hits, people, tags, focused, setFocused, comfortab
   useEffect(() => {
     if (hits.length && last >= hits.length - 6) onEndReached();
   }, [last, hits.length, onEndReached]);
+  // Remember the post at the top of the viewport (+ offset) at the moment you leave (pointer-down
+  // or keyboard focus on a result), and restore it on back/forward. Saving on every scroll event
+  // is unreliable: route transitions fire scrolls that would overwrite the good position.
+  const saveAnchor = () => {
+    if (!scrollKey) return;
+    const top = v.getVirtualItems().find((it) => it.end > window.scrollY); // positions are document offsets
+    if (!top || !hits[top.index]) return;
+    try {
+      sessionStorage.setItem(scrollKey, JSON.stringify({ id: hits[top.index].post.id, offset: window.scrollY - top.start }));
+    } catch {
+      // storage blocked: restoration is a convenience
+    }
+  };
+  const restored = useRef(false);
   useEffect(() => {
-    if (focused >= 0) v.scrollToIndex(focused, { align: "auto" });
+    if (!restore || restored.current || !scrollKey || !hits.length || !scrollMargin) return;
+    restored.current = true;
+    let saved: { id: string; offset: number } | null = null;
+    try {
+      saved = JSON.parse(sessionStorage.getItem(scrollKey) ?? "null");
+    } catch {
+      return;
+    }
+    const index = saved ? hits.findIndex((h) => h.post.id === saved!.id) : -1;
+    if (index < 0) return;
+    // Follow the anchor while rows above it get measured; stop once it's been still for 8 frames.
+    let frames = 0;
+    let still = 0;
+    let last = -1;
+    const step = () => {
+      const start = v.measurementsCache[index]?.start; // same coordinate space the anchor was saved in
+      if (start !== undefined) {
+        const target = Math.round(start + saved!.offset);
+        window.scrollTo(0, target);
+        still = target === last ? still + 1 : 0;
+        last = target;
+      }
+      if (still < 8 && ++frames < 120) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }, [restore, scrollKey, hits, v, scrollMargin]);
+
+  // Scroll only for keyboard moves (j/k). Scrolling on mouse focus would move the card out from
+  // under the pointer between mousedown and mouseup and swallow the click.
+  const pointerFocus = useRef(-1);
+  useEffect(() => {
+    if (focused >= 0 && focused !== pointerFocus.current) v.scrollToIndex(focused, { align: "auto" });
   }, [focused, v]);
   return (
     <Box ref={ref} role="feed" aria-label="Search results" aria-busy={false} sx={{ position: "relative", height: v.getTotalSize(), border: 1, borderColor: "divider", borderRadius: 1, overflow: "hidden", bgcolor: "background.paper" }}>
@@ -66,7 +116,14 @@ export function ResultsList({ hits, people, tags, focused, setFocused, comfortab
             role="article"
             aria-posinset={it.index + 1}
             aria-setsize={-1}
-            onFocusCapture={() => setFocused(it.index)}
+            onPointerDown={() => {
+              pointerFocus.current = it.index;
+              saveAnchor();
+            }}
+            onFocusCapture={() => {
+              setFocused(it.index);
+              saveAnchor();
+            }}
             sx={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${it.start - scrollMargin}px)` }}
           >
             <PostCard
@@ -79,6 +136,7 @@ export function ResultsList({ hits, people, tags, focused, setFocused, comfortab
               onTagClick={onTagClick}
               selected={selection?.ids.has(h.post.id)}
               onToggleSelect={selection ? () => selection.toggle(h) : undefined}
+              linkState={origin}
             />
           </Box>
         );
@@ -138,7 +196,7 @@ export function GalleryGrid({ images, onEndReached, onOpen }: { images: GalleryI
   );
 }
 
-export function GalleryViewer({ img, onClose }: { img: GalleryImage | null; onClose: () => void }) {
+export function GalleryViewer({ img, onClose, origin }: { img: GalleryImage | null; onClose: () => void; origin?: Origin }) {
   const { org, ws } = useWs();
   const { data } = useImage(org.id, img?.imageInstanceId);
   const fit = useFit<HTMLDivElement>(img ? img.width / img.height : 1);
@@ -150,7 +208,7 @@ export function GalleryViewer({ img, onClose }: { img: GalleryImage | null; onCl
           <Typography variant="body2" noWrap>{img.figureLabel && <b>{img.figureLabel} </b>}{img.caption}</Typography>
           <Typography variant="caption" sx={{ color: "#9aa3ad" }} noWrap component="div">From “{img.postTitle}”</Typography>
         </Box>
-        <Button component={RouterLink} to={wsPath(org, ws, `/p/${img.postId}`)} startIcon={<OpenInNewRounded />} sx={{ color: "#c2c7cf" }}>Open post</Button>
+        <Button component={RouterLink} to={wsPath(org, ws, `/p/${img.postId}`)} state={origin} startIcon={<OpenInNewRounded />} sx={{ color: "#c2c7cf" }}>Open post</Button>
         <IconButton onClick={onClose} sx={{ color: "#c2c7cf" }} aria-label="Close image"><CloseRounded /></IconButton>
       </Stack>
       <Box ref={fit.ref} sx={{ flex: 1, display: "grid", placeItems: "center", m: 2, minHeight: 0 }} onClick={onClose}>
@@ -164,7 +222,7 @@ export function GalleryViewer({ img, onClose }: { img: GalleryImage | null; onCl
 }
 
 /** Space opens a quick preview without leaving the list (§A4). */
-export function PeekPane({ postId, people, tags, onClose }: { postId: ID; people: Map<ID, User>; tags: Map<ID, Tag>; onClose: () => void }) {
+export function PeekPane({ postId, people, tags, onClose, origin }: { postId: ID; people: Map<ID, User>; tags: Map<ID, Tag>; onClose: () => void; origin?: Origin }) {
   const { org, ws } = useWs();
   const { data, isPending } = usePost(org.id, postId);
   const post = data?.post;
@@ -174,7 +232,7 @@ export function PeekPane({ postId, people, tags, onClose }: { postId: ID; people
     <Box component="aside" aria-label="Preview" sx={{ position: "sticky", top: 16, maxHeight: "calc(100dvh - 32px)", overflow: "auto", border: 1, borderColor: "divider", borderRadius: 1, bgcolor: "background.paper" }}>
       <Stack direction="row" alignItems="center" sx={{ px: 2, py: 1, borderBottom: 1, borderColor: "divider", position: "sticky", top: 0, bgcolor: "background.paper", zIndex: 1 }}>
         <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>Preview · Space</Typography>
-        <Button size="small" component={RouterLink} to={wsPath(org, ws, `/p/${postId}`)}>Open</Button>
+        <Button size="small" component={RouterLink} to={wsPath(org, ws, `/p/${postId}`)} state={origin}>Open</Button>
         <IconButton size="small" onClick={onClose} aria-label="Close preview"><CloseRounded fontSize="small" /></IconButton>
       </Stack>
       {isPending || !post ? (

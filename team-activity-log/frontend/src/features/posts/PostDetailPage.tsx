@@ -46,6 +46,7 @@ import { RichText } from "../../components/RichText";
 import { EmptyState, ErrorState, StatusPill, TagChip, UserAvatar } from "../../components/ui";
 import { formatDay, timeAgo } from "../../lib/dates";
 import { lineDiff } from "../../lib/diff";
+import type { Origin } from "../../app/origin";
 import { useFit } from "../../lib/useFit";
 import { toSearchParams, toggleFacetValue } from "../../lib/filterSpec";
 import { errorMessage } from "../../lib/format";
@@ -190,10 +191,12 @@ function PostView({ post, images }: { post: Post; images: ImageView[] }) {
   // Back returns to where you came from: a labeled origin (e.g. a notebook) if one was passed,
   // else browser history within the app, else the feed (direct visits / shared links).
   const location = useLocation();
-  const origin = location.state as { from?: string; label?: string } | null;
+  const origin = location.state as Partial<Origin> | null;
   const canGoBack = (window.history.state as { idx?: number } | null)?.idx ? true : false;
   const backLabel = origin?.label ? `Back to ${origin.label}` : canGoBack ? "Back" : "Feed";
-  const goBack = () => (origin?.from ? navigate(origin.from) : canGoBack ? navigate(-1) : navigate(base));
+  // Prefer real history: it returns to the exact page with its scroll position restored.
+  const goBack = () => (canGoBack ? navigate(-1) : origin?.from ? navigate(origin.from) : navigate(base));
+  const showFeedLink = (canGoBack || !!origin?.from) && origin?.label !== "feed";
 
   const run = (a: Parameters<typeof action.mutate>[0], done?: string, undo?: () => void) =>
     action.mutate(a, { onSuccess: () => done && notify(done, undo), onError: (e) => notify(errorMessage(e)) });
@@ -202,6 +205,11 @@ function PostView({ post, images }: { post: Post; images: ImageView[] }) {
     <Box sx={{ maxWidth: 860, width: "100%", mx: "auto", px: { xs: 1.5, sm: 3 }, py: 2 }}>
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
         <Button startIcon={<ArrowBackRounded />} size="small" sx={{ ml: -1 }} onClick={goBack}>{backLabel}</Button>
+        {showFeedLink && (
+          <Button component={RouterLink} to={base} size="small" color="inherit" sx={{ color: "text.secondary", fontWeight: 500 }}>
+            Feed
+          </Button>
+        )}
         <Box sx={{ flex: 1 }} />
         {canEdit && <Button startIcon={<EditOutlined />} onClick={() => navigate(`${base}/p/${post.id}/edit`)}>Edit</Button>}
         {post.status === "published" && <Button startIcon={<SlideshowRounded />} onClick={() => navigate(`${base}/p/${post.id}/present`)}>Present</Button>}
