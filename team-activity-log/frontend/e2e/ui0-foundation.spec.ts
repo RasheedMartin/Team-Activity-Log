@@ -16,11 +16,16 @@ test("empty org shows an empty state, not a blank page", async ({ page }) => {
   await expect(page.getByText(/write the first post|nothing here yet|no posts/i).first()).toBeVisible();
 });
 
-test("signing out leads to sign-in with the persona picker", async ({ page }) => {
+test("signing out leads home; sign-in has the persona picker and a way back", async ({ page }) => {
   await openScenario(page, "small");
   await page.getByRole("button", { name: "Account menu" }).click();
   await page.getByRole("menuitem", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await page.getByRole("banner").getByRole("link", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  await page.getByRole("link", { name: "Home" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("Find it in seconds");
+  await page.getByRole("banner").getByRole("link", { name: "Sign in" }).click();
   await page.getByText("Marcus Lindqvist").click();
   await expect(page.getByRole("button", { name: "Account menu" })).toContainText("Marcus");
 });
@@ -43,8 +48,7 @@ test("visitors get the landing page; signed-in people go straight to their works
   await openScenario(page, "small");
   await page.getByRole("button", { name: "Account menu" }).click();
   await page.getByRole("menuitem", { name: "Sign out" }).click();
-  await expect(page).toHaveURL(/\/signin$/);
-  await page.goto("/");
+  await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("heading", { level: 1 })).toContainText("Find it in seconds");
   await page.getByRole("banner").getByRole("link", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();

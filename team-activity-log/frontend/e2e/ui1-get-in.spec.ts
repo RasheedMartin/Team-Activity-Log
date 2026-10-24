@@ -8,7 +8,7 @@ test("v1 Get In end to end", async ({ page }) => {
   await page.getByRole("button", { name: "Account menu" }).click();
   await page.getByRole("menuitem", { name: "Sign out" }).click();
 
-  // Register a new account and organization.
+  // Register a new account and organization (from the landing page you land on after signing out).
   await page.getByRole("link", { name: "Create account" }).click();
   await page.getByLabel("Full name").fill("Ines Achterberg");
   await page.getByLabel("Work email").fill("ines@northlab.example");
@@ -47,7 +47,7 @@ test("v1 Get In end to end", async ({ page }) => {
   await page.goto("/o/north-lab/w/optics");
   await page.getByRole("button", { name: "Account menu" }).click();
   await page.getByRole("menuitem", { name: "Sign out" }).click();
-  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  await expect(page.getByRole("banner").getByRole("link", { name: "Sign in" })).toBeVisible();
   await page.goto(link!);
   await expect(page.getByRole("heading", { name: "Join North Lab" })).toBeVisible();
   await page.getByLabel("Full name").fill("Omar Haddad");

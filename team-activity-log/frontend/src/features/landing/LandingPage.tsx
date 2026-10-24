@@ -3,6 +3,7 @@ import {
   ArrowForwardRounded,
   AutoStoriesOutlined,
   BrushOutlined,
+  CheckRounded,
   EditNoteRounded,
   ManageSearchRounded,
   SlideshowRounded,
@@ -14,6 +15,7 @@ import type { ReactNode } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { useMe } from "../../api/hooks";
 import { BRAND } from "../../app/brand";
+import { ACADEMIC_NOTE, PLANS } from "../../app/pricing";
 import { homePath } from "../../app/session";
 import { HeroDemo } from "./HeroDemo";
 
@@ -72,6 +74,7 @@ export default function LandingPage() {
             <Stack component="nav" aria-label="Page" direction="row" spacing={3} sx={{ display: { xs: "none", sm: "flex" } }}>
               <Link href="#features" color="text.secondary" underline="hover">Features</Link>
               <Link href="#how" color="text.secondary" underline="hover">How it works</Link>
+              <Link href="#pricing" color="text.secondary" underline="hover">Pricing</Link>
             </Stack>
             {appCta ?? (
               <Stack direction="row" spacing={1}>
@@ -148,6 +151,30 @@ export default function LandingPage() {
             </Box>
           </Section>
         </Box>
+
+        <Section id="pricing" eyebrow="Pricing" title="Free for small teams">
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr", md: "repeat(4, 1fr)" }, gap: 2, alignItems: "stretch" }}>
+            {PLANS.map((p) => (
+              <Paper key={p.id} variant="outlined" sx={{ p: 3, borderRadius: 2, display: "flex", flexDirection: "column", borderColor: p.highlight ? "primary.main" : "divider", borderWidth: p.highlight ? 2 : 1 }}>
+                <Typography component="h3" variant="h3">{p.name}</Typography>
+                <Stack direction="row" alignItems="baseline" spacing={0.75} sx={{ mt: 1.5 }}>
+                  <Typography sx={{ fontSize: "2rem", fontWeight: 600, letterSpacing: "-0.02em" }}>{p.price}</Typography>
+                </Stack>
+                <Typography variant="caption" color="text.secondary" sx={{ minHeight: 20 }}>{p.per ?? p.note ?? ""}</Typography>
+                <Box component="ul" sx={{ listStyle: "none", p: 0, m: 0, mt: 2, mb: 3, flex: 1, display: "grid", gap: 1 }}>
+                  {p.features.map((f) => (
+                    <Typography component="li" key={f} variant="body2" sx={{ display: "flex", gap: 1 }}>
+                      <CheckRounded fontSize="small" color="primary" sx={{ mt: "1px" }} />
+                      {f}
+                    </Typography>
+                  ))}
+                </Box>
+                <Button variant={p.highlight ? "contained" : "outlined"} component={RouterLink} to="/register">{p.cta}</Button>
+              </Paper>
+            ))}
+          </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>{ACADEMIC_NOTE}</Typography>
+        </Section>
 
         <Container maxWidth="lg" sx={{ pb: { xs: 7, md: 10 } }}>
           <Paper

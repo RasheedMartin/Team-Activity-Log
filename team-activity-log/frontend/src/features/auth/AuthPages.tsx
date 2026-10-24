@@ -1,3 +1,4 @@
+import { ArrowBackRounded } from "@mui/icons-material";
 import { Alert, Box, Button, Divider, InputAdornment, Link, List, ListItemButton, ListItemAvatar, ListItemText, Paper, Stack, TextField, Typography } from "@mui/material";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link as RouterLink, Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
@@ -25,9 +26,14 @@ export function AuthLayout({ title, sub, children, wide }: { title: string; sub?
   return (
     <Box sx={{ minHeight: "100dvh", display: "grid", placeItems: "center", px: 2, py: 6, bgcolor: "background.default" }}>
       <Box sx={{ width: "100%", maxWidth: wide ? 560 : 400 }}>
-        <Typography component={RouterLink} to="/" variant="overline" color="primary" sx={{ display: "block", mb: 2, textDecoration: "none" }}>
-          {BRAND.name}
-        </Typography>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+          <Typography component={RouterLink} to="/" variant="overline" color="primary" sx={{ textDecoration: "none" }}>
+            {BRAND.name}
+          </Typography>
+          <Button component={RouterLink} to="/" size="small" color="inherit" startIcon={<ArrowBackRounded />} sx={{ color: "text.secondary" }}>
+            Home
+          </Button>
+        </Stack>
         <Typography variant="h1" sx={{ mb: 0.5 }}>
           {title}
         </Typography>
