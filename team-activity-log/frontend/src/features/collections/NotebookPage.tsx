@@ -32,7 +32,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { Link as RouterLink, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { CollectionEntry, ID, PostDetail, Tag, User } from "../../api/contract";
-import { useCollectionEntries, useCollections, useCreateCollection, useDeleteCollection, usePeople, usePostDetails, useTags, useUpdateCollection } from "../../api/hooks";
+import { useCollection, useCollectionEntries, useCreateCollection, useDeleteCollection, usePeople, usePostDetails, useTags, useUpdateCollection } from "../../api/hooks";
 import type { Origin } from "../../app/origin";
 import { isTypingTarget } from "../../app/shortcuts";
 import { useWs, wsPath } from "../../app/session";
@@ -95,8 +95,7 @@ export default function NotebookPage() {
   const location = useLocation();
   const notify = useNotify();
   const [params, setParams] = useSearchParams();
-  const { data: collections, isPending } = useCollections(org.id, ws.id);
-  const nb = collections?.find((c) => c.id === id);
+  const { data: nb, isPending } = useCollection(org.id, ws.id, id);
   const { data: entries = [] } = useCollectionEntries(org.id, ws.id, nb?.id);
   const update = useUpdateCollection(org.id, ws.id);
   const remove = useDeleteCollection(org.id, ws.id);
@@ -244,7 +243,7 @@ export default function NotebookPage() {
               size="small"
               aria-label="Delete notebook"
               onClick={() => {
-                const snapshot = { name: nb.name, postIds: nb.postIds, kind: nb.kind };
+                const snapshot = { name: nb.name, postIds: nb.postIds, kind: nb.kind, sourceTagId: nb.sourceTagId };
                 remove.mutate(nb.id, {
                   onSuccess: () => {
                     navigate(wsPath(org, ws));

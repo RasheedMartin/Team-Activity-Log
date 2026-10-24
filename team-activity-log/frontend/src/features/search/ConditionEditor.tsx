@@ -1,6 +1,7 @@
 import { Autocomplete, Chip, MenuItem, Stack, TextField, ToggleButton, ToggleButtonGroup } from "@mui/material";
+import { useEffect, useState } from "react";
 import type { Condition, DatePreset, DateRangeValue, ID } from "../../api/contract";
-import { useCollections } from "../../api/hooks";
+import { useCollectionsByIds, useLibrary } from "../../api/hooks";
 import { PeoplePicker, TagPicker } from "../../components/Pickers";
 import { PRESET_LABELS } from "../../lib/dates";
 import { useWs } from "../../app/session";
@@ -27,10 +28,38 @@ export function DateRangeEditor({ value, onChange }: { value: DateRangeValue; on
   );
 }
 
+/** Type-to-search over collections and notebooks (server-side; never loads the whole list). */
+function CollectionPicker({ orgId, wsId, value, onChange }: { orgId: string; wsId: string; value: string[]; onChange: (ids: string[]) => void }) {
+  const [input, setInput] = useState("");
+  const [q, setQ] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setQ(input), 150);
+    return () => clearTimeout(t);
+  }, [input]);
+  const lib = useLibrary(orgId, wsId, { q, limit: 20 });
+  const selected = useCollectionsByIds(orgId, wsId, value).map((r, i) => ({ id: value[i], name: r.data?.name ?? "…" }));
+  const options = (lib.data?.pages[0]?.items ?? []).filter((i) => i.kind !== "view").map((i) => ({ id: i.id, name: i.name }));
+  return (
+    <Autocomplete
+      multiple
+      size="small"
+      options={options}
+      value={selected}
+      filterOptions={(x) => x}
+      inputValue={input}
+      onInputChange={(_, v) => setInput(v)}
+      loading={lib.isFetching}
+      getOptionLabel={(c) => c.name}
+      isOptionEqualToValue={(a, b) => a.id === b.id}
+      onChange={(_, v) => onChange(v.map((c) => c.id))}
+      renderInput={(p) => <TextField {...p} label="Collections or notebooks" placeholder="Type to search" />}
+    />
+  );
+}
+
 /** Edits one condition's operator and value according to its field kind. */
 export function ConditionEditor({ cond, onChange }: { cond: Condition; onChange: (c: Condition) => void }) {
   const { org, ws } = useWs();
-  const { data: collections = [] } = useCollections(org.id, ws.id);
   const def = fieldDef(cond.field);
   if (!def) return null;
   const set = (patch: Partial<Condition>) => onChange({ ...cond, ...patch });
@@ -75,15 +104,7 @@ export function ConditionEditor({ cond, onChange }: { cond: Condition; onChange:
       return (
         <Stack spacing={1}>
           {opPicker}
-          <Autocomplete
-            multiple
-            size="small"
-            options={collections}
-            value={collections.filter((c) => ids.includes(c.id))}
-            getOptionLabel={(c) => c.name}
-            onChange={(_, v) => set({ value: v.map((c) => c.id) })}
-            renderInput={(p) => <TextField {...p} label="Collections" />}
-          />
+          <CollectionPicker orgId={org.id} wsId={ws.id} value={ids} onChange={(v) => set({ value: v })} />
         </Stack>
       );
     case "imageType":

@@ -57,7 +57,7 @@ test("select posts → notebook → reorder → present", async ({ page }) => {
   await expect(page).toHaveURL(/\/notebooks\//);
   await expect(page.getByLabel("Notebook title")).toHaveValue("Cooldown notebook");
   await expect(page.getByText("Entry 1 of 3").first()).toBeVisible(); // reader: one entry at a time
-  await expect(page.getByRole("link", { name: "Cooldown notebook" })).toBeVisible(); // in the rail
+  // Not pinned automatically (the rail only shows pins); it's in the Library.
   const first = await page.locator("[data-nb-section] h2").first().innerText();
   await page.getByRole("button", { name: "Next" }).first().click();
   await expect(page.getByText("Entry 2 of 3").first()).toBeVisible();

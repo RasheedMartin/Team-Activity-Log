@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import { Link as RouterLink, useNavigate, useSearchParams } from "react-router-dom";
 import type { ExploreShelf, FilterSpec, User } from "../../api/contract";
 import type { Origin } from "../../app/origin";
-import { collectPostIds, useCollections, useCreateCollection, useExplore, usePeople } from "../../api/hooks";
+import { ApiError } from "../../api/client";
+import { collectPostIds, useCreateCollection, useExplore, usePeople } from "../../api/hooks";
 import { useNotify } from "../../components/notify";
 import { errorMessage } from "../../lib/format";
 import { useWs, wsPath } from "../../app/session";
@@ -96,20 +97,20 @@ function Shelf({ shelf, onSlideshow }: { shelf: ExploreShelf; onSlideshow: () =>
   const notify = useNotify();
   const create = useCreateCollection(org.id, ws.id);
   const [making, setMaking] = useState(false);
-  const { data: collections = [] } = useCollections(org.id, ws.id);
   const notebookName = `${shelf.tag.name} notebook`;
-  const existing = collections.find((c) => c.kind === "notebook" && c.name.toLowerCase() === notebookName.toLowerCase());
   const makeNotebook = async () => {
-    // One notebook per tag: open it if it already exists instead of making a twin.
-    if (existing) return navigate(wsPath(org, ws, `/notebooks/${existing.id}`));
+    // One notebook per tag (the server knows it by tag, even after a rename): open it if it exists.
+    if (shelf.notebookId) return navigate(wsPath(org, ws, `/notebooks/${shelf.notebookId}`));
     setMaking(true);
     try {
       // Every post with this tag, oldest work date first: a running notebook of the topic.
       const ids = await collectPostIds(org.id, ws.id, { ...toggleFacetValue({}, "tag", shelf.tag.id, "include"), sort: "workDate" });
-      const c = await create.mutateAsync({ name: notebookName, postIds: ids.reverse(), kind: "notebook" });
+      const c = await create.mutateAsync({ name: notebookName, postIds: ids.reverse(), kind: "notebook", sourceTagId: shelf.tag.id });
       navigate(wsPath(org, ws, `/notebooks/${c.id}`));
     } catch (e) {
-      notify(errorMessage(e));
+      const existingId = e instanceof ApiError ? (e.details as { existingId?: string } | undefined)?.existingId : undefined;
+      if (existingId) navigate(wsPath(org, ws, `/notebooks/${existingId}`));
+      else notify(errorMessage(e));
     } finally {
       setMaking(false);
     }
@@ -135,7 +136,7 @@ function Shelf({ shelf, onSlideshow }: { shelf: ExploreShelf; onSlideshow: () =>
             <Button size="small" startIcon={<GridViewRounded />} component={RouterLink} to={searchUrl("gallery")}>Gallery</Button>
           </>
         )}
-        <Button size="small" startIcon={<MenuBookOutlined />} onClick={makeNotebook} disabled={making}>{existing ? "Open notebook" : "Notebook"}</Button>
+        <Button size="small" startIcon={<MenuBookOutlined />} onClick={makeNotebook} disabled={making}>{shelf.notebookId ? "Open notebook" : "Notebook"}</Button>
         <Button size="small" endIcon={<ArrowForwardRounded />} component={RouterLink} to={searchUrl()}>All posts</Button>
       </Stack>
       <Box sx={{ display: "flex", gap: 1.5, overflowX: "auto", scrollSnapType: "x mandatory", pb: 1 }} role="list" aria-label={`Posts tagged ${shelf.tag.name}`}>

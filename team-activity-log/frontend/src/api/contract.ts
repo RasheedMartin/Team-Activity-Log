@@ -434,6 +434,8 @@ export interface ExploreShelf {
   lastActivity: ISODateTime;
   posts: { id: ID; title: string; workDate: ISODate; authorId: ID; excerpt?: string; imageCount: number; commentCount: number; thumbUrl?: string; dominantColor?: string }[];
   images: GalleryImage[];
+  /** The notebook made from this tag, if one exists. */
+  notebookId?: ID;
 }
 export interface ExploreResponse {
   shelves: ExploreShelf[];
@@ -453,7 +455,9 @@ export interface SavedView {
   name: string;
   filterSpec: FilterSpec;
   shared: boolean;
+  /** Pinned by the *caller* (pins are per user; see /pins). */
   pinned: boolean;
+  updatedAt?: ISODateTime;
 }
 
 export interface Collection {
@@ -464,6 +468,36 @@ export interface Collection {
   kind: "manual" | "deck_import" | "saved_selection" | "notebook";
   postIds: ID[];
   createdBy: ID;
+  updatedAt?: ISODateTime;
+  /** Notebooks made from a tag remember it, so there is one per tag even after a rename. */
+  sourceTagId?: ID;
+}
+
+// ---- Library (scale): everything a person can save, searchable and paged ----
+
+export type LibraryKind = "view" | "notebook" | "collection";
+export interface LibraryItem {
+  kind: LibraryKind;
+  id: ID;
+  name: string;
+  ownerId: ID;
+  shared: boolean;
+  /** Pinned by the caller. */
+  pinned: boolean;
+  updatedAt: ISODateTime;
+  postCount?: number;
+  collectionKind?: Collection["kind"];
+  filterSpec?: FilterSpec;
+}
+export interface LibraryPage {
+  items: LibraryItem[];
+  nextCursor?: string;
+  total: number;
+  counts: Record<LibraryKind, number>;
+}
+export interface PinRef {
+  kind: LibraryKind;
+  id: ID;
 }
 
 /** Lightweight table-of-contents row for a collection/notebook (no post bodies). */

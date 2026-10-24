@@ -498,19 +498,49 @@ export function seedScenario(scenario: DataScenario): { sessionId?: ID } {
 
   // An imported deck collection (§W5.4 provenance).
   const deckPosts = visible.filter((p) => p.workspaceId === detector.id).slice(-6);
-  const coll = db.t.collections.put({ id: uuidv7(), workspaceId: detector.id, name: "Lab_Notes_2022.pptx", kind: "deck_import", postIds: deckPosts.map((p) => p.id), createdBy: dana.id });
+  const coll = db.t.collections.put({ id: uuidv7(), workspaceId: detector.id, name: "Lab_Notes_2022.pptx", kind: "deck_import", postIds: deckPosts.map((p) => p.id), createdBy: dana.id, updatedAt: new Date(Date.now() - 86_400_000 * 30).toISOString() });
   deckPosts.forEach((p, i) => {
     p.collectionIds = [coll.id];
     p.source = { kind: "import", importJobId: uuidv7(), fileName: "Lab_Notes_2022.pptx", fileSha256: hashHex("deck"), slide: i + 1, slideCount: deckPosts.length };
     p.workDateSource = i % 2 ? "guessed" : "import_fallback";
   });
 
-  // Saved views.
+  // Saved views, collections, notebooks — with realistic volume in the busy scenario (scale), and
+  // per-user pins for the rail.
+  const t0 = Date.now();
   const calib = tags.byName.get("calibration");
   if (calib) {
-    db.t.savedViews.put({ id: uuidv7(), workspaceId: detector.id, ownerId: dana.id, name: "Calibration, last 90 days", filterSpec: { all: [{ field: "tag", op: "in", value: [calib] }, { field: "workDate", op: "between", value: { preset: "last_90_days" } }] }, shared: true, pinned: true });
+    db.t.savedViews.put({ id: uuidv7(), workspaceId: detector.id, ownerId: dana.id, name: "Calibration, last 90 days", filterSpec: { all: [{ field: "tag", op: "in", value: [calib] }, { field: "workDate", op: "between", value: { preset: "last_90_days" } }] }, shared: true, pinned: false, updatedAt: new Date(t0 - 3_600_000).toISOString() });
   }
-  db.t.savedViews.put({ id: uuidv7(), workspaceId: detector.id, ownerId: dana.id, name: "Open questions", filterSpec: { all: [{ field: "unansweredQuestion", op: "eq", value: true }] }, shared: true, pinned: true });
+  db.t.savedViews.put({ id: uuidv7(), workspaceId: detector.id, ownerId: dana.id, name: "Open questions", filterSpec: { all: [{ field: "unansweredQuestion", op: "eq", value: true }] }, shared: true, pinned: false, updatedAt: new Date(t0 - 7_200_000).toISOString() });
+  if (busy) {
+    const visibleIds = visible.filter((p) => p.workspaceId === detector.id).map((p) => p.id);
+    tags.ids.slice(0, 50).forEach((tagId, i) => {
+      const author = authors[i % authors.length];
+      const name = db.t.tags.get(tagId)!.name;
+      db.t.savedViews.put({ id: uuidv7(), workspaceId: detector.id, ownerId: author.id, name: `${name} ${["this quarter", "last 30 days", "with images", "questions", "this year"][i % 5]}`, filterSpec: { all: [{ field: "tag", op: "in", value: [tagId] }] }, shared: i % 3 !== 0, pinned: false, updatedAt: new Date(t0 - i * 86_400_000 * 2).toISOString() });
+    });
+    for (let i = 0; i < 110; i++) {
+      const notebook = i < 30;
+      const postIds = faker.helpers.arrayElements(visibleIds, faker.number.int({ min: 3, max: notebook ? 60 : 25 }));
+      const c = db.t.collections.put({
+        id: uuidv7(),
+        workspaceId: detector.id,
+        name: notebook ? `${faker.helpers.arrayElement(SUBJECTS)} notebook ${i + 1}` : `${faker.helpers.arrayElement(["Group meeting", "Review", "Beam test", "Paper figures", "Run plan"])} ${2024 + (i % 3)}-${String((i % 12) + 1).padStart(2, "0")}`,
+        kind: notebook ? "notebook" : "manual",
+        postIds,
+        createdBy: authors[i % authors.length].id,
+        updatedAt: new Date(t0 - i * 86_400_000).toISOString(),
+      });
+      postIds.forEach((pid) => {
+        const p = db.t.posts.get(pid);
+        if (p) p.collectionIds = [...(p.collectionIds ?? []), c.id];
+      });
+    }
+  }
+  // Everyone starts with the two shared views and the imported deck pinned.
+  const sharedViews = db.t.savedViews.filter((v) => v.workspaceId === detector.id && (v.name === "Calibration, last 90 days" || v.name === "Open questions")).map((v) => ({ kind: "view" as const, id: v.id }));
+  users.forEach((u) => db.setMeta(`pins:${u.id}:${detector.id}`, [...sharedViews, { kind: "collection", id: coll.id }]));
 
   // Invites for the v1 flows: valid, expired, revoked.
   const inviteBase = { orgId: org.id, role: "member" as OrgRole, workspaceIds: [detector.id], invitedBy: dana.id, createdAt: new Date().toISOString() };

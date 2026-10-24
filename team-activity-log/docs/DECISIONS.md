@@ -81,3 +81,12 @@ Additions only; nothing in §A7 was removed or renamed.
 - **Export**: PDF via the browser's print dialog from notebooks; PPTX/PDF file export waits for backend B-5 (open question C2.13 default).
 - **App error screen**: anything uncaught shows a recoverable error page instead of the router's developer page.
 - **Accessibility**: tooltips on labeled buttons use `describeChild`, so the visible label stays the accessible name.
+
+## Scale: views, notebooks, collections (owner request)
+
+- **No screen downloads every saved view or collection.** The list routes are replaced by `GET /workspaces/{ws}/library?kind=&q=&sort=recent|name&mine=&limit=&cursor=` (one paged, searchable index over views, notebooks, and collections, with per-kind counts) plus single-item reads (`GET /saved-views/:id`, `GET /collections/:id`, `GET /collections/:id/entries`).
+- **Pins are per user** (`GET/PUT /workspaces/{ws}/pins`, ordered; Postgres `user_pins(user_id, workspace_id, kind, item_id, position)`). The rail shows up to 10 pins plus a Library link; `SavedView.pinned` now means "pinned by the caller".
+- Pickers (Saved menu, command palette, collection filter) search the server as you type; filter chips load only the collections they reference.
+- Tag notebooks store `sourceTagId`: one per tag, survives renames; Explore shelves return `notebookId`.
+- Delete in the Library offers Undo by recreating the item (the delete returns what it removed).
+- The busy scenario seeds ~150 library items so the scale paths are exercised.

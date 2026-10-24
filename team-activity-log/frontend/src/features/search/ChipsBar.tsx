@@ -1,4 +1,4 @@
-import { AccountTreeOutlined, AddRounded, BookmarkAddOutlined, BookmarkBorderRounded, CheckRounded, DeleteOutlineRounded, ExpandMoreRounded } from "@mui/icons-material";
+import { AccountTreeOutlined, AddRounded, BookmarkAddOutlined, BookmarkBorderRounded, CheckRounded, ExpandMoreRounded, PushPin, PushPinOutlined } from "@mui/icons-material";
 import {
   Box,
   Button,
@@ -21,11 +21,11 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { useState } from "react";
-import type { Condition, FilterSpec, SavedView } from "../../api/contract";
-import { useDeleteView, useSaveView, useSavedViews } from "../../api/hooks";
-import { can, useWs } from "../../app/session";
-import { useNotify } from "../../components/notify";
+import { useEffect, useState } from "react";
+import { Link as RouterLink } from "react-router-dom";
+import type { Condition, FilterSpec, LibraryItem, SavedView } from "../../api/contract";
+import { useLibrary, useSaveView, useTogglePin } from "../../api/hooks";
+import { can, useWs, wsPath } from "../../app/session";
 import { formatRange } from "../../lib/dates";
 import { clearFilters, isEmptySpec, normalize, specKey } from "../../lib/filterSpec";
 import { errorMessage } from "../../lib/format";
@@ -137,36 +137,44 @@ export function SaveViewDialog({ open, onClose, spec, existing, onSaved }: { ope
   );
 }
 
-export function SavedViewsMenu({ activeId, onApply }: { activeId?: string | null; onApply: (v: SavedView) => void }) {
-  const { org, ws, me, role } = useWs();
-  const { data: views = [] } = useSavedViews(org.id, ws.id);
-  const del = useDeleteView(org.id, ws.id);
-  const save = useSaveView(org.id, ws.id);
-  const notify = useNotify();
+/** The Saved menu searches views on the server (a workspace may have hundreds). */
+export function SavedViewsMenu({ activeId, onApply }: { activeId?: string | null; onApply: (v: LibraryItem) => void }) {
+  const { org, ws } = useWs();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const [q, setQ] = useState("");
+  const [debounced, setDebounced] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(q), 150);
+    return () => clearTimeout(t);
+  }, [q]);
+  const lib = useLibrary(org.id, ws.id, { kind: "view", q: debounced, limit: 15 }, !!anchor);
+  const pin = useTogglePin(org.id, ws.id);
+  const views = lib.data?.pages[0]?.items ?? [];
+  const total = lib.data?.pages[0]?.total ?? 0;
   return (
     <>
       <Button size="small" color="inherit" endIcon={<ExpandMoreRounded />} startIcon={<BookmarkBorderRounded />} onClick={(e) => setAnchor(e.currentTarget)} aria-haspopup="menu" sx={{ whiteSpace: "nowrap" }}>
         Saved
       </Button>
-      <Menu anchorEl={anchor} open={!!anchor} onClose={() => setAnchor(null)} slotProps={{ paper: { sx: { minWidth: 280 } } }}>
-        {!views.length && <MenuItem disabled>No saved views yet</MenuItem>}
+      <Menu anchorEl={anchor} open={!!anchor} onClose={() => setAnchor(null)} slotProps={{ paper: { sx: { width: 340 } } }} autoFocus={false}>
+        <Box sx={{ px: 1.5, pb: 1 }} onKeyDown={(e) => e.stopPropagation()}>
+          <TextField size="small" fullWidth autoFocus placeholder="Find a saved view" value={q} onChange={(e) => setQ(e.target.value)} inputProps={{ "aria-label": "Find a saved view" }} />
+        </Box>
+        {lib.isPending && <MenuItem disabled>Loading…</MenuItem>}
+        {!lib.isPending && !views.length && <MenuItem disabled>{debounced ? "No views match" : "No saved views yet"}</MenuItem>}
         {views.map((v) => (
           <MenuItem key={v.id} selected={v.id === activeId} onClick={() => (setAnchor(null), onApply(v))}>
             <ListItemIcon>{v.id === activeId ? <CheckRounded fontSize="small" /> : null}</ListItemIcon>
-            <ListItemText primary={v.name} secondary={v.shared ? "Shared" : "Only you"} />
-            {(v.ownerId === me.user.id || can(role, "admin")) && (
-              <>
-                <IconButton size="small" aria-label={v.pinned ? `Unpin ${v.name}` : `Pin ${v.name}`} onClick={(e) => (e.stopPropagation(), save.mutate({ id: v.id, pinned: !v.pinned }))} sx={{ ml: 1, color: v.pinned ? "primary.main" : "text.disabled" }}>
-                  <BookmarkBorderRounded fontSize="small" />
-                </IconButton>
-                <IconButton size="small" aria-label={`Delete ${v.name}`} onClick={(e) => (e.stopPropagation(), del.mutate(v.id, { onSuccess: () => notify(`Deleted “${v.name}”`, () => save.mutate({ name: v.name, filterSpec: v.filterSpec, shared: v.shared, pinned: v.pinned })) }))}>
-                  <DeleteOutlineRounded fontSize="small" />
-                </IconButton>
-              </>
-            )}
+            <ListItemText primary={v.name} secondary={v.shared ? "Shared" : "Only you"} slotProps={{ primary: { noWrap: true } }} />
+            <IconButton size="small" aria-label={v.pinned ? `Unpin ${v.name}` : `Pin ${v.name}`} onClick={(e) => (e.stopPropagation(), pin.mutate({ item: v, pinned: !v.pinned }))} sx={{ ml: 1, color: v.pinned ? "primary.main" : "text.disabled" }}>
+              {v.pinned ? <PushPin fontSize="small" /> : <PushPinOutlined fontSize="small" />}
+            </IconButton>
           </MenuItem>
         ))}
+        <Divider />
+        <MenuItem component={RouterLink} to={`${wsPath(org, ws, "/library")}?kind=view`} onClick={() => setAnchor(null)}>
+          <ListItemText primary={total > views.length ? `All ${total} saved views in the Library` : "Manage in the Library"} slotProps={{ primary: { color: "primary", fontSize: "0.85rem" } }} />
+        </MenuItem>
       </Menu>
     </>
   );

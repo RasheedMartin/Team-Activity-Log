@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ID, Post } from "../../api/contract";
 import { ApiError } from "../../api/client";
-import { useCollections, useCreateCollection } from "../../api/hooks";
+import { useCreateCollection, useLibrary } from "../../api/hooks";
 import { useWs, wsPath } from "../../app/session";
 import { useNotify } from "../../components/notify";
 import { formatDay } from "../../lib/dates";
@@ -20,9 +20,9 @@ function ArrangeDialog({ posts, action, onClose, onDone }: { posts: Post[]; acti
   const create = useCreateCollection(org.id, ws.id);
   const [order, setOrder] = useState(() => (action === "notebook" ? [...posts].sort((a, b) => a.workDate.localeCompare(b.workDate)) : posts));
   const [name, setName] = useState(action === "notebook" ? "Notebook" : "Selection");
-  const { data: collections = [] } = useCollections(org.id, ws.id);
   // Catch a duplicate notebook name before submitting (the server enforces it too).
-  const clash = action === "notebook" ? collections.find((c) => c.kind === "notebook" && c.name.trim().toLowerCase() === name.trim().toLowerCase()) : undefined;
+  const similar = useLibrary(org.id, ws.id, { kind: "notebook", q: name.trim(), limit: 20 }, action === "notebook" && !!name.trim());
+  const clash = similar.data?.pages[0]?.items.find((c) => c.name.trim().toLowerCase() === name.trim().toLowerCase());
   const move = (i: number, d: -1 | 1) => setOrder((o) => {
     const n = [...o];
     [n[i], n[i + d]] = [n[i + d], n[i]];

@@ -15,8 +15,8 @@ test("back returns to where you came from, with scroll restored, plus a Feed lin
   await card.getByRole("heading").scrollIntoViewIfNeeded();
   const y = await page.evaluate(() => window.scrollY); // where we actually are when we leave
   expect(y).toBeGreaterThan(800);
-  // Record the scroll position at the real pointer-down (Playwright may nudge the page to click).
-  await page.evaluate(() => addEventListener("pointerdown", () => ((window as unknown as { __y: number }).__y = scrollY), { capture: true, once: true }));
+  // Record where the clicked card sits on screen at the moment of the click.
+  await page.evaluate((pid) => addEventListener("click", () => ((window as unknown as { __top: number }).__top = document.querySelector(`[data-post-id="${pid}"]`)!.getBoundingClientRect().top), { capture: true, once: true }), id);
   await card.getByRole("heading").click();
   await expect(page).toHaveURL(/\/p\/[^/]+$/);
   const postUrl = page.url();
@@ -24,9 +24,12 @@ test("back returns to where you came from, with scroll restored, plus a Feed lin
   await expect(page.getByRole("link", { name: "Feed", exact: true }).last()).toBeVisible();
   await page.getByRole("button", { name: "Back to results" }).click();
   await expect(page.getByRole("combobox", { name: "Search" })).toHaveValue("drift");
-  const leftAt = await page.evaluate(() => (window as unknown as { __y: number }).__y);
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(leftAt - 8);
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(leftAt + 8);
+  // What you see is restored: the card you opened is back in the same place on screen. (Absolute
+  // scrollY can differ slightly because rows above the viewport re-measure.)
+  const before = await page.evaluate(() => (window as unknown as { __top: number }).__top);
+  const topNow = () => page.evaluate((pid) => document.querySelector(`[data-post-id="${pid}"]`)?.getBoundingClientRect().top ?? -9999, id);
+  await expect.poll(topNow).toBeGreaterThan(before - 8);
+  await expect.poll(topNow).toBeLessThan(before + 8);
 
   // Inbox → post says "Back to Inbox".
   await page.getByRole("link", { name: "Inbox" }).click();

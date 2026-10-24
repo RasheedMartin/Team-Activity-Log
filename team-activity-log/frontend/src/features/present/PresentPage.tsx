@@ -9,7 +9,7 @@ import {
 import { Box, Button, IconButton, InputBase, Skeleton, Stack, Tooltip, Typography } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useCollections, usePeople, usePostDetails, useTags } from "../../api/hooks";
+import { useCollection, usePeople, usePostDetails, useTags } from "../../api/hooks";
 import { useWs, wsPath } from "../../app/session";
 import { EmptyState } from "../../components/ui";
 import { deriveSlides, type Slide } from "../../lib/slides";
@@ -22,11 +22,10 @@ function useDeckPostIds(): { ids: string[]; title: string; back: string } {
   const { postId } = useParams();
   const [params] = useSearchParams();
   const { org, ws } = useWs();
-  const { data: collections = [] } = useCollections(org.id, ws.id);
-  if (postId) return { ids: [postId], title: "", back: wsPath(org, ws, `/p/${postId}`) };
   const collectionId = params.get("collection");
+  const { data: c } = useCollection(org.id, ws.id, postId ? undefined : collectionId);
+  if (postId) return { ids: [postId], title: "", back: wsPath(org, ws, `/p/${postId}`) };
   if (collectionId) {
-    const c = collections.find((x) => x.id === collectionId);
     return { ids: c?.postIds ?? [], title: c?.name ?? "", back: c?.kind === "notebook" ? wsPath(org, ws, `/notebooks/${collectionId}`) : wsPath(org, ws) };
   }
   return { ids: (params.get("posts") ?? "").split(",").filter(Boolean), title: "Selection", back: wsPath(org, ws) };

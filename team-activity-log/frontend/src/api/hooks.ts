@@ -15,6 +15,9 @@ import type {
   DevEmail,
   DraftSummary,
   ExploreResponse,
+  LibraryItem,
+  LibraryKind,
+  LibraryPage,
   FilterSpec,
   ID,
   ImageView,
@@ -443,22 +446,110 @@ export const useSuggest = (orgId: ID, wsId: ID, q: string) =>
     staleTime: 30_000,
   });
 
-export const useSavedViews = (orgId: ID, wsId: ID) =>
-  useQuery({ queryKey: qk.views(orgId, wsId), queryFn: ({ signal }) => get<SavedView[]>(`${W(orgId, wsId)}/saved-views`, signal) });
+// ---- library: saved views, collections, notebooks (paged, searchable; per-user pins) ----
+
+const libKey = (orgId: ID, wsId: ID) => ["org", orgId, "ws", wsId, "library"] as const;
+const pinsKey = (orgId: ID, wsId: ID) => ["org", orgId, "ws", wsId, "pins"] as const;
+/** After any change to views/collections, refresh every list that might show them. */
+function invalidateLibrary(qc: QueryClient, orgId: ID, wsId: ID) {
+  qc.invalidateQueries({ queryKey: libKey(orgId, wsId) });
+  qc.invalidateQueries({ queryKey: pinsKey(orgId, wsId) });
+  qc.invalidateQueries({ queryKey: qk.views(orgId, wsId) });
+  qc.invalidateQueries({ queryKey: qk.collections(orgId, wsId) });
+  qc.invalidateQueries({ queryKey: ["org", orgId, "ws", wsId, "explore"] }); // shelves link their tag notebook
+}
+
+export interface LibraryQuery {
+  kind?: LibraryKind;
+  q?: string;
+  sort?: "recent" | "name";
+  mine?: boolean;
+  limit?: number;
+}
+export function useLibrary(orgId: ID, wsId: ID, query: LibraryQuery, enabled = true) {
+  return useInfiniteQuery({
+    queryKey: [...libKey(orgId, wsId), query],
+    queryFn: ({ pageParam, signal }) => {
+      const p = new URLSearchParams();
+      if (query.kind) p.set("kind", query.kind);
+      if (query.q?.trim()) p.set("q", query.q.trim());
+      if (query.sort) p.set("sort", query.sort);
+      if (query.mine) p.set("mine", "1");
+      if (query.limit) p.set("limit", String(query.limit));
+      if (pageParam) p.set("cursor", pageParam);
+      return get<LibraryPage>(`${W(orgId, wsId)}/library?${p}`, signal);
+    },
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor,
+    placeholderData: keepPreviousData,
+    enabled,
+  });
+}
+
+export const usePins = (orgId: ID, wsId: ID) =>
+  useQuery({ queryKey: pinsKey(orgId, wsId), queryFn: ({ signal }) => get<LibraryItem[]>(`${W(orgId, wsId)}/pins`, signal), staleTime: 60_000 });
+
+/** Pin/unpin any library item (personal). Optimistic on the rail. */
+export function useTogglePin(orgId: ID, wsId: ID) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ item, pinned }: { item: LibraryItem; pinned: boolean }): Promise<SavedView | Collection> =>
+      item.kind === "view" ? patch<SavedView>(`${W(orgId, wsId)}/saved-views/${item.id}`, { pinned }) : patch<Collection>(`${W(orgId, wsId)}/collections/${item.id}`, { pinned }),
+    onMutate: async ({ item, pinned }) => {
+      await qc.cancelQueries({ queryKey: pinsKey(orgId, wsId) });
+      const prev = qc.getQueryData<LibraryItem[]>(pinsKey(orgId, wsId));
+      if (prev) qc.setQueryData<LibraryItem[]>(pinsKey(orgId, wsId), pinned ? [...prev.filter((p) => p.id !== item.id), { ...item, pinned: true }] : prev.filter((p) => p.id !== item.id));
+      return { prev };
+    },
+    onError: (_e, _v, c) => c?.prev && qc.setQueryData(pinsKey(orgId, wsId), c.prev),
+    onSettled: () => invalidateLibrary(qc, orgId, wsId),
+  });
+}
+export function useReorderPins(orgId: ID, wsId: ID) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (items: LibraryItem[]) => put<void>(`${W(orgId, wsId)}/pins`, { items: items.map((i) => ({ kind: i.kind, id: i.id })) }),
+    onMutate: (items) => qc.setQueryData(pinsKey(orgId, wsId), items),
+    onSettled: () => qc.invalidateQueries({ queryKey: pinsKey(orgId, wsId) }),
+  });
+}
+
+export const useSavedView = (orgId: ID, wsId: ID, id: ID | null | undefined) =>
+  useQuery({ queryKey: [...qk.views(orgId, wsId), id], queryFn: ({ signal }) => get<SavedView>(`${W(orgId, wsId)}/saved-views/${id}`, signal), enabled: !!id, retry: false });
 export function useSaveView(orgId: ID, wsId: ID) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...body }: Partial<SavedView>) =>
       id ? patch<SavedView>(`${W(orgId, wsId)}/saved-views/${id}`, body) : post<SavedView>(`${W(orgId, wsId)}/saved-views`, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.views(orgId, wsId) }),
+    onSuccess: () => invalidateLibrary(qc, orgId, wsId),
   });
 }
 export function useDeleteView(orgId: ID, wsId: ID) {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (id: ID) => del(`${W(orgId, wsId)}/saved-views/${id}`), onSuccess: () => qc.invalidateQueries({ queryKey: qk.views(orgId, wsId) }) });
+  // Returns the deleted view so callers can offer Undo (recreate it).
+  return useMutation({
+    mutationFn: async (id: ID) => {
+      const v = await get<SavedView>(`${W(orgId, wsId)}/saved-views/${id}`);
+      await del(`${W(orgId, wsId)}/saved-views/${id}`);
+      return v;
+    },
+    onSuccess: () => invalidateLibrary(qc, orgId, wsId),
+  });
 }
-export const useCollections = (orgId: ID, wsId: ID) =>
-  useQuery({ queryKey: qk.collections(orgId, wsId), queryFn: ({ signal }) => get<Collection[]>(`${W(orgId, wsId)}/collections`, signal) });
+
+export const useCollection = (orgId: ID, wsId: ID, id: ID | null | undefined) =>
+  useQuery({ queryKey: [...qk.collections(orgId, wsId), id], queryFn: ({ signal }) => get<Collection>(`${W(orgId, wsId)}/collections/${id}`, signal), enabled: !!id, retry: false });
+/** Collections by ID (e.g. names for filter chips) — never the whole list. */
+export const useCollectionsByIds = (orgId: ID, wsId: ID, ids: ID[]) =>
+  useQueries({ queries: ids.map((id) => ({ queryKey: [...qk.collections(orgId, wsId), id], queryFn: ({ signal }: { signal: AbortSignal }) => get<Collection>(`${W(orgId, wsId)}/collections/${id}`, signal), retry: false, staleTime: 60_000 })) });
+
+export function useCreateCollection(orgId: ID, wsId: ID) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { name: string; postIds: ID[]; kind?: Collection["kind"]; sourceTagId?: ID }) => post<Collection>(`${W(orgId, wsId)}/collections`, v),
+    onSuccess: () => invalidateLibrary(qc, orgId, wsId),
+  });
+}
 export function useUpdateCollection(orgId: ID, wsId: ID) {
   const qc = useQueryClient();
   return useMutation({
@@ -468,21 +559,28 @@ export function useUpdateCollection(orgId: ID, wsId: ID) {
       return c!;
     },
     onMutate: async (v) => {
-      const key = qk.collections(orgId, wsId);
+      const key = [...qk.collections(orgId, wsId), v.id];
       await qc.cancelQueries({ queryKey: key });
-      const prev = qc.getQueryData<Collection[]>(key);
-      if (prev) qc.setQueryData<Collection[]>(key, prev.map((c) => (c.id === v.id ? { ...c, ...(v.name ? { name: v.name } : {}), ...(v.postIds ? { postIds: v.postIds } : {}) } : c)));
-      return { prev };
+      const prev = qc.getQueryData<Collection>(key);
+      if (prev) qc.setQueryData<Collection>(key, { ...prev, ...(v.name ? { name: v.name } : {}), ...(v.postIds ? { postIds: v.postIds } : {}) });
+      return { prev, key };
     },
-    onError: (_e, _v, c) => c?.prev && qc.setQueryData(qk.collections(orgId, wsId), c.prev),
-    onSettled: () => qc.invalidateQueries({ queryKey: qk.collections(orgId, wsId) }),
+    onError: (_e, _v, c) => c?.prev && qc.setQueryData(c.key, c.prev),
+    onSettled: () => invalidateLibrary(qc, orgId, wsId),
   });
 }
 export function useDeleteCollection(orgId: ID, wsId: ID) {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (id: ID) => del(`${W(orgId, wsId)}/collections/${id}`), onSuccess: () => qc.invalidateQueries({ queryKey: qk.collections(orgId, wsId) }) });
+  // Returns the deleted collection so callers can offer Undo (recreate it with the same posts).
+  return useMutation({
+    mutationFn: async (id: ID) => {
+      const c = await get<Collection>(`${W(orgId, wsId)}/collections/${id}`);
+      await del(`${W(orgId, wsId)}/collections/${id}`);
+      return c;
+    },
+    onSuccess: () => invalidateLibrary(qc, orgId, wsId),
+  });
 }
-
 export const useCollectionEntries = (orgId: ID, wsId: ID, id: ID | undefined) =>
   useQuery({
     queryKey: [...qk.collections(orgId, wsId), id, "entries"],
@@ -505,14 +603,6 @@ export async function collectPostIds(orgId: ID, wsId: ID, spec: FilterSpec, max 
 /** Full detail for several posts (presenting decks, notebooks). Reads Postgres-owned detail routes. */
 export const usePostDetails = (orgId: ID, ids: ID[]) =>
   useQueries({ queries: ids.map((id) => ({ queryKey: qk.post(orgId, id), queryFn: ({ signal }: { signal: AbortSignal }) => get<PostDetail>(`${O(orgId)}/posts/${id}`, signal) })) });
-
-export function useCreateCollection(orgId: ID, wsId: ID) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (v: { name: string; postIds: ID[]; kind?: Collection["kind"] }) => post<Collection>(`${W(orgId, wsId)}/collections`, v),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.collections(orgId, wsId) }),
-  });
-}
 
 // ---- discussion ----
 

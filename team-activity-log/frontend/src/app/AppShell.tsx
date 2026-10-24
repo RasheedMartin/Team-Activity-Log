@@ -10,6 +10,7 @@ import {
   MenuBookOutlined,
   ExpandMoreRounded,
   InboxOutlined,
+  LibraryBooksOutlined,
   LogoutRounded,
   MenuRounded,
   PersonOutlineRounded,
@@ -39,10 +40,12 @@ import {
 import { useEffect, useState, type ReactNode } from "react";
 import { Link as RouterLink, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { API_MODE } from "../api/client";
-import { useCollections, useLogout, useNotifications, useRememberWorkspace, useSavedViews } from "../api/hooks";
-import { fromSearchParams, specKey, toSearchParams } from "../lib/filterSpec";
+import { useLogout, useNotifications, usePins, useRememberWorkspace } from "../api/hooks";
+import { collectionParams, libraryHref } from "../features/collections/libraryLinks";
+import { fromSearchParams, specKey } from "../lib/filterSpec";
 
-const collectionParams = (id: string) => toSearchParams({ all: [{ field: "collection", op: "in", value: [id] }], sort: "oldest" });
+const PINS_SHOWN = 10;
+const PIN_ICONS = { view: <BookmarkBorderRounded />, notebook: <MenuBookOutlined />, collection: <CollectionsBookmarkOutlined /> };
 import { UserAvatar } from "../components/ui";
 import { can, useWs, wsPath } from "./session";
 import { useShortcuts } from "./shortcuts";
@@ -187,13 +190,12 @@ function Rail({ onNavigate }: { onNavigate?: () => void }) {
   const { org, ws, role } = useWs();
   const base = wsPath(org, ws);
   const navigate = useNavigate();
-  const { data: views } = useSavedViews(org.id, ws.id);
-  const { data: collections } = useCollections(org.id, ws.id);
+  // The rail shows only what *you* pinned (scale: a workspace may have hundreds of views,
+  // notebooks, and collections; everything else lives in the Library).
+  const { data: pins = [] } = usePins(org.id, ws.id);
   const { data: notes } = useNotifications(org.id);
   const unread = notes?.some((n) => !n.readAt && n.workspaceId === ws.id);
-  const pinned = views?.filter((v) => v.pinned) ?? [];
-  const notebooks = collections?.filter((c) => c.kind === "notebook") ?? [];
-  const otherCollections = collections?.filter((c) => c.kind !== "notebook") ?? [];
+  const shownPins = pins.slice(0, PINS_SHOWN);
   const location = useLocation();
   const params = new URLSearchParams(location.search);
   const onSearch = location.pathname === `${base}/search`;
@@ -225,27 +227,29 @@ function Rail({ onNavigate }: { onNavigate?: () => void }) {
           {can(role, "member") && <NavItem to={`${base}/import`} icon={<UploadFileOutlined />} label="Import deck" onClick={onNavigate} />}
           {can(role, "admin") && <NavItem to={`${base}/trash`} icon={<DeleteOutlineRounded />} label="Hidden & deleted" onClick={onNavigate} />}
         </List>
-        {pinned.length > 0 && (
-          <List dense disablePadding subheader={<ListSubheader sx={{ bgcolor: "transparent", lineHeight: "28px", fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>Saved views</ListSubheader>}>
-            {pinned.map((v) => (
-              <NavItem key={v.id} to={`${base}/search?${toSearchParams(v.filterSpec)}&view=${v.id}`} active={onSearch && params.get("view") === v.id} icon={<BookmarkBorderRounded />} label={v.name} onClick={onNavigate} />
-            ))}
-          </List>
-        )}
-        {!!notebooks.length && (
-          <List dense disablePadding subheader={<ListSubheader sx={{ bgcolor: "transparent", lineHeight: "28px", fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>Notebooks</ListSubheader>}>
-            {notebooks.slice(0, 8).map((c) => (
-              <NavItem key={c.id} to={`${base}/notebooks/${c.id}`} icon={<MenuBookOutlined />} label={c.name} onClick={onNavigate} />
-            ))}
-          </List>
-        )}
-        {!!otherCollections.length && (
-          <List dense disablePadding subheader={<ListSubheader sx={{ bgcolor: "transparent", lineHeight: "28px", fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>Collections</ListSubheader>}>
-            {otherCollections.slice(0, 8).map((c) => (
-              <NavItem key={c.id} to={`${base}/search?${collectionParams(c.id)}`} active={onSearch && !params.get("view") && specKey(fromSearchParams(params)) === specKey(fromSearchParams(collectionParams(c.id)))} icon={<CollectionsBookmarkOutlined />} label={c.name} onClick={onNavigate} />
-            ))}
-          </List>
-        )}
+        <List
+          dense
+          disablePadding
+          aria-label="Pinned"
+          subheader={<ListSubheader sx={{ bgcolor: "transparent", lineHeight: "28px", fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>Pinned</ListSubheader>}
+        >
+          {shownPins.map((item) => (
+            <NavItem
+              key={`${item.kind}-${item.id}`}
+              to={libraryHref(base, item)}
+              active={item.kind === "notebook" ? undefined : onSearch && (item.kind === "view" ? params.get("view") === item.id : !params.get("view") && specKey(fromSearchParams(params)) === specKey(fromSearchParams(collectionParams(item.id))))}
+              icon={PIN_ICONS[item.kind]}
+              label={item.name}
+              onClick={onNavigate}
+            />
+          ))}
+          {!pins.length && (
+            <Typography variant="caption" color="text.disabled" sx={{ display: "block", px: 2, py: 0.5 }}>
+              Pin views, notebooks, and collections from the Library.
+            </Typography>
+          )}
+          <NavItem to={`${base}/library`} icon={<LibraryBooksOutlined />} label={pins.length > PINS_SHOWN ? `Library (+${pins.length - PINS_SHOWN} pinned)` : "Library"} onClick={onNavigate} />
+        </List>
       </Box>
       <Divider sx={{ mx: 1, mb: 0.5 }} />
       <Box sx={{ px: 1 }}>

@@ -164,7 +164,7 @@ export const importHandlers = [
       if (j!.status !== "review") fail(409, "not_in_review", "Nothing to commit yet");
       const slides = slideCache.get(j!.id) ?? cannedSlides(j!.slideCount, todayISO());
       const assets = db.t.assets.filter((a) => a.orgId === ctx.org.id && !a.blob);
-      const coll = db.t.collections.put({ id: uuidv7(), workspaceId: j!.workspaceId, name: j!.defaults.collectionName || j!.sourceFilename, kind: "deck_import", postIds: [], createdBy: ctx.user.id });
+      const coll = db.t.collections.put({ id: uuidv7(), workspaceId: j!.workspaceId, name: j!.defaults.collectionName || j!.sourceFilename, kind: "deck_import", postIds: [], createdBy: ctx.user.id, updatedAt: now() });
       const postIds: string[] = [];
       const sha = j!.id.replace(/-/g, "").padEnd(64, "0");
       const items = j!.items.map((item) => {

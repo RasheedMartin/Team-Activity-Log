@@ -3,8 +3,9 @@ import { Box, Button, Drawer, IconButton, MenuItem, Skeleton, Stack, TextField, 
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useNavigationType, useSearchParams } from "react-router-dom";
-import type { Condition, DateField, FilterSpec, GalleryImage, ID, Interval, Post, SavedView, SearchHit, SearchResponse, Sort } from "../../api/contract";
-import { removeFromOverlay, useCollections, useOverlay, usePeople, useSavedViews, useSearch, useSearchCounts, useTags } from "../../api/hooks";
+import type { Collection, Condition, DateField, FilterGroup, FilterSpec, GalleryImage, ID, Interval, LibraryItem, Post, SearchHit, SearchResponse, Sort } from "../../api/contract";
+import { isFilterGroup } from "../../api/contract";
+import { removeFromOverlay, useCollectionsByIds, useOverlay, usePeople, useSavedView, useSearch, useSearchCounts, useTags } from "../../api/hooks";
 import { useWs, wsPath } from "../../app/session";
 import { APP_EVENTS, isTypingTarget, useAppEvent } from "../../app/shortcuts";
 import { useNotify } from "../../components/notify";
@@ -30,6 +31,18 @@ import { Histogram, HistogramTable } from "./Histogram";
 import { OnboardingChecklist } from "./Onboarding";
 import { GalleryGrid, GalleryViewer, PeekPane, ResultsList } from "./Results";
 import { SearchBar } from "./SearchBar";
+
+/** Collection IDs referenced anywhere in a spec (all/any/none and nested where groups). */
+function referencedCollectionIds(spec: FilterSpec): string[] {
+  const out = new Set<string>();
+  const visit = (c: Condition | FilterGroup) => {
+    if (isFilterGroup(c)) c.items.forEach(visit);
+    else if (c.field === "collection" && Array.isArray(c.value)) (c.value as string[]).forEach((id) => out.add(id));
+  };
+  [...(spec.all ?? []), ...(spec.any ?? []), ...(spec.none ?? [])].forEach(visit);
+  if (spec.where) visit(spec.where);
+  return [...out];
+}
 
 const SORTS: [Sort, string][] = [
   ["relevance", "Relevance"],
@@ -73,12 +86,16 @@ export function SearchPage() {
 
   const { data: tagData } = useTags(org.id);
   const { data: peopleList = [] } = usePeople(org.id);
-  const { data: collections = [] } = useCollections(org.id, ws.id);
-  const { data: views = [] } = useSavedViews(org.id, ws.id);
+  // Only the collections this spec refers to are loaded (for chip labels), never the whole list.
+  const collectionIds = useMemo(() => referencedCollectionIds(spec), [spec]);
+  const collectionResults = useCollectionsByIds(org.id, ws.id, collectionIds);
+  const collections = collectionResults.map((r) => r.data).filter((c): c is Collection => !!c);
+  const collectionsKey = collections.map((c) => `${c.id}:${c.name}`).join("|");
+  const { data: activeView } = useSavedView(org.id, ws.id, activeViewId);
   const tags = useMemo(() => new Map((tagData?.tags ?? []).map((t) => [t.id, t])), [tagData]);
   const people = useMemo(() => new Map(peopleList.map((p) => [p.id, p])), [peopleList]);
-  const ctx: DescribeCtx = useMemo(() => ({ tags, people, collections: new Map(collections.map((c) => [c.id, c])), meId: me.user.id }), [tags, people, collections, me.user.id]);
-  const activeView = views.find((v) => v.id === activeViewId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- collectionsKey tracks the loaded names
+  const ctx: DescribeCtx = useMemo(() => ({ tags, people, collections: new Map(collections.map((c) => [c.id, c])), meId: me.user.id }), [tags, people, collectionsKey, me.user.id]);
   // "Back to …" label for posts opened from here: a saved view, a collection, the feed, or results.
   const onlyCollection = !spec.q && !spec.none?.length && !spec.any?.length && !spec.where && spec.all?.length === 1 && spec.all[0].field === "collection" ? collections.find((c) => (spec.all![0].value as string[])?.[0] === c.id) : undefined;
   const origin = useOrigin(activeView?.name ?? onlyCollection?.name ?? (isEmptySpec(spec) ? "feed" : "results"));
@@ -226,8 +243,8 @@ export function SearchPage() {
     .sort((a, b) => b.total - a.total)
     .slice(0, 3);
 
-  const applyView = (v: SavedView) => {
-    const p = toSearchParams(v.filterSpec);
+  const applyView = (v: LibraryItem) => {
+    const p = toSearchParams(v.filterSpec ?? {});
     p.set("view", v.id);
     navigate(`${wsPath(org, ws, "/search")}?${p}`);
   };

@@ -2,7 +2,7 @@ import { AddRounded, ArticleOutlined, BookmarkBorderRounded, SearchRounded, Swap
 import { Box, Dialog, InputBase, List, ListItemButton, ListItemIcon, ListItemText, ListSubheader, Typography } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { useSavedViews, useSuggest, useTags } from "../../api/hooks";
+import { useLibrary, useSuggest, useTags } from "../../api/hooks";
 import { toSearchParams, toggleFacetValue } from "../../lib/filterSpec";
 import { can, useWs, wsPath } from "../../app/session";
 import { APP_EVENTS, useAppEvent } from "../../app/shortcuts";
@@ -31,7 +31,8 @@ export function CommandPalette() {
     const t = setTimeout(() => setDebounced(q), 120);
     return () => clearTimeout(t);
   }, [q]);
-  const { data: views } = useSavedViews(org.id, ws.id);
+  const lib = useLibrary(org.id, ws.id, { kind: "view", q: debounced, limit: 5 }, open);
+  const views = lib.data?.pages[0]?.items;
   const { data: tags } = useTags(org.id);
   const { data: suggest } = useSuggest(org.id, ws.id, debounced);
 
@@ -49,8 +50,8 @@ export function CommandPalette() {
     if (can(role, "member") && match("new post")) out.push({ id: "new", group: "Actions", label: "New post", hint: "C", icon: <AddRounded />, run: () => navigate(`${base}/new`) });
     if (needle) out.push({ id: "search", group: "Actions", label: `Search for “${q.trim()}”`, icon: <SearchRounded />, run: () => navigate(`${base}/search?${toSearchParams({ q: q.trim() })}`) });
     for (const p of suggest?.posts ?? []) out.push({ id: `p-${p.id}`, group: "Posts", label: p.title, icon: <ArticleOutlined />, run: () => navigate(`${base}/p/${p.id}`) });
-    for (const v of (views ?? []).filter((v) => match(v.name)).slice(0, 5))
-      out.push({ id: `v-${v.id}`, group: "Saved views", label: v.name, icon: <BookmarkBorderRounded />, run: () => navigate(`${base}/search?${toSearchParams(v.filterSpec)}&view=${v.id}`) });
+    for (const v of (views ?? []).slice(0, 5))
+      out.push({ id: `v-${v.id}`, group: "Saved views", label: v.name, icon: <BookmarkBorderRounded />, run: () => navigate(`${base}/search?${toSearchParams(v.filterSpec ?? {})}&view=${v.id}`) });
     if (needle)
       for (const t of (tags?.tags ?? []).filter((t) => match(t.name)).slice(0, 5))
         out.push({ id: `t-${t.id}`, group: "Filter by tag", label: t.name, icon: <TagDot color={t.color} />, run: () => navigate(`${base}/search?${toSearchParams(toggleFacetValue({}, "tag", t.id, "include"))}`) });
