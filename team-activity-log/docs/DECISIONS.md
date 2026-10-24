@@ -68,3 +68,16 @@ Additions only; nothing in §A7 was removed or renamed.
 - Live: SSE invalidates the affected queries; new comments from others get a brief highlight. Simulated teammates act every ~20–40 s in the mock (toggle in /dev).
 - Mock: tabs share one "server" via BroadcastChannel, so two personas in two tabs see each other live.
 - Search results toggle relabeled "Posts | Images" with tooltips (owner feedback: icon-only was unclear).
+
+## UI-5 Bring It In & Present It (+ notebooks)
+
+- **Slide derivation** (`src/lib/slides.ts`, unit-tested): title slide, then explicit slide-break sections; without breaks, each image becomes a slide with adjacent short text (≤ 260 chars) as its caption, and long text is chunked (~650 chars). Headings at the top of a chunk become slide titles.
+- Slides render on a fixed 1280×720 canvas scaled to fit, so typography is identical in the presenter, overview, and presenter window.
+- **Presenter notes** live on `slide_break.notes` and only appear in the separate presenter window (P), synced with the main window over `BroadcastChannel`; never on the main screen.
+- Presenting decks: `/present?posts=a,b` (a selection) or `/present?collection=id`. Slide position is kept in `?s=` so a reload resumes.
+- **Selections** survive query changes so posts can be gathered from several searches (`x` toggles the focused result).
+- **Notebooks (owner request)** are `Collection { kind: "notebook" }`: ordered by work date at creation, reorderable, removable, printable (print CSS hides app chrome; each entry starts a page). "Make notebook" exists on the selection tray and on each Explore shelf (all posts with the tag, oldest first). Deleting a notebook never deletes posts.
+- **Import**: the mock simulates the job (progress, canned slides, per-mode grouping, warnings, guessed dates). Edits in review autosave; commit is idempotent (`Idempotency-Key`). Everything lands as drafts in a `deck_import` collection; "Publish all" and "Delete this import" act on the whole import. Filenames containing "corrupt" simulate a damaged file; "800" simulates an 800-slide deck.
+- **Export**: PDF via the browser's print dialog from notebooks; PPTX/PDF file export waits for backend B-5 (open question C2.13 default).
+- **App error screen**: anything uncaught shows a recoverable error page instead of the router's developer page.
+- **Accessibility**: tooltips on labeled buttons use `describeChild`, so the visible label stays the accessible name.

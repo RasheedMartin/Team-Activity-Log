@@ -1,5 +1,5 @@
 import { ChatBubbleOutlineRounded, CollectionsOutlined, FileUploadOutlined } from "@mui/icons-material";
-import { Box, Stack, Typography, useTheme } from "@mui/material";
+import { Box, Checkbox, Stack, Typography, useTheme } from "@mui/material";
 import { memo, type ReactNode } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import type { SearchHit, Tag, User } from "../../api/contract";
@@ -39,9 +39,12 @@ interface Props {
   comfortable?: boolean;
   onTagClick?: (tagId: string) => void;
   extra?: ReactNode;
+  /** Selection mode (§W5.2): a checkbox that doesn't navigate. */
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }
 
-export const PostCard = memo(function PostCard({ hit, href, author, tags, focused, comfortable, onTagClick }: Props) {
+export const PostCard = memo(function PostCard({ hit, href, author, tags, focused, comfortable, onTagClick, selected, onToggleSelect }: Props) {
   const theme = useTheme();
   const { post } = hit;
   const body = hit.highlights.find((h) => h.field !== "title");
@@ -55,6 +58,8 @@ export const PostCard = memo(function PostCard({ hit, href, author, tags, focuse
       component={RouterLink}
       to={href}
       data-post-id={post.id}
+      // The selection checkbox lives inside the card link: let it toggle without navigating.
+      onClick={(e: React.MouseEvent) => (e.target as HTMLElement).closest("input[type=checkbox]") && e.preventDefault()}
       aria-current={focused ? "true" : undefined}
       sx={{
         display: "block",
@@ -71,6 +76,16 @@ export const PostCard = memo(function PostCard({ hit, href, author, tags, focuse
       }}
     >
       <Stack direction="row" spacing={2} alignItems="flex-start">
+        {onToggleSelect && (
+          <Checkbox
+            checked={!!selected}
+            size="small"
+            sx={{ p: 0.25, mt: 0.25, mr: -1 }}
+            inputProps={{ "aria-label": `Select ${post.title}` }}
+            onChange={onToggleSelect}
+            onClick={(e) => e.stopPropagation()}
+          />
+        )}
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Stack direction="row" spacing={1} alignItems="baseline" sx={{ mb: 0.25 }}>
             <Typography variant="subtitle1" component="h3" sx={{ fontWeight: 600, fontSize: comfortable ? "1rem" : "0.92rem", lineHeight: 1.3, flex: 1, minWidth: 0 }} noWrap={!comfortable}>

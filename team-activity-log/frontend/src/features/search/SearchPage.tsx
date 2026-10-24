@@ -1,9 +1,9 @@
-import { FilterListRounded, GridViewRounded, TableRowsOutlined, ViewListRounded, ZoomInRounded, ZoomOutRounded } from "@mui/icons-material";
+import { CheckBoxOutlined, FilterListRounded, GridViewRounded, TableRowsOutlined, ViewListRounded, ZoomInRounded, ZoomOutRounded } from "@mui/icons-material";
 import { Box, Button, Drawer, IconButton, MenuItem, Skeleton, Stack, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography, useMediaQuery, useTheme } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import type { Condition, DateField, FilterSpec, GalleryImage, Interval, SavedView, SearchHit, SearchResponse, Sort } from "../../api/contract";
+import type { Condition, DateField, FilterSpec, GalleryImage, ID, Interval, Post, SavedView, SearchHit, SearchResponse, Sort } from "../../api/contract";
 import { removeFromOverlay, useCollections, useOverlay, usePeople, useSavedViews, useSearch, useSearchCounts, useTags } from "../../api/hooks";
 import { useWs, wsPath } from "../../app/session";
 import { APP_EVENTS, isTypingTarget, useAppEvent } from "../../app/shortcuts";
@@ -20,6 +20,7 @@ import {
   toSearchParams,
   toggleFacetValue,
 } from "../../lib/filterSpec";
+import { SelectionTray } from "../collections/SelectionTray";
 import { AdvancedFilters } from "./AdvancedFilters";
 import { ChipsBar, SavedViewsMenu, SaveViewDialog } from "./ChipsBar";
 import { describeCondition, type DescribeCtx } from "./fields";
@@ -120,6 +121,19 @@ export function SearchPage() {
   const [viewer, setViewer] = useState<GalleryImage | null>(null);
   useEffect(() => setFocused(-1), [params]);
 
+  // Selection (§W5.2) survives query changes, so you can gather posts from several searches.
+  const [selecting, setSelecting] = useState(false);
+  const [picked, setPicked] = useState<Map<ID, Post>>(new Map());
+  const toggleSelected = useCallback((h: SearchHit) => {
+    setPicked((m) => {
+      const n = new Map(m);
+      if (n.has(h.post.id)) n.delete(h.post.id);
+      else n.set(h.post.id, h.post);
+      return n;
+    });
+  }, []);
+  const selection = useMemo(() => (selecting ? { ids: new Set(picked.keys()), toggle: toggleSelected } : undefined), [selecting, picked, toggleSelected]);
+
   // ---- keyboard: j/k move, Enter open, Space peek, Esc close (§A4) ----
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -140,13 +154,17 @@ export function SearchPage() {
         e.preventDefault();
         const id = hits[focused].post.id;
         setPeek((p) => (p === id ? null : id));
+      } else if (e.key === "x" && focused >= 0) {
+        e.preventDefault();
+        setSelecting(true);
+        toggleSelected(hits[focused]);
       } else if (e.key === "Escape" && peek) {
         setPeek(null);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [hits, focused, peek, view, navigate, org, ws, search, me.preferences.shortcuts]);
+  }, [hits, focused, peek, view, navigate, org, ws, search, me.preferences.shortcuts, toggleSelected]);
 
   const onEndReached = useCallback(() => {
     if (search.hasNextPage && !search.isFetchingNextPage) void search.fetchNextPage();
@@ -240,19 +258,27 @@ export function SearchPage() {
           aria-label="Show results as"
           sx={{ "& .MuiToggleButton-root": { textTransform: "none", gap: 0.75, px: 1.25, fontWeight: 600 } }}
         >
-          <Tooltip title="List matching posts">
+          <Tooltip describeChild title="List matching posts">
             <ToggleButton value="posts" aria-label="Posts">
               <ViewListRounded fontSize="small" />
               <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>Posts</Box>
             </ToggleButton>
           </Tooltip>
-          <Tooltip title="Grid of every image in matching posts">
+          <Tooltip describeChild title="Grid of every image in matching posts">
             <ToggleButton value="gallery" aria-label="Images">
               <GridViewRounded fontSize="small" />
               <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>Images</Box>
             </ToggleButton>
           </Tooltip>
         </ToggleButtonGroup>
+        {view === "posts" && (
+          <Tooltip describeChild title="Select posts to present, save, or make a notebook (X)">
+            <ToggleButton size="small" value="select" selected={selecting} onChange={() => setSelecting(!selecting)} aria-label="Select posts" sx={{ textTransform: "none", gap: 0.75, px: 1.25, fontWeight: 600 }}>
+              <CheckBoxOutlined fontSize="small" />
+              <Box component="span" sx={{ display: { xs: "none", lg: "inline" } }}>Select</Box>
+            </ToggleButton>
+          </Tooltip>
+        )}
         <TextField select size="small" value={effectiveSort(spec)} onChange={(e) => setSpec({ ...spec, sort: e.target.value as Sort, cursor: undefined })} sx={{ minWidth: 140, display: { xs: "none", sm: "flex" } }} inputProps={{ "aria-label": "Sort" }}>
           {SORTS.filter(([s]) => s !== "relevance" || spec.q).map(([s, label]) => <MenuItem key={s} value={s}>{label}</MenuItem>)}
         </TextField>
@@ -365,6 +391,7 @@ export function SearchPage() {
                   comfortable={comfortable}
                   onEndReached={onEndReached}
                   onTagClick={(id) => setSpec(toggleFacetValue(spec, "tag", id, "include"))}
+                  selection={selection}
                 />
               )}
               {search.isFetchingNextPage && <Skeleton variant="rounded" height={64} sx={{ mt: 1 }} />}
@@ -403,6 +430,7 @@ export function SearchPage() {
         />
       )}
       <GalleryViewer img={viewer} onClose={() => setViewer(null)} />
+      <SelectionTray selected={[...picked.keys()]} posts={picked} onClear={() => (setPicked(new Map()), setSelecting(false))} />
     </Box>
   );
 }

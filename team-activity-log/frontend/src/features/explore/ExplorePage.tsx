@@ -1,9 +1,11 @@
-import { ArrowForwardRounded, GridViewRounded, ImageOutlined, SlideshowRounded } from "@mui/icons-material";
+import { ArrowForwardRounded, GridViewRounded, ImageOutlined, MenuBookOutlined, SlideshowRounded } from "@mui/icons-material";
 import { Box, Button, ButtonBase, Chip, Skeleton, Stack, Typography } from "@mui/material";
 import { useMemo, useState } from "react";
-import { Link as RouterLink, useSearchParams } from "react-router-dom";
+import { Link as RouterLink, useNavigate, useSearchParams } from "react-router-dom";
 import type { ExploreShelf, FilterSpec, GalleryImage } from "../../api/contract";
-import { useExplore, usePeople } from "../../api/hooks";
+import { collectPostIds, useCreateCollection, useExplore, usePeople } from "../../api/hooks";
+import { useNotify } from "../../components/notify";
+import { errorMessage } from "../../lib/format";
 import { useWs, wsPath } from "../../app/session";
 import { EmptyState, ErrorState, PageHeader, TagDot } from "../../components/ui";
 import { formatDay, timeAgo } from "../../lib/dates";
@@ -31,6 +33,23 @@ function Tile({ img, onOpen }: { img: GalleryImage; onOpen: () => void }) {
 function Shelf({ shelf, onSlideshow, onImage }: { shelf: ExploreShelf; onSlideshow: () => void; onImage: (img: GalleryImage) => void }) {
   const { org, ws } = useWs();
   const { data: people = [] } = usePeople(org.id);
+  const navigate = useNavigate();
+  const notify = useNotify();
+  const create = useCreateCollection(org.id, ws.id);
+  const [making, setMaking] = useState(false);
+  const makeNotebook = async () => {
+    setMaking(true);
+    try {
+      // Every post with this tag, oldest work date first: a running notebook of the topic.
+      const ids = await collectPostIds(org.id, ws.id, { ...toggleFacetValue({}, "tag", shelf.tag.id, "include"), sort: "workDate" });
+      const c = await create.mutateAsync({ name: `${shelf.tag.name} notebook`, postIds: ids.reverse(), kind: "notebook" });
+      navigate(wsPath(org, ws, `/notebooks/${c.id}`));
+    } catch (e) {
+      notify(errorMessage(e));
+    } finally {
+      setMaking(false);
+    }
+  };
   const searchUrl = (view?: "gallery") => `${wsPath(org, ws, "/search")}?${toSearchParams({ ...toggleFacetValue({}, "tag", shelf.tag.id, "include"), view })}`;
   const postsWithoutImages = shelf.posts.filter((p) => !p.thumbUrl).slice(0, 6);
   return (
@@ -53,6 +72,7 @@ function Shelf({ shelf, onSlideshow, onImage }: { shelf: ExploreShelf; onSlidesh
             <Button size="small" startIcon={<GridViewRounded />} component={RouterLink} to={searchUrl("gallery")}>Gallery</Button>
           </>
         )}
+        <Button size="small" startIcon={<MenuBookOutlined />} onClick={makeNotebook} disabled={making}>Notebook</Button>
         <Button size="small" endIcon={<ArrowForwardRounded />} component={RouterLink} to={searchUrl()}>All posts</Button>
       </Stack>
       <Box sx={{ display: "flex", gap: 1, overflowX: "auto", scrollSnapType: "x mandatory", pb: 0.5 }} role="list">

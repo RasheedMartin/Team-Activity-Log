@@ -113,8 +113,36 @@ export const searchHandlers = [
       c.postIds.forEach((pid) => {
         const p = db.t.posts.get(pid);
         if (p) db.t.posts.update(pid, { collectionIds: [...new Set([...(p.collectionIds ?? []), c.id])] });
+        engine.touch(pid);
       });
       return HttpResponse.json(c, { status: 201 });
+    }),
+  ),
+  http.patch(
+    "/v1/orgs/:org/workspaces/:ws/collections/:id",
+    route(async ({ cookies, params, request }) => {
+      const ctx = workspaceCtx(cookies, params.org as string, params.ws as string, "member");
+      const c = db.t.collections.get(params.id as string);
+      if (!c || c.workspaceId !== ctx.ws.id) fail(404, "not_found", "Collection not found");
+      const { name } = (await request.json()) as { name?: string };
+      if (name !== undefined && !name.trim()) fail(422, "invalid", "Name can't be empty");
+      return HttpResponse.json(db.t.collections.update(c!.id, name ? { name: name.trim() } : {}));
+    }),
+  ),
+  http.delete(
+    "/v1/orgs/:org/workspaces/:ws/collections/:id",
+    route(({ cookies, params }) => {
+      const ctx = workspaceCtx(cookies, params.org as string, params.ws as string, "member");
+      const c = db.t.collections.get(params.id as string);
+      if (!c || c.workspaceId !== ctx.ws.id) fail(404, "not_found", "Collection not found");
+      if (c!.createdBy !== ctx.user.id && !roleAtLeast(ctx.role, "admin")) fail(403, "forbidden", "Only its creator or an admin can delete this");
+      // Deleting a collection never deletes posts; it only removes the grouping.
+      c!.postIds.forEach((pid) => {
+        const p = db.t.posts.get(pid);
+        if (p) db.t.posts.update(pid, { collectionIds: (p.collectionIds ?? []).filter((x) => x !== c!.id) });
+      });
+      db.t.collections.delete(c!.id);
+      return new HttpResponse(null, { status: 204 });
     }),
   ),
   http.put(
@@ -124,6 +152,17 @@ export const searchHandlers = [
       const c = db.t.collections.get(params.id as string);
       if (!c || c.workspaceId !== ctx.ws.id) fail(404, "not_found", "Collection not found");
       const { postIds } = (await request.json()) as { postIds: string[] };
+      // Keep post.collectionIds in step so the "collection" search filter stays exact.
+      new Set([...c!.postIds, ...postIds]).forEach((pid) => {
+        const p = db.t.posts.get(pid);
+        if (!p) return;
+        const has = postIds.includes(pid);
+        const ids = new Set(p.collectionIds ?? []);
+        if (has) ids.add(c!.id);
+        else ids.delete(c!.id);
+        db.t.posts.update(pid, { collectionIds: [...ids] });
+        engine.touch(pid);
+      });
       return HttpResponse.json(db.t.collections.update(c!.id, { postIds }));
     }),
   ),

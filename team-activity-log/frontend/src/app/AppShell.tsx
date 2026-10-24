@@ -7,6 +7,7 @@ import {
   DynamicFeedRounded,
   EditNoteRounded,
   ExploreOutlined,
+  MenuBookOutlined,
   ExpandMoreRounded,
   InboxOutlined,
   LogoutRounded,
@@ -191,6 +192,8 @@ function Rail({ onNavigate }: { onNavigate?: () => void }) {
   const { data: notes } = useNotifications(org.id);
   const unread = notes?.some((n) => !n.readAt && n.workspaceId === ws.id);
   const pinned = views?.filter((v) => v.pinned) ?? [];
+  const notebooks = collections?.filter((c) => c.kind === "notebook") ?? [];
+  const otherCollections = collections?.filter((c) => c.kind !== "notebook") ?? [];
   const location = useLocation();
   const params = new URLSearchParams(location.search);
   const onSearch = location.pathname === `${base}/search`;
@@ -229,9 +232,16 @@ function Rail({ onNavigate }: { onNavigate?: () => void }) {
             ))}
           </List>
         )}
-        {!!collections?.length && (
+        {!!notebooks.length && (
+          <List dense disablePadding subheader={<ListSubheader sx={{ bgcolor: "transparent", lineHeight: "28px", fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>Notebooks</ListSubheader>}>
+            {notebooks.slice(0, 8).map((c) => (
+              <NavItem key={c.id} to={`${base}/notebooks/${c.id}`} icon={<MenuBookOutlined />} label={c.name} onClick={onNavigate} />
+            ))}
+          </List>
+        )}
+        {!!otherCollections.length && (
           <List dense disablePadding subheader={<ListSubheader sx={{ bgcolor: "transparent", lineHeight: "28px", fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>Collections</ListSubheader>}>
-            {collections.slice(0, 8).map((c) => (
+            {otherCollections.slice(0, 8).map((c) => (
               <NavItem key={c.id} to={`${base}/search?${collectionParams(c.id)}`} active={onSearch && !params.get("view") && specKey(fromSearchParams(params)) === specKey(fromSearchParams(collectionParams(c.id)))} icon={<CollectionsBookmarkOutlined />} label={c.name} onClick={onNavigate} />
             ))}
           </List>
@@ -271,7 +281,7 @@ export function AppShell() {
           <Rail onNavigate={() => setOpen(false)} />
         </Drawer>
       ) : (
-        <Box component="aside" sx={{ width: RAIL_WIDTH, flexShrink: 0, borderRight: 1, borderColor: "divider", bgcolor: "background.paper", position: "sticky", top: 0, height: "100dvh" }}>
+        <Box component="aside" data-print-hide sx={{ width: RAIL_WIDTH, flexShrink: 0, borderRight: 1, borderColor: "divider", bgcolor: "background.paper", position: "sticky", top: 0, height: "100dvh" }}>
           <Rail />
         </Box>
       )}

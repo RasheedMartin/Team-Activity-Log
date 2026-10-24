@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { App } from "./App";
 import { API_MODE } from "./api/client";
+import { ErrorScreen } from "./app/ErrorScreen";
 import { Providers } from "./app/Providers";
 
 async function boot() {
@@ -18,6 +19,11 @@ async function boot() {
       element: (
         <Providers>
           <App />
+        </Providers>
+      ),
+      errorElement: (
+        <Providers>
+          <ErrorScreen />
         </Providers>
       ),
     },

@@ -79,6 +79,7 @@ export function createAppTheme(mode: Mode, density: Density, reducedMotion = fal
           "code, kbd, pre": { fontFamily: "'IBM Plex Mono', ui-monospace, monospace" },
           mark: { background: alpha(accent, mode === "light" ? 0.16 : 0.28), color: "inherit", borderRadius: 2, padding: "0 1px" },
           "*:focus-visible": { outline: `2px solid ${accent}`, outlineOffset: 2 },
+          "@media print": { "[data-print-hide], .MuiSnackbar-root": { display: "none !important" }, body: { background: "#fff" } },
           // @mention suggestions (rendered by the comment editor outside React)
           ".tal-mentions": {
             position: "absolute",

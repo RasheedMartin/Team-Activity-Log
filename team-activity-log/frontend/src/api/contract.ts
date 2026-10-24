@@ -460,7 +460,8 @@ export interface Collection {
   id: ID;
   workspaceId: ID;
   name: string;
-  kind: "manual" | "deck_import" | "saved_selection";
+  /** "notebook" (owner request): posts stitched into one continuous document, ordered by the user. */
+  kind: "manual" | "deck_import" | "saved_selection" | "notebook";
   postIds: ID[];
   createdBy: ID;
 }

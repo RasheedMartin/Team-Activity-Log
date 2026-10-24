@@ -458,6 +458,46 @@ export function useDeleteView(orgId: ID, wsId: ID) {
 }
 export const useCollections = (orgId: ID, wsId: ID) =>
   useQuery({ queryKey: qk.collections(orgId, wsId), queryFn: ({ signal }) => get<Collection[]>(`${W(orgId, wsId)}/collections`, signal) });
+export function useUpdateCollection(orgId: ID, wsId: ID) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, name, postIds }: { id: ID; name?: string; postIds?: ID[] }): Promise<Collection> => {
+      let c = name !== undefined ? await patch<Collection>(`${W(orgId, wsId)}/collections/${id}`, { name }) : undefined;
+      if (postIds) c = await put<Collection>(`${W(orgId, wsId)}/collections/${id}/posts`, { postIds });
+      return c!;
+    },
+    onMutate: async (v) => {
+      const key = qk.collections(orgId, wsId);
+      await qc.cancelQueries({ queryKey: key });
+      const prev = qc.getQueryData<Collection[]>(key);
+      if (prev) qc.setQueryData<Collection[]>(key, prev.map((c) => (c.id === v.id ? { ...c, ...(v.name ? { name: v.name } : {}), ...(v.postIds ? { postIds: v.postIds } : {}) } : c)));
+      return { prev };
+    },
+    onError: (_e, _v, c) => c?.prev && qc.setQueryData(qk.collections(orgId, wsId), c.prev),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.collections(orgId, wsId) }),
+  });
+}
+export function useDeleteCollection(orgId: ID, wsId: ID) {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (id: ID) => del(`${W(orgId, wsId)}/collections/${id}`), onSuccess: () => qc.invalidateQueries({ queryKey: qk.collections(orgId, wsId) }) });
+}
+
+/** All post IDs matching a spec (paged through search), for "make a notebook from this tag/search". */
+export async function collectPostIds(orgId: ID, wsId: ID, spec: FilterSpec, max = 1000): Promise<ID[]> {
+  const ids: ID[] = [];
+  let cursor: string | undefined;
+  do {
+    const r = await post<SearchResponse>(`${W(orgId, wsId)}/search`, { ...normalize(spec), view: "posts", limit: 200, cursor });
+    ids.push(...r.hits.map((h) => h.post.id));
+    cursor = r.nextCursor;
+  } while (cursor && ids.length < max);
+  return ids.slice(0, max);
+}
+
+/** Full detail for several posts (presenting decks, notebooks). Reads Postgres-owned detail routes. */
+export const usePostDetails = (orgId: ID, ids: ID[]) =>
+  useQueries({ queries: ids.map((id) => ({ queryKey: qk.post(orgId, id), queryFn: ({ signal }: { signal: AbortSignal }) => get<PostDetail>(`${O(orgId)}/posts/${id}`, signal) })) });
+
 export function useCreateCollection(orgId: ID, wsId: ID) {
   const qc = useQueryClient();
   return useMutation({

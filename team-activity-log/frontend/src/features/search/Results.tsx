@@ -38,9 +38,10 @@ interface ListProps {
   comfortable: boolean;
   onEndReached: () => void;
   onTagClick: (id: ID) => void;
+  selection?: { ids: Set<ID>; toggle: (hit: SearchHit) => void };
 }
 
-export function ResultsList({ hits, people, tags, focused, setFocused, comfortable, onEndReached, onTagClick }: ListProps) {
+export function ResultsList({ hits, people, tags, focused, setFocused, comfortable, onEndReached, onTagClick, selection }: ListProps) {
   const { org, ws } = useWs();
   const ref = useRef<HTMLDivElement>(null);
   const scrollMargin = useScrollMargin(ref);
@@ -68,7 +69,17 @@ export function ResultsList({ hits, people, tags, focused, setFocused, comfortab
             onFocusCapture={() => setFocused(it.index)}
             sx={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${it.start - scrollMargin}px)` }}
           >
-            <PostCard hit={h} href={wsPath(org, ws, `/p/${h.post.id}`)} author={people.get(h.post.authorId)} tags={tags} focused={it.index === focused} comfortable={comfortable} onTagClick={onTagClick} />
+            <PostCard
+              hit={h}
+              href={wsPath(org, ws, `/p/${h.post.id}`)}
+              author={people.get(h.post.authorId)}
+              tags={tags}
+              focused={it.index === focused}
+              comfortable={comfortable}
+              onTagClick={onTagClick}
+              selected={selection?.ids.has(h.post.id)}
+              onToggleSelect={selection ? () => selection.toggle(h) : undefined}
+            />
           </Box>
         );
       })}
