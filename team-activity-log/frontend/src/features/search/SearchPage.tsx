@@ -232,9 +232,26 @@ export function SearchPage() {
         </Tooltip>
         <SearchBar spec={spec} setSpec={setSpec} tags={tagData?.tags ?? []} people={peopleList} />
         <SavedViewsMenu activeId={activeViewId} onApply={applyView} />
-        <ToggleButtonGroup size="small" exclusive value={view} onChange={(_, v) => v && setSpec({ ...spec, view: v, cursor: undefined })} aria-label="Result view">
-          <ToggleButton value="posts" aria-label="Posts"><ViewListRounded fontSize="small" /></ToggleButton>
-          <ToggleButton value="gallery" aria-label="Gallery"><GridViewRounded fontSize="small" /></ToggleButton>
+        <ToggleButtonGroup
+          size="small"
+          exclusive
+          value={view}
+          onChange={(_, v) => v && setSpec({ ...spec, view: v, cursor: undefined })}
+          aria-label="Show results as"
+          sx={{ "& .MuiToggleButton-root": { textTransform: "none", gap: 0.75, px: 1.25, fontWeight: 600 } }}
+        >
+          <Tooltip title="List matching posts">
+            <ToggleButton value="posts" aria-label="Posts">
+              <ViewListRounded fontSize="small" />
+              <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>Posts</Box>
+            </ToggleButton>
+          </Tooltip>
+          <Tooltip title="Grid of every image in matching posts">
+            <ToggleButton value="gallery" aria-label="Images">
+              <GridViewRounded fontSize="small" />
+              <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>Images</Box>
+            </ToggleButton>
+          </Tooltip>
         </ToggleButtonGroup>
         <TextField select size="small" value={effectiveSort(spec)} onChange={(e) => setSpec({ ...spec, sort: e.target.value as Sort, cursor: undefined })} sx={{ minWidth: 140, display: { xs: "none", sm: "flex" } }} inputProps={{ "aria-label": "Sort" }}>
           {SORTS.filter(([s]) => s !== "relevance" || spec.q).map(([s, label]) => <MenuItem key={s} value={s}>{label}</MenuItem>)}

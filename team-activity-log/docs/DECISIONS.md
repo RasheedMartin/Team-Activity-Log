@@ -56,3 +56,15 @@ Additions only; nothing in §A7 was removed or renamed.
 - New route `GET /workspaces/{ws}/explore` → `ExploreResponse` (shelves per tag with recent posts and images). Backend: ES `terms` agg on `tags.id` + `top_hits`, same security filters as search; tag group names hydrated from Postgres.
 - Shelves are ordered by most recent activity and can be narrowed by tag group. "Slideshow" is a reusable `ImageSlideshow` over any `FilterSpec` (gallery query, oldest first); UI-5 reuses it for presenting selections.
 - Notebooks (stitching posts into one document) are planned with UI-5 collections/present/export.
+
+## UI-4 Talk About It
+
+- Comments are read from the comments API (Postgres-owned), never from search; search only indexes their text.
+- Threads render unlimited depth in data; past depth 4 the UI shows "Continue thread →" (focused sub-thread with a way back). Top-level threads page 30 at a time (the 200-comment fixture stays fast).
+- Mentions are ProseMirror `mention` nodes `{ id, label }`; the server notifies by ID. The suggestion popup renders names with `textContent` (untrusted data).
+- Anyone who can comment may resolve a question; only the question's author or an admin may pick the accepted answer.
+- Pinned image comments store normalized `anchor {x, y}`; pins are numbered per image in creation order. Clicking a pin previews it and links into the thread; the thread's pin chip flashes the pin.
+- Notifications carry `postTitle` and `excerpt` (hydrated server-side) so the inbox is one request.
+- Live: SSE invalidates the affected queries; new comments from others get a brief highlight. Simulated teammates act every ~20–40 s in the mock (toggle in /dev).
+- Mock: tabs share one "server" via BroadcastChannel, so two personas in two tabs see each other live.
+- Search results toggle relabeled "Posts | Images" with tooltips (owner feedback: icon-only was unclear).

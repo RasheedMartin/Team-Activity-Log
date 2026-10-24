@@ -38,7 +38,7 @@ import { useMemo, useState } from "react";
 import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import type { Block, ImageView, Post, PostRevision, Shape } from "../../api/contract";
-import { patchImageInCaches, usePeople, usePost, usePostAction, useRevisions, useSaveAnnotation, useTags } from "../../api/hooks";
+import { patchImageInCaches, useComments, usePeople, usePost, usePostAction, useRevisions, useSaveAnnotation, useTags } from "../../api/hooks";
 import { can, useWs, wsPath } from "../../app/session";
 import { AnnotationLayer } from "../../components/AnnotationLayer";
 import { useNotify } from "../../components/notify";
@@ -51,10 +51,11 @@ import { toSearchParams, toggleFacetValue } from "../../lib/filterSpec";
 import { errorMessage } from "../../lib/format";
 import { docText } from "../../lib/prosemirror";
 import { Annotator } from "./Annotator";
-import { AnnotatedImage } from "./editor/ImageBlock";
 import { ImageMetadataDrawer } from "./ImageMetadataDrawer";
 import { ReactionBar } from "../discussion/ReactionBar";
 import { ThreadView } from "../discussion/ThreadView";
+import { PinnableImage } from "../discussion/Pins";
+import { flashElement } from "../discussion/threads";
 
 export default function PostDetailPage() {
   const { postId = "" } = useParams();
@@ -176,6 +177,8 @@ function PostView({ post, images }: { post: Post; images: ImageView[] }) {
   const [reason, setReason] = useState("");
   const [history, setHistory] = useState(false);
   const [viewing, setViewing] = useState<string | null>(null);
+  const [focusComment, setFocusComment] = useState<string | null>(null);
+  const { data: comments = [] } = useComments(org.id, post.id, post.status === "published");
 
   const isAuthor = post.authorId === me.user.id || post.coAuthorIds.includes(me.user.id);
   const isAdmin = can(role, "admin");
@@ -309,7 +312,7 @@ function PostView({ post, images }: { post: Post; images: ImageView[] }) {
             if (!img) return null;
             return (
               <Box component="figure" key={b.id} sx={{ m: 0 }}>
-                <AnnotatedImage image={img} onClick={() => setViewing(img.id)} maxHeight={560} />
+                <PinnableImage post={post} image={img} comments={comments} images={images} maxHeight={560} onImageClick={() => setViewing(img.id)} onOpenThread={(id) => setFocusComment(id + ":" + Date.now())} />
                 {(img.caption || img.figureLabel) && (
                   <Typography component="figcaption" variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
                     {img.figureLabel && <b>{img.figureLabel}. </b>}
@@ -328,7 +331,7 @@ function PostView({ post, images }: { post: Post; images: ImageView[] }) {
             <ReactionBar post={post} />
           </Box>
           <Divider sx={{ my: 3 }} />
-          <ThreadView post={post} images={images} />
+          <ThreadView post={post} images={images} focusComment={focusComment?.split(":")[0]} onPinClick={(id) => flashElement(`pin-${id}`)} />
         </>
       )}
 

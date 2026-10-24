@@ -1,11 +1,11 @@
 import { BrushOutlined, DeleteOutlineRounded, ErrorOutlineRounded, InfoOutlined, RefreshRounded, SwapHorizRounded } from "@mui/icons-material";
 import { Box, Button, IconButton, InputBase, LinearProgress, Stack, Tooltip, Typography } from "@mui/material";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { ImageView } from "../../../api/contract";
 import { AnnotationLayer } from "../../../components/AnnotationLayer";
 
 /** An image with its stored aspect ratio reserved (no layout shift) and annotations overlaid. */
-export function AnnotatedImage({ image, maxHeight = 520, onClick, variant = "medium" }: { image: ImageView; maxHeight?: number; onClick?: () => void; variant?: "small" | "medium" | "original" }) {
+export function AnnotatedImage({ image, maxHeight = 520, onClick, variant = "medium", children }: { image: ImageView; maxHeight?: number; onClick?: () => void; variant?: "small" | "medium" | "original"; children?: ReactNode }) {
   const a = image.asset;
   const src = (a.variants.find((v) => v.name === variant) ?? a.variants[a.variants.length - 1])?.url;
   const [loaded, setLoaded] = useState(false);
@@ -19,7 +19,7 @@ export function AnnotatedImage({ image, maxHeight = 520, onClick, variant = "med
         aspectRatio: `${a.width} / ${a.height}`,
         bgcolor: a.dominantColors[0] ?? "action.hover",
         borderRadius: 1,
-        overflow: "hidden",
+        overflow: "visible",
         cursor: onClick ? "zoom-in" : undefined,
         border: 1,
         borderColor: "divider",
@@ -27,6 +27,7 @@ export function AnnotatedImage({ image, maxHeight = 520, onClick, variant = "med
     >
       <Box component="img" src={src} alt={image.altText ?? image.caption ?? ""} loading="lazy" decoding="async" onLoad={() => setLoaded(true)} sx={{ width: "100%", height: "100%", display: "block", objectFit: "contain", opacity: loaded ? 1 : 0, transition: "opacity 150ms" }} />
       <AnnotationLayer shapes={image.annotation?.shapes ?? []} width={a.width} height={a.height} />
+      {children}
     </Box>
   );
 }

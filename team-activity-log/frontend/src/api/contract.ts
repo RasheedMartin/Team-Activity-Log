@@ -276,6 +276,9 @@ export interface Notification {
   workspaceId: ID;
   createdAt: ISODateTime;
   readAt?: ISODateTime;
+  /** Hydrated by the server so the inbox renders in one request. */
+  postTitle?: string;
+  excerpt?: string;
 }
 
 /** Live events (SSE in production; timers in the mock). */

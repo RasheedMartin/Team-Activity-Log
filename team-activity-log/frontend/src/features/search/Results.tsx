@@ -101,9 +101,8 @@ export function GalleryGrid({ images, onEndReached, onOpen }: { images: GalleryI
       {items.map((row) => (
         <Stack key={row.index} direction="row" spacing={1} sx={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${row.start - scrollMargin}px)` }}>
           {images.slice(row.index * cols, row.index * cols + cols).map((img) => (
+            <Box key={img.imageInstanceId} role="listitem" sx={{ display: "flex" }}>
             <Box
-              key={img.imageInstanceId}
-              role="listitem"
               component="button"
               onClick={() => onOpen(img)}
               aria-label={`${img.figureLabel ? `${img.figureLabel} ` : ""}${img.caption ?? "Image"} from ${img.postTitle}`}
@@ -119,6 +118,7 @@ export function GalleryGrid({ images, onEndReached, onOpen }: { images: GalleryI
                 </Typography>
                 <Typography variant="caption" color="text.secondary" noWrap component="div">{img.postTitle}</Typography>
               </Box>
+            </Box>
             </Box>
           ))}
         </Stack>

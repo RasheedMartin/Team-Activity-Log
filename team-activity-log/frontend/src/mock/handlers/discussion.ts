@@ -1,7 +1,7 @@
 import { http, HttpResponse, sse } from "msw";
 import type { Comment, ID, LiveEvent } from "../../api/contract";
 import { uuidv7 } from "../../lib/ids";
-import { doc, mentionedIds, paragraph } from "../../lib/prosemirror";
+import { doc, docText, mentionedIds, paragraph } from "../../lib/prosemirror";
 import { db, type CommentRow, type PostRow } from "../db";
 import { readDevSettings } from "../devSettings";
 import {
@@ -208,7 +208,12 @@ export const discussionHandlers = [
         .filter((n) => n.userId === ctx.user.id && orgWs.has(n.workspaceId))
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
         .slice(0, 200)
-        .map(({ userId: _u, ...n }) => (void _u, n));
+        .map(({ userId: _u, ...n }) => {
+          void _u;
+          const c = db.t.comments.get(n.commentId);
+          const text = c && !c.deletedAt ? docText(c.doc) : "";
+          return { ...n, postTitle: db.t.posts.get(n.postId)?.title, excerpt: text.length > 140 ? `${text.slice(0, 140)}…` : text };
+        });
       return HttpResponse.json(list);
     }, { flaky: false }),
   ),
@@ -232,7 +237,13 @@ export const discussionHandlers = [
       return;
     }
     const wsId = params.ws as string;
-    const unsub = subscribe(wsId, (event) => client.send({ data: JSON.stringify(event) }));
+    const unsub = subscribe(wsId, (event) => {
+      try {
+        client.send({ data: JSON.stringify(event) });
+      } catch {
+        unsub(); // the EventSource closed (navigated away / unmounted)
+      }
+    });
     startActivity(wsId);
     // MSW keeps the stream open; clean up when the page goes away.
     addEventListener("pagehide", () => unsub(), { once: true });

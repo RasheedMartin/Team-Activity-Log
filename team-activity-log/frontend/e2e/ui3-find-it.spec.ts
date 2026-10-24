@@ -53,7 +53,7 @@ test("v4 Find It end to end", async ({ page }) => {
   await expect(page.getByRole("button", { name: /Filter: By / })).toBeVisible();
 
   // Gallery mode.
-  await page.getByRole("button", { name: "Gallery" }).click();
+  await page.getByRole("button", { name: "Images" }).click();
   await expect(page.getByText(/^[\d,]+ images?/)).toBeVisible();
 
   // Save the view, reload from the URL → identical state.

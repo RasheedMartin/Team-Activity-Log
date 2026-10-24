@@ -384,12 +384,14 @@ function mentionDoc(text: string, user: UserRow, after: string): PMNode {
 }
 
 function seedComments(ctx: SeedCtx, posts: PostRow[], probability: number) {
+  // Viewers can react but not comment (§A2), so only members and up author comments.
+  const commenters = ctx.users.filter((u) => ctx.roles.get(u.id) !== "viewer");
   for (const post of posts) {
     if (post.status !== "published" || faker.number.float() > probability) continue;
     const n = faker.number.int({ min: 1, max: 6 });
     const made: CommentRow[] = [];
     for (let i = 0; i < n; i++) {
-      const author = faker.helpers.arrayElement(ctx.users);
+      const author = faker.helpers.arrayElement(commenters);
       const parent = made.length && faker.number.float() < 0.4 ? faker.helpers.arrayElement(made) : undefined;
       const question = !parent && i === 0 && faker.number.float() < 0.3;
       made.push(makeComment(post, author, (i + 1) * faker.number.int({ min: 5, max: 600 }), faker.helpers.arrayElement(COMMENT_LINES), parent?.id, { isQuestion: question, resolved: question && faker.number.float() < 0.5 }));
@@ -471,7 +473,7 @@ export function seedScenario(scenario: DataScenario): { sessionId?: ID } {
     let parent: CommentRow | undefined;
     const lines = ["Why is the drift larger on the east side?", "Probably the cold head is closer there.", "Then we should see it in the temperature log too.", "We do, about 0.2 K difference.", "Can we model that in the simulation?", "Yes, I'll add it this week."];
     lines.forEach((t, i) => {
-      parent = makeComment(deepPost, users[i % users.length], (i + 1) * 30, t, parent?.id, { isQuestion: i === 0 });
+      parent = makeComment(deepPost, authors[i % authors.length], (i + 1) * 30, t, parent?.id, { isQuestion: i === 0 });
     });
     const m = makeComment(deepPost, marcus, 400, "", undefined);
     db.t.comments.update(m.id, { doc: mentionDoc("Looping in ", priya, " since this touches the calibration constants.") });
@@ -480,7 +482,7 @@ export function seedScenario(scenario: DataScenario): { sessionId?: ID } {
   }
   if (bigPost && !busy) {
     for (let i = 0; i < 200; i++) {
-      makeComment(bigPost, users[i % users.length], i * 3, `${faker.helpers.arrayElement(COMMENT_LINES)} (${i + 1})`);
+      makeComment(bigPost, authors[i % authors.length], i * 3, `${faker.helpers.arrayElement(COMMENT_LINES)} (${i + 1})`);
     }
     bigPost.counts.comments += 200;
   }
