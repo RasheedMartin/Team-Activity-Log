@@ -91,7 +91,7 @@ test("v2 Write It Up end to end", async ({ page }) => {
 
   // Annotations survive reload on the published post.
   await page.goto(postUrl);
-  await expect(page.locator("figure svg")).toHaveCount(2);
+  await expect(page.locator("figure svg[preserveAspectRatio=none]")).toHaveCount(2); // annotation layers
 });
 
 test("two tabs editing one draft get a conflict, not a silent overwrite", async ({ page, context }) => {

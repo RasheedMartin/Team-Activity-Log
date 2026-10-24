@@ -38,10 +38,10 @@ test("v4 Find It end to end", async ({ page }) => {
   // Two tags (one excluded), facet counts disjunctive.
   const firstTag = page.getByRole("checkbox", { name: /^\S+ \d/ }).nth(0);
   const firstTagName = (await firstTag.getAttribute("aria-label"))!.split(" ")[0];
-  const secondTag = page.getByRole("checkbox", { name: /^\S+ \d/ }).nth(1);
-  const secondTagName = (await secondTag.getAttribute("aria-label"))!.split(" ")[0];
+  const secondTagName = (await page.getByRole("checkbox", { name: /^\S+ \d/ }).nth(1).getAttribute("aria-label"))!.split(" ")[0];
   const countBefore = Number((await firstTag.getAttribute("aria-label"))!.split(" ")[1]);
-  await firstTag.click();
+  // Address tags by name: the facet list can re-sort between reading and clicking.
+  await page.getByRole("checkbox", { name: new RegExp(`^${firstTagName} \\d`) }).click();
   // Disjunctive: the selected tag's own count is unchanged by selecting it.
   await expect(page.getByRole("checkbox", { name: new RegExp(`^${firstTagName} ${countBefore}`) })).toBeVisible();
   await page.getByRole("checkbox", { name: new RegExp(`^${secondTagName} \\d`) }).click({ modifiers: ["Alt"] });

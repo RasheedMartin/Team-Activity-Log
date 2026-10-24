@@ -4,7 +4,9 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "e2e",
   timeout: 60_000,
+  expect: { timeout: 10_000 }, // seeding the 5,000-post scenario in a parallel worker slows everyone down
   fullyParallel: false,
+  workers: 2,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["html", { open: "never" }], ["list"]] : "list",
   use: { baseURL: "http://localhost:4174", trace: "retain-on-failure" },
