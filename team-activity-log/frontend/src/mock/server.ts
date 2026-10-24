@@ -46,7 +46,10 @@ export function route<P extends PathParams = PathParams, B extends DefaultBodyTy
       return HttpResponse.json({ code: "internal", message: "Random failure (dev scenario)" }, { status: 500 });
     }
     try {
-      return await fn(info);
+      const res = await fn(info);
+      // Like a real server: commit writes before responding, so a reload never loses them.
+      if (info.request.method !== "GET") await db.flush();
+      return res;
     } catch (e) {
       if (e instanceof HttpError) return HttpResponse.json(e.body, { status: e.status });
       console.error("[mock] handler error", e);
@@ -76,7 +79,7 @@ export function newSessionCookie(userId: ID) {
     createdAt: new Date().toISOString(),
   });
   db.t.users.update(userId, {});
-  return `${SESSION_COOKIE}=${s.id}; Path=/; SameSite=Lax`;
+  return `${SESSION_COOKIE}=${s.id}; Path=/; Max-Age=2592000; SameSite=Lax`;
 }
 export const clearSessionCookie = `${SESSION_COOKIE}=; Path=/; Max-Age=0`;
 

@@ -157,6 +157,10 @@ export const useSlugAvailable = (slug: string) =>
     enabled: slug.length > 0,
     staleTime: 10_000,
   });
+export function useRenameOrg(orgId: ID) {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (name: string) => patch<Organization>(`${O(orgId)}`, { name }), onSuccess: () => qc.invalidateQueries({ queryKey: qk.me }) });
+}
 export const useCreateOrg = () => useSetsMe((v: { name: string; slug: string; workspaceName?: string }) => post<MeResponse>("/orgs", v));
 
 export const usePeople = (orgId: ID) =>

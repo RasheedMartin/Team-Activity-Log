@@ -327,7 +327,8 @@ function makePost(ctx: SeedCtx, o: PostOpts): PostRow {
   const tagIds = faker.helpers.arrayElements(ctx.tagIds.slice(0, Math.min(ctx.tagIds.length, 24 + Math.floor(faker.number.float() * ctx.tagIds.length))), faker.number.int({ min: 0, max: 3 }));
   const reactors = faker.number.float() < 0.4 ? faker.helpers.arrayElements(ctx.users, faker.number.int({ min: 1, max: 4 })).map((u) => u.id) : [];
   const reactions: Record<string, ID[]> = reactors.length ? { [faker.helpers.arrayElement(["👍", "🎉", "👀", "🔥"])]: reactors } : {};
-  const coAuthorIds = faker.number.float() < 0.1 ? [faker.helpers.arrayElement(ctx.users.filter((u) => u.id !== o.author.id)).id] : [];
+  const others = ctx.users.filter((u) => u.id !== o.author.id);
+  const coAuthorIds = others.length && faker.number.float() < 0.1 ? [faker.helpers.arrayElement(others).id] : [];
   const post: PostRow = {
     id,
     orgId: ctx.orgId,
@@ -526,6 +527,7 @@ export function seedScenario(scenario: DataScenario): { sessionId?: ID } {
     const assets2 = seedAssets(org2.id);
     const ctx2: SeedCtx = { ...ctx, orgId: org2.id, users: [priya], tagIds: t2.ids, tagByName: t2.byName, workspaceIds: [ws2.id], assets: assets2 };
     for (let i = 0; i < 8; i++) makePost(ctx2, { workspaceId: ws2.id, author: priya, workDate: sampleDate(), imageProbability: 0.5 });
+    db.setMeta(`lastWs:${priya.id}`, detector.id);
     return { sessionId: signIn(priya.id) };
   }
   if (scenario === "viewer") return { sessionId: signIn(users[3].id) };

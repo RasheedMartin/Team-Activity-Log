@@ -15,7 +15,7 @@ export const handlers = [...authHandlers, ...orgHandlers, ...postHandlers, ...se
 const SEEDED_KEY = "tal.seeded";
 
 function setSessionCookie(id?: string) {
-  document.cookie = id ? `${SESSION_COOKIE}=${id}; Path=/; SameSite=Lax` : `${SESSION_COOKIE}=; Path=/; Max-Age=0`;
+  document.cookie = id ? `${SESSION_COOKIE}=${id}; Path=/; Max-Age=2592000; SameSite=Lax` : `${SESSION_COOKIE}=; Path=/; Max-Age=0`;
 }
 
 /** Wipe the store and seed a scenario, signing in as that scenario's default persona. */

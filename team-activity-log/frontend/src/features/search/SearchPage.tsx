@@ -4,6 +4,7 @@ import { usePeople, useSearch, useTags } from "../../api/hooks";
 import { useWs, wsPath } from "../../app/session";
 import { EmptyState, ErrorState } from "../../components/ui";
 import { PostCard } from "../posts/PostCard";
+import { OnboardingChecklist } from "./Onboarding";
 
 // Interim feed (UI-0). Replaced by the full Find It screen in UI-3.
 export function SearchPage() {
@@ -18,6 +19,7 @@ export function SearchPage() {
   return (
     <Box sx={{ maxWidth: 960, width: "100%", mx: "auto", p: 2 }}>
       <TextField fullWidth placeholder="Search posts…" value={q} onChange={(e) => setQ(e.target.value)} sx={{ mb: 2 }} />
+      {!q && search.data && search.data.pages[0].total < 3 && <OnboardingChecklist hasPosts={hits.length > 0} />}
       {search.isPending ? (
         <Stack spacing={1}>{Array.from({ length: 6 }, (_, i) => <Skeleton key={i} variant="rounded" height={72} />)}</Stack>
       ) : search.error ? (
