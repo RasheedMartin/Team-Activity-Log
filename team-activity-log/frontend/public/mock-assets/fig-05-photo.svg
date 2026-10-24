@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+<defs><radialGradient id="g" cx="50%" cy="40%" r="70%"><stop offset="0" stop-color="hsl(212 15% 35%)"/><stop offset="1" stop-color="hsl(212 20% 8%)"/></radialGradient>
+<linearGradient id="m" x1="0" x2="1"><stop offset="0" stop-color="#9ca3af"/><stop offset=".5" stop-color="#e5e7eb"/><stop offset="1" stop-color="#6b7280"/></linearGradient></defs>
+<rect width="1280" height="720" fill="url(#g)"/>
+<path d="M 685.3 720 C 877.0 432.0, 1060.8 360.0, 622.1 360.0" stroke="hsl(212 60% 45%)" stroke-width="10.093988135544572" fill="none"/><path d="M 1207.2 720 C 904.9 432.0, 947.8 360.0, 671.8 360.0" stroke="hsl(252 60% 45%)" stroke-width="10.206056086538412" fill="none"/><path d="M 1106.1 720 C 125.6 432.0, 686.8 360.0, 630.9 360.0" stroke="hsl(292 60% 45%)" stroke-width="11.645204222430666" fill="none"/><path d="M 202.1 720 C 945.8 432.0, 404.3 360.0, 642.7 360.0" stroke="hsl(332 60% 45%)" stroke-width="8.74565398669397" fill="none"/><path d="M 44.1 720 C 850.6 432.0, 85.5 360.0, 635.8 360.0" stroke="hsl(12 60% 45%)" stroke-width="6.600480024330765" fill="none"/><path d="M 57.1 720 C 235.2 432.0, 724.3 360.0, 659.9 360.0" stroke="hsl(52 60% 45%)" stroke-width="11.000132886693006" fill="none"/>
+<rect x="384" y="216" width="512" height="216" rx="16" fill="url(#m)" stroke="#374151" stroke-width="4"/>
+<circle cx="832" cy="259.2" r="8" fill="#22c55e"/>
+<text x="640" y="338.4" font-size="29" text-anchor="middle" fill="#111827" font-family="Helvetica">DET-B  S/N 0285</text>
+</svg>

@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+storybook-static
+playwright-report
+test-results
+
+# The repo-root .gitignore is a Python template; re-include what the frontend needs.
+!lib/
+!package-lock.json

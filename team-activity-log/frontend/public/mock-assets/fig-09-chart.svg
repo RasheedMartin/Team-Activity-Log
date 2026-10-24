@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1000" viewBox="0 0 1400 1000" font-family="Helvetica, Arial, sans-serif">
+<rect width="1400" height="1000" fill="#ffffff"/>
+<text x="700" y="36" font-size="22" font-weight="600" text-anchor="middle" fill="#111827">Laser alignment residuals</text>
+<line x1="80.0" y1="60" x2="80.0" y2="930" stroke="#e5e7eb"/>
+<line x1="80" y1="60.0" x2="1370" y2="60.0" stroke="#e5e7eb"/>
+<text x="80.0" y="952" font-size="14" text-anchor="middle" fill="#4b5563">0</text>
+<text x="70" y="935.0" font-size="14" text-anchor="end" fill="#4b5563">0.0</text>
+<line x1="338.0" y1="60" x2="338.0" y2="930" stroke="#e5e7eb"/>
+<line x1="80" y1="234.0" x2="1370" y2="234.0" stroke="#e5e7eb"/>
+<text x="338.0" y="952" font-size="14" text-anchor="middle" fill="#4b5563">20</text>
+<text x="70" y="761.0" font-size="14" text-anchor="end" fill="#4b5563">0.2</text>
+<line x1="596.0" y1="60" x2="596.0" y2="930" stroke="#e5e7eb"/>
+<line x1="80" y1="408.0" x2="1370" y2="408.0" stroke="#e5e7eb"/>
+<text x="596.0" y="952" font-size="14" text-anchor="middle" fill="#4b5563">40</text>
+<text x="70" y="587.0" font-size="14" text-anchor="end" fill="#4b5563">0.4</text>
+<line x1="854.0" y1="60" x2="854.0" y2="930" stroke="#e5e7eb"/>
+<line x1="80" y1="582.0" x2="1370" y2="582.0" stroke="#e5e7eb"/>
+<text x="854.0" y="952" font-size="14" text-anchor="middle" fill="#4b5563">60</text>
+<text x="70" y="413.0" font-size="14" text-anchor="end" fill="#4b5563">0.6</text>
+<line x1="1112.0" y1="60" x2="1112.0" y2="930" stroke="#e5e7eb"/>
+<line x1="80" y1="756.0" x2="1370" y2="756.0" stroke="#e5e7eb"/>
+<text x="1112.0" y="952" font-size="14" text-anchor="middle" fill="#4b5563">80</text>
+<text x="70" y="239.0" font-size="14" text-anchor="end" fill="#4b5563">0.8</text>
+<line x1="1370.0" y1="60" x2="1370.0" y2="930" stroke="#e5e7eb"/>
+<line x1="80" y1="930.0" x2="1370" y2="930.0" stroke="#e5e7eb"/>
+<text x="1370.0" y="952" font-size="14" text-anchor="middle" fill="#4b5563">100</text>
+<text x="70" y="65.0" font-size="14" text-anchor="end" fill="#4b5563">1.0</text>
+<rect x="80" y="60" width="1290" height="870" fill="none" stroke="#374151" stroke-width="1.5"/>
+<rect x="80.0" y="856.1" width="31.3" height="73.9" fill="#2563eb" fill-opacity="0.75"/><rect x="112.3" y="879.7" width="31.3" height="50.3" fill="#2563eb" fill-opacity="0.75"/><rect x="144.5" y="877.9" width="31.3" height="52.1" fill="#2563eb" fill-opacity="0.75"/><rect x="176.8" y="880.3" width="31.3" height="49.7" fill="#2563eb" fill-opacity="0.75"/><rect x="209.0" y="871.3" width="31.3" height="58.7" fill="#2563eb" fill-opacity="0.75"/><rect x="241.3" y="857.2" width="31.3" height="72.8" fill="#2563eb" fill-opacity="0.75"/><rect x="273.5" y="845.8" width="31.3" height="84.2" fill="#2563eb" fill-opacity="0.75"/><rect x="305.8" y="872.0" width="31.3" height="58.0" fill="#2563eb" fill-opacity="0.75"/><rect x="338.0" y="835.3" width="31.3" height="94.7" fill="#2563eb" fill-opacity="0.75"/><rect x="370.3" y="836.9" width="31.3" height="93.1" fill="#2563eb" fill-opacity="0.75"/><rect x="402.5" y="836.6" width="31.3" height="93.4" fill="#2563eb" fill-opacity="0.75"/><rect x="434.8" y="815.9" width="31.3" height="114.1" fill="#2563eb" fill-opacity="0.75"/><rect x="467.0" y="774.1" width="31.3" height="155.9" fill="#2563eb" fill-opacity="0.75"/><rect x="499.3" y="732.4" width="31.3" height="197.6" fill="#2563eb" fill-opacity="0.75"/><rect x="531.5" y="707.9" width="31.3" height="222.1" fill="#2563eb" fill-opacity="0.75"/><rect x="563.8" y="640.4" width="31.3" height="289.6" fill="#2563eb" fill-opacity="0.75"/><rect x="596.0" y="576.9" width="31.3" height="353.1" fill="#2563eb" fill-opacity="0.75"/><rect x="628.3" y="511.5" width="31.3" height="418.5" fill="#2563eb" fill-opacity="0.75"/><rect x="660.5" y="432.0" width="31.3" height="498.0" fill="#2563eb" fill-opacity="0.75"/><rect x="692.8" y="346.6" width="31.3" height="583.4" fill="#2563eb" fill-opacity="0.75"/><rect x="725.0" y="289.2" width="31.3" height="640.8" fill="#2563eb" fill-opacity="0.75"/><rect x="757.3" y="229.5" width="31.3" height="700.5" fill="#2563eb" fill-opacity="0.75"/><rect x="789.5" y="139.6" width="31.3" height="790.4" fill="#2563eb" fill-opacity="0.75"/><rect x="821.7" y="104.1" width="31.3" height="825.9" fill="#2563eb" fill-opacity="0.75"/><rect x="854.0" y="83.6" width="31.3" height="846.4" fill="#2563eb" fill-opacity="0.75"/><rect x="886.3" y="72.3" width="31.3" height="857.7" fill="#2563eb" fill-opacity="0.75"/><rect x="918.5" y="107.2" width="31.3" height="822.8" fill="#2563eb" fill-opacity="0.75"/><rect x="950.8" y="149.2" width="31.3" height="780.8" fill="#2563eb" fill-opacity="0.75"/><rect x="983.0" y="195.0" width="31.3" height="735.0" fill="#2563eb" fill-opacity="0.75"/><rect x="1015.3" y="269.8" width="31.3" height="660.2" fill="#2563eb" fill-opacity="0.75"/><rect x="1047.5" y="318.1" width="31.3" height="611.9" fill="#2563eb" fill-opacity="0.75"/><rect x="1079.8" y="384.8" width="31.3" height="545.2" fill="#2563eb" fill-opacity="0.75"/><rect x="1112.0" y="460.6" width="31.3" height="469.4" fill="#2563eb" fill-opacity="0.75"/><rect x="1144.3" y="560.3" width="31.3" height="369.7" fill="#2563eb" fill-opacity="0.75"/><rect x="1176.5" y="616.6" width="31.3" height="313.4" fill="#2563eb" fill-opacity="0.75"/><rect x="1208.8" y="669.3" width="31.3" height="260.7" fill="#2563eb" fill-opacity="0.75"/><rect x="1241.0" y="723.8" width="31.3" height="206.2" fill="#2563eb" fill-opacity="0.75"/><rect x="1273.3" y="769.7" width="31.3" height="160.3" fill="#2563eb" fill-opacity="0.75"/><rect x="1305.5" y="780.0" width="31.3" height="150.0" fill="#2563eb" fill-opacity="0.75"/><rect x="1337.8" y="805.0" width="31.3" height="125.0" fill="#2563eb" fill-opacity="0.75"/>
+<text x="725" y="982" font-size="16" text-anchor="middle" fill="#111827">Time (s)</text>
+<text transform="translate(22 495) rotate(-90)" font-size="16" text-anchor="middle" fill="#111827">Rate (Hz)</text>
+</svg>

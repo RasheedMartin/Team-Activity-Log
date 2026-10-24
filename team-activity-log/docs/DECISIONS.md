@@ -1,0 +1,39 @@
+# Decisions log
+
+Assumptions and defaults taken while building the UI (spec rule 7). One line each, newest at the bottom of each section. Open questions refer to spec §C2.
+
+## Open questions taken at their default
+
+| # | Decision | Rationale |
+|---|---|---|
+| C2.3 | Admins **cannot** see others' drafts | Spec default; drafts are private working space |
+| C2.4 | Viewers **may** react | Spec default; reacting is low-risk feedback |
+| C2.5 | Imported `.pptx` originals are **not retained** (7-day temp TTL); retention is an org setting, off | Spec default; saves storage |
+| C2.6 | Speaker notes import as **per-slide notes** on `slide_break` blocks | Spec default; keeps notes out of the main view |
+| C2.7 | No public expiring presentation links for now | Spec default |
+| C2.12 | KaTeX math deferred (v2 stretch, not built yet) | Keeps the composer small for v2; easy to add as a TipTap extension |
+| C2.13 | "Present off the platform" = full-screen carousel without app chrome; export UI is a stub until backend B-5 | Spec reading; real PDF/PPTX export needs the backend |
+
+## Contract (`src/api/contract.ts`) additions beyond §A7
+
+Additions only; nothing in §A7 was removed or renamed.
+
+- `Post.reactions` and `Post.collectionIds`: the detail view and the `collection` filter need them, and they map directly to `reactions` and `collection_posts` (§B9).
+- `Membership.workspaceIds`: the members admin edits workspace access in one place (`workspace_members`).
+- `FilterSpec.histogram.bounds`: the zoomed histogram window ("Zoom to selection"). It never filters results, so the ES query maps it to `extended_bounds` / a `hard_bounds` on the histogram only.
+- `SearchHit.images`: thumbnails for result cards so the feed doesn't need N extra requests; ES returns them from the nested `images` field.
+- `MeResponse`, `PostDetail`, `DraftSummary`, `ImportJob`/`ImportItem`, `Notification`, `LiveEvent`, `SavedView`, `Collection`, `Invite`, `InviteLink`, `Session`: concrete shapes for routes listed in §B11.
+- `Shape` (annotation vectors): points are **normalized 0..1** to the image and stroke size is a fraction of image width, so annotations survive any display size or a replaced image with the same aspect ratio.
+
+## UI-0 foundation
+
+- **Stack versions are newer than the spec** (React 19, MUI 7, Router 7, Vite 7). Kept as-is; no functional difference.
+- **Storybook 9.1** instead of 8: Storybook 8 doesn't support Vite 7.
+- **Mock store = in-memory tables + write-through to IndexedDB (Dexie).** Searching 5,000 posts must be < 150 ms; reading IndexedDB per request wouldn't be.
+- **Auth in mock mode uses a cookie set by MSW's `Set-Cookie`.** Client code sends `credentials: "include"` and never reads the cookie, matching the httpOnly-cookie session planned in §B8.
+- **Uploads follow presign → PUT → complete** (§B7) even in the mock; the PUT uses XHR so the composer shows real progress.
+- **Live updates use real SSE** (`EventSource`) answered by MSW's `sse()` handler, with timers playing the other personas.
+- **Histogram time zone:** the mock buckets in UTC calendar days. `workDate` is a plain date, so it's unaffected; timestamp fields will use the user's timezone server-side (§B4.5).
+- **Vite `base` changed from `./` to `/`**: deep routes (`/o/x/w/y/p/z`) can't load relative asset paths. FastAPI still mounts the build at `/`.
+- **The mock ships in production builds** (`VITE_API_MODE` defaults to `mock`), so the Vercel deploy is a working demo until the backend exists. Set `VITE_API_MODE=live` and `VITE_API_URL` to switch.
+- **Command palette and global shortcuts** communicate through window events (`tal:*`) instead of a context, to avoid re-rendering the shell.
