@@ -304,6 +304,18 @@ export function useUpdatePost(orgId: ID, id: ID) {
   });
 }
 
+// ---- optimistic overlay (§B6): just-published posts show at the top of the feed until search has them ----
+
+const overlayKey = (orgId: ID, wsId: ID) => ["overlay", orgId, wsId] as const;
+export function addToOverlay(qc: QueryClient, post: Post) {
+  qc.setQueryData<Post[]>(overlayKey(post.orgId, post.workspaceId), (cur = []) => [post, ...cur.filter((p) => p.id !== post.id)]);
+}
+export function removeFromOverlay(qc: QueryClient, orgId: ID, wsId: ID, ids: ID[]) {
+  qc.setQueryData<Post[]>(overlayKey(orgId, wsId), (cur = []) => cur.filter((p) => !ids.includes(p.id)));
+}
+export const useOverlay = (orgId: ID, wsId: ID) =>
+  useQuery({ queryKey: overlayKey(orgId, wsId), queryFn: () => [] as Post[], initialData: [] as Post[], staleTime: Infinity, gcTime: Infinity });
+
 export type PostAction = "publish" | "unpublish" | "hide" | "show" | "restore" | "delete";
 export function usePostAction(orgId: ID) {
   const qc = useQueryClient();
@@ -313,6 +325,8 @@ export function usePostAction(orgId: ID) {
     onSuccess: (d, v) => {
       if (d) qc.setQueryData(qk.post(orgId, v.id), d);
       else qc.invalidateQueries({ queryKey: qk.post(orgId, v.id) });
+      if (d && v.action === "publish") addToOverlay(qc, d.post);
+      if (v.action !== "publish") qc.setQueriesData<Post[]>({ queryKey: ["overlay", orgId] }, (cur) => cur?.filter((p) => p.id !== v.id));
       invalidatePostLists(qc, orgId);
     },
   });

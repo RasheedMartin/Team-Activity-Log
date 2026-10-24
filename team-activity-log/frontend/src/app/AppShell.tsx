@@ -3,6 +3,7 @@ import {
   AdminPanelSettingsOutlined,
   BookmarkBorderRounded,
   CollectionsBookmarkOutlined,
+  DeleteOutlineRounded,
   DynamicFeedRounded,
   EditNoteRounded,
   ExpandMoreRounded,
@@ -204,6 +205,7 @@ function Rail({ onNavigate }: { onNavigate?: () => void }) {
           {can(role, "member") && <NavItem to={`${base}/drafts`} icon={<EditNoteRounded />} label="My drafts" onClick={onNavigate} />}
           <NavItem to={`${base}/inbox`} icon={<InboxOutlined />} label="Inbox" badge={unread} onClick={onNavigate} />
           {can(role, "member") && <NavItem to={`${base}/import`} icon={<UploadFileOutlined />} label="Import deck" onClick={onNavigate} />}
+          {can(role, "admin") && <NavItem to={`${base}/trash`} icon={<DeleteOutlineRounded />} label="Hidden & deleted" onClick={onNavigate} />}
         </List>
         {pinned.length > 0 && (
           <List dense disablePadding subheader={<ListSubheader sx={{ bgcolor: "transparent", lineHeight: "28px", fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>Saved views</ListSubheader>}>

@@ -181,6 +181,11 @@ export class Table<T extends { id: string }> {
     this.removed.add(id);
     this.onChange();
   }
+  /** Apply another tab's committed writes without re-persisting them. */
+  applyRemote(puts: T[], dels: string[]) {
+    for (const r of puts) this.rows.set(r.id, r);
+    for (const id of dels) this.rows.delete(id);
+  }
   /** Bulk load without marking dirty (used when hydrating from IndexedDB). */
   load(rows: T[]) {
     for (const r of rows) this.rows.set(r.id, r);
@@ -196,15 +201,50 @@ export class Table<T extends { id: string }> {
 
 type Tables = { [K in TableName]: Table<Rows[K]> };
 
+type ChannelMsg =
+  | { type: "changes"; changes: { name: TableName; puts: { id: string }[]; dels: string[] }[] }
+  | { type: "event"; workspaceId: string; event: unknown }
+  | { type: "reset" };
+
 class MockDb {
   readonly persist = new Persist();
   readonly t: Tables;
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private flushing: Promise<void> = Promise.resolve();
+  // Every tab runs its own copy of the mock server; this channel makes them act like one
+  // shared server (writes and live events reach all tabs, a scenario switch reloads them).
+  private channel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("tal-mock") : null;
+  private remoteChange: ((name: TableName, ids: string[]) => void)[] = [];
+  private remoteEvent: ((workspaceId: string, event: unknown) => void)[] = [];
 
   constructor() {
     const schedule = () => this.scheduleFlush();
     this.t = Object.fromEntries(TABLES.map((n) => [n, new Table(n, schedule)])) as unknown as Tables;
+    if (this.channel)
+      this.channel.onmessage = (e: MessageEvent<ChannelMsg>) => {
+        const msg = e.data;
+        if (msg.type === "reset") location.reload();
+        else if (msg.type === "event") this.remoteEvent.forEach((fn) => fn(msg.workspaceId, msg.event));
+        else
+          for (const c of msg.changes) {
+            (this.t[c.name] as Table<{ id: string }>).applyRemote(c.puts, c.dels);
+            this.remoteChange.forEach((fn) => fn(c.name, [...c.puts.map((r) => r.id), ...c.dels]));
+          }
+      };
+  }
+
+  onRemoteChange(fn: (name: TableName, ids: string[]) => void) {
+    this.remoteChange.push(fn);
+  }
+  onRemoteEvent(fn: (workspaceId: string, event: unknown) => void) {
+    this.remoteEvent.push(fn);
+  }
+  broadcastEvent(workspaceId: string, event: unknown) {
+    this.channel?.postMessage({ type: "event", workspaceId, event } satisfies ChannelMsg);
+  }
+  /** Tell other tabs the whole store was replaced (scenario switch). */
+  announceReset() {
+    this.channel?.postMessage({ type: "reset" } satisfies ChannelMsg);
   }
 
   async load() {
@@ -241,6 +281,8 @@ class MockDb {
       }),
     );
     await this.flushing;
+    const changed = changes.filter((c) => c.puts.length || c.dels.length);
+    if (changed.length) this.channel?.postMessage({ type: "changes", changes: changed } as ChannelMsg);
   }
 
   async wipe() {

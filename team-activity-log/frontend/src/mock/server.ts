@@ -238,6 +238,17 @@ export function subscribe(workspaceId: ID, fn: Listener) {
 }
 export function emit(workspaceId: ID, event: unknown) {
   listeners.get(workspaceId)?.forEach((fn) => fn(event));
+  db.broadcastEvent(workspaceId, event);
 }
+
+// Another tab's writes: refresh the search index and comment grouping like the outbox would.
+db.onRemoteEvent((workspaceId, event) => listeners.get(workspaceId)?.forEach((fn) => fn(event)));
+db.onRemoteChange((name, ids) => {
+  if (name === "posts") ids.forEach((id) => engine.touch(id));
+  else if (name === "comments") {
+    invalidateComments();
+    engine.reset();
+  } else if (name === "images" || name === "assets" || name === "tags") engine.reset();
+});
 
 export const now = () => new Date().toISOString();

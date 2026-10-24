@@ -28,6 +28,7 @@ export async function loadScenario(scenario: DataScenario) {
   writeDevSettings({ scenario });
   localStorage.setItem(SEEDED_KEY, scenario);
   setSessionCookie(sessionId);
+  db.announceReset();
 }
 
 export async function startMockServer() {

@@ -42,7 +42,7 @@ export function TagChip({
   size = "small",
 }: {
   tag: Pick<Tag, "name" | "color">;
-  onDelete?: () => void;
+  onDelete?: (event: React.SyntheticEvent) => void;
   onClick?: () => void;
   excluded?: boolean;
   size?: "small" | "medium";
@@ -111,10 +111,11 @@ export function Kbd({ children }: { children: ReactNode }) {
         py: 0.1,
         borderRadius: 0.5,
         border: 1,
-        borderColor: "divider",
-        bgcolor: "surface.sunken",
-        color: "text.secondary",
+        borderColor: "currentColor",
+        color: "inherit",
+        opacity: 0.6,
         lineHeight: 1.4,
+        fontFamily: "'IBM Plex Mono', monospace",
       }}
     >
       {children}
