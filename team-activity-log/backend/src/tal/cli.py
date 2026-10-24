@@ -52,10 +52,15 @@ async def _check() -> int:
         await dispose()
     try:
         info = await es().info()
+        from .search.diagnose import explain, identity
         from .search.indexer import alias
 
-        has = await es().indices.exists_alias(name=alias())
-        print(f"Elasticsearch  ok   version {info['version']['number']}; index {'ready' if has else 'missing (run: tal init-search)'}")
+        try:
+            has = await es().indices.exists_alias(name=alias())
+            print(f"Elasticsearch  ok   version {info['version']['number']}; index {'ready' if has else 'missing (run: tal init-search)'}; as {await identity()}")
+        except Exception as e:  # noqa: BLE001
+            ok = False
+            print(f"Elasticsearch  FAIL {await explain(e)}")
     except Exception as e:  # noqa: BLE001
         ok = False
         print(f"Elasticsearch  FAIL {type(e).__name__}: {e}")

@@ -18,6 +18,7 @@ from .config import get_settings
 from .errors import ApiError, api_error_handler
 from .routes import auth, dev, discussion, health, imports, library, orgs, posts, search
 from .search import client as es_client
+from .search.diagnose import explain, identity
 from .search.indexer import ensure_index, run_indexer
 
 log = logging.getLogger("tal")
@@ -32,8 +33,9 @@ async def lifespan(app: FastAPI):
     tasks: list[asyncio.Task] = []
     try:
         await ensure_index()
-    except Exception:  # noqa: BLE001 - the app still serves everything but search
-        log.exception("Elasticsearch isn't reachable or the index couldn't be created; search will return 503 until it is")
+        log.info("Elasticsearch ready; connected as %s", await identity())
+    except Exception as e:  # noqa: BLE001 - the app still serves everything but search
+        log.error("%s Search returns 503 until this is fixed; everything else works.", await explain(e))
     await events.start_listener()
     if s.run_indexer:
         tasks.append(asyncio.create_task(run_indexer(stop)))
