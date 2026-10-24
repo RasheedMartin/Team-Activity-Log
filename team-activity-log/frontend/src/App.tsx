@@ -4,7 +4,7 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { ApiError } from "./api/client";
 import { useMe } from "./api/hooks";
 import { AppShell } from "./app/AppShell";
-import { useOrgScope, useWorkspaceScope } from "./app/session";
+import { homePath, useOrgScope, useWorkspaceScope } from "./app/session";
 import { ErrorState } from "./components/ui";
 import {
   CreateOrgPage,
@@ -31,6 +31,7 @@ const AdminPage = lazy(() => import("./features/admin/AdminPage"));
 const UserPanelPage = lazy(() => import("./features/me/UserPanelPage"));
 const DevPage = lazy(() => import("./features/dev/DevPage"));
 const ExplorePage = lazy(() => import("./features/explore/ExplorePage"));
+const LandingPage = lazy(() => import("./features/landing/LandingPage"));
 const NotebookPage = lazy(() => import("./features/collections/NotebookPage"));
 const LibraryPage = lazy(() => import("./features/collections/LibraryPage"));
 
@@ -41,7 +42,7 @@ function RequireAuth({ children }: { children: ReactNode }) {
   const location = useLocation();
   if (me.isPending) return <Loading />;
   if (me.error && !(me.error instanceof ApiError && me.error.status === 401)) return <ErrorState error={me.error} onRetry={() => me.refetch()} />;
-  if (!me.data) return <Navigate to="/" replace state={{ from: location.pathname + location.search }} />;
+  if (!me.data) return <Navigate to="/signin" replace state={{ from: location.pathname + location.search }} />;
   return <>{children}</>;
 }
 
@@ -59,6 +60,14 @@ function WorkspaceRoute() {
   return <AppShell />;
 }
 
+/** `/`: the landing page for visitors; signed-in people go straight to their workspace. */
+function FrontDoor() {
+  const me = useMe();
+  if (me.isPending) return <Loading />;
+  if (me.data) return <Navigate to={homePath(me.data)} replace />;
+  return page(<LandingPage />);
+}
+
 const page = (el: ReactNode) => (
   <Suspense fallback={<Loading />}>
     <Box sx={{ display: "contents" }}>{el}</Box>
@@ -68,7 +77,9 @@ const page = (el: ReactNode) => (
 export function App() {
   return (
     <Routes>
-      <Route path="/" element={<SignInPage />} />
+      <Route path="/" element={<FrontDoor />} />
+      <Route path="/about" element={page(<LandingPage />)} />
+      <Route path="/signin" element={<SignInPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/verify-sent" element={<VerifySentPage />} />
       <Route path="/verify/:token" element={<VerifyPage />} />

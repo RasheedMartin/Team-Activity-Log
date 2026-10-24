@@ -172,7 +172,7 @@ function UserMenu() {
           </MenuItem>
         )}
         <Divider />
-        <MenuItem onClick={() => logout.mutate(undefined, { onSettled: () => navigate("/", { replace: true }) })}>
+        <MenuItem onClick={() => logout.mutate(undefined, { onSettled: () => navigate("/signin", { replace: true }) })}>
           <ListItemIcon>
             <LogoutRounded fontSize="small" />
           </ListItemIcon>

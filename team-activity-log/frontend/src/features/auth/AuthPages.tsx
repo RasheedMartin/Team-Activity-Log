@@ -17,6 +17,7 @@ import {
   useVerifyEmail,
 } from "../../api/hooks";
 import { homePath } from "../../app/session";
+import { BRAND } from "../../app/brand";
 import { UserAvatar } from "../../components/ui";
 import { errorMessage } from "../../lib/format";
 
@@ -24,8 +25,8 @@ export function AuthLayout({ title, sub, children, wide }: { title: string; sub?
   return (
     <Box sx={{ minHeight: "100dvh", display: "grid", placeItems: "center", px: 2, py: 6, bgcolor: "background.default" }}>
       <Box sx={{ width: "100%", maxWidth: wide ? 560 : 400 }}>
-        <Typography variant="overline" color="primary" sx={{ display: "block", mb: 2 }}>
-          Team Activity Log
+        <Typography component={RouterLink} to="/" variant="overline" color="primary" sx={{ display: "block", mb: 2, textDecoration: "none" }}>
+          {BRAND.name}
         </Typography>
         <Typography variant="h1" sx={{ mb: 0.5 }}>
           {title}
@@ -176,7 +177,7 @@ export function RegisterPage() {
           Create account
         </Button>
         <Typography variant="body2" color="text.secondary">
-          Already have an account? <Link component={RouterLink} to="/">Sign in</Link>
+          Already have an account? <Link component={RouterLink} to="/signin">Sign in</Link>
         </Typography>
       </Stack>
     </AuthLayout>
@@ -220,7 +221,7 @@ function TokenPage({ title, use }: { title: string; use: () => ReturnType<typeof
       {m.isError ? (
         <Stack spacing={2}>
           <Alert severity="error">{errorMessage(m.error)}</Alert>
-          <Button component={RouterLink} to="/">
+          <Button component={RouterLink} to="/signin">
             Back to sign in
           </Button>
         </Stack>

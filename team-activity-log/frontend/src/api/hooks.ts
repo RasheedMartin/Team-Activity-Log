@@ -7,7 +7,7 @@ import {
   useQueryClient,
   type QueryClient,
 } from "@tanstack/react-query";
-import { api, del, get, patch, post, put } from "./client";
+import { api, ApiError, del, get, patch, post, put } from "./client";
 import type {
   Collection,
   CollectionEntry,
@@ -79,11 +79,20 @@ const W = (orgId: ID, wsId: ID) => `/orgs/${orgId}/workspaces/${wsId}`;
 
 // ---- identity ----
 
+// Signed out is an answer (null), not an error: an errored query retries on every mount, and the
+// landing page and sign-in screens all mount useMe, which looped /me while signed out.
 export const useMe = () =>
   useQuery({
     queryKey: qk.me,
-    queryFn: ({ signal }) => get<MeResponse>("/me", signal),
-    retry: (n, err) => (err as { status?: number }).status !== 401 && n < 2,
+    queryFn: async ({ signal }): Promise<MeResponse | null> => {
+      try {
+        return await get<MeResponse>("/me", signal);
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 401) return null;
+        throw e;
+      }
+    },
+    retry: (n) => n < 2,
     staleTime: 5 * 60_000,
   });
 

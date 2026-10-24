@@ -24,7 +24,7 @@ export function AcceptInvitePage() {
       <AuthLayout title="Invite not found">
         <Stack spacing={2}>
           <Alert severity="error">{errorMessage(lookup.error)}</Alert>
-          <Button component={RouterLink} to="/">Go to sign in</Button>
+          <Button component={RouterLink} to="/signin">Go to sign in</Button>
         </Stack>
       </AuthLayout>
     );

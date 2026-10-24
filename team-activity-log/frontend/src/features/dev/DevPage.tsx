@@ -44,7 +44,7 @@ export default function DevPage() {
           <Typography variant="overline" color="primary">Dev only</Typography>
           <Typography variant="h1">Mock controls</Typography>
         </Box>
-        {me ? <Button component={RouterLink} to={homePath(me)}>Back to app</Button> : <Button component={RouterLink} to="/">Sign in</Button>}
+        {me ? <Button component={RouterLink} to={homePath(me)}>Back to app</Button> : <Button component={RouterLink} to="/signin">Sign in</Button>}
       </Stack>
 
       <Typography variant="h3" sx={{ mb: 1 }}>Data scenario</Typography>

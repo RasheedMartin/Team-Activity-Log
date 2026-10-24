@@ -38,3 +38,20 @@ test("a workspace opens on Home, which leads into Search", async ({ page }) => {
   await expect(page).toHaveURL(/\/search$/);
   await expect(page.getByRole("combobox", { name: "Search" })).toBeFocused();
 });
+
+test("visitors get the landing page; signed-in people go straight to their workspace", async ({ page }) => {
+  await openScenario(page, "small");
+  await page.getByRole("button", { name: "Account menu" }).click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/signin$/);
+  await page.goto("/");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("Find it in seconds");
+  await page.getByRole("banner").getByRole("link", { name: "Sign in" }).click();
+  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  await page.getByText("Dana Okafor").click();
+  await expect(page.getByRole("button", { name: "Account menu" })).toBeVisible();
+  await page.goto("/");
+  await expect(page).toHaveURL(/\/o\/[^/]+\/w\/[^/]+$/);
+  await page.goto("/about");
+  await expect(page.getByRole("link", { name: "Open your workspace" }).first()).toBeVisible();
+});
