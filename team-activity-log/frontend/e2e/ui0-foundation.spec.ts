@@ -50,6 +50,14 @@ test("visitors get the landing page; signed-in people go straight to their works
   await page.getByRole("menuitem", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("heading", { level: 1 })).toContainText("Find it in seconds");
+  // A feature card plays that feature in the demo beside the cards (the hero keeps the search demo).
+  await expect(page.getByRole("img", { name: /^Preview of Search/ })).toBeVisible();
+  const importCard = page.getByRole("button", { name: /^Import slides/ });
+  await importCard.click();
+  await expect(importCard).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("img", { name: /^Preview of importing slides/ })).toBeInViewport();
+  await expect(importCard).toBeInViewport();
+  await expect(page.getByRole("img", { name: /^Preview of Search/ })).toBeAttached();
   await page.getByRole("banner").getByRole("link", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
   await page.getByText("Dana Okafor").click();
