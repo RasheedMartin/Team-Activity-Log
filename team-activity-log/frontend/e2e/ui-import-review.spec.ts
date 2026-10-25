@@ -139,3 +139,53 @@ test("an imported deck has its own page, like a notebook", async ({ page }) => {
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.screenshot({ path: "test-results/deck-page-phone.png" });
 });
+
+test("drafts stay in sync: discard from the collection, and Activity and the import agree", async ({ page }) => {
+  await openScenario(page, "small");
+  await importPerSlide(page);
+  await expect(page.getByRole("tab", { name: "To review (8)" })).toBeVisible();
+  await page.getByRole("link", { name: "Open the deck" }).click();
+  const grid = page.getByRole("list", { name: "Posts in this collection" });
+  const cards = grid.locator(":scope > li");
+  const deck = new URL(page.url()).pathname; // (slide previews have bullet lists of their own)
+  await expect(cards).toHaveCount(8);
+
+  // Pick two drafts and discard them from the collection page.
+  await grid.getByRole("checkbox").nth(0).check();
+  await grid.getByRole("checkbox").nth(1).check();
+  await expect(page.getByText("2 selected")).toBeVisible();
+  await page.getByRole("button", { name: "Discard" }).click();
+  await expect(page.getByText(/Discarded 2 posts/)).toBeVisible();
+  await expect(cards).toHaveCount(6);
+  await expect(page.getByText("6 posts · 6 still drafts")).toBeVisible();
+
+  // Undo puts them back in place.
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(cards).toHaveCount(8);
+
+  // Discard again, then the import and Activity show the same 6.
+  await page.getByRole("checkbox", { name: "Select all posts" }).check();
+  await grid.getByRole("checkbox").nth(2).uncheck();
+  await grid.getByRole("checkbox").nth(3).uncheck();
+  await grid.getByRole("checkbox").nth(4).uncheck();
+  await grid.getByRole("checkbox").nth(5).uncheck();
+  await grid.getByRole("checkbox").nth(6).uncheck();
+  await grid.getByRole("checkbox").nth(7).uncheck();
+  await page.getByRole("button", { name: "Discard" }).click();
+  await expect(cards).toHaveCount(6);
+  await page.getByRole("link", { name: "Open import" }).click();
+  await expect(page.getByRole("tab", { name: "To review (6)" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Drafts" }).getByRole("listitem")).toHaveCount(6);
+  await page.getByRole("link", { name: "Activity" }).click();
+  await page.getByRole("tab", { name: /Drafts/ }).click();
+  await expect(page.getByRole("tabpanel", { name: "Drafts" }).getByRole("list", { name: "Drafts" }).getByRole("listitem").filter({ hasText: "Lab_Notes_2021" })).toHaveCount(6);
+
+  // Publish from the collection: the import moves it to Published.
+  await page.evaluate((p) => (history.pushState({}, "", p), dispatchEvent(new PopStateEvent("popstate"))), deck); // in-app, keeps the mock data
+  await grid.getByRole("checkbox").nth(0).check();
+  await page.getByRole("button", { name: "Publish 1" }).click();
+  await expect(page.getByText(/Published 1 post/)).toBeVisible();
+  await page.getByRole("link", { name: "Open import" }).click();
+  await expect(page.getByRole("tab", { name: "To review (5)" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Published (1)" })).toBeVisible();
+});

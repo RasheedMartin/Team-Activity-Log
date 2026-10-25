@@ -48,7 +48,7 @@ async def library_items(db: AsyncSession, ctx: WsCtx) -> list[dict]:
         await db.execute(select(m.SavedView).where(m.SavedView.workspace_id == ctx.ws.id, (m.SavedView.shared.is_(True)) | (m.SavedView.owner_id == ctx.user.id)))
     ).scalars().all()
     colls = (await db.execute(select(m.CollectionRow).where(m.CollectionRow.workspace_id == ctx.ws.id))).scalars().all()
-    counts = dict((await db.execute(select(m.CollectionPost.collection_id, func.count()).where(m.CollectionPost.collection_id.in_([c.id for c in colls])).group_by(m.CollectionPost.collection_id))).all()) if colls else {}
+    counts = dict((await db.execute(select(m.CollectionPost.collection_id, func.count()).join(m.Post, m.Post.id == m.CollectionPost.post_id).where(m.CollectionPost.collection_id.in_([c.id for c in colls]), m.Post.deleted_at.is_(None)).group_by(m.CollectionPost.collection_id))).all()) if colls else {}
     items = [
         {"kind": "view", "id": str(v.id), "name": v.name, "ownerId": str(v.owner_id), "shared": v.shared, "pinned": ("view", v.id) in pinned, "updatedAt": iso(v.updated_at) or EPOCH, "filterSpec": v.filter_spec}
         for v in views

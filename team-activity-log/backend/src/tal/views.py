@@ -242,7 +242,11 @@ async def collection_post_ids(db: AsyncSession, collection_ids: Sequence[uuid.UU
     out: dict[uuid.UUID, list[str]] = defaultdict(list)
     if collection_ids:
         rows = await db.execute(
-            select(m.CollectionPost.collection_id, m.CollectionPost.post_id).where(m.CollectionPost.collection_id.in_(collection_ids)).order_by(m.CollectionPost.collection_id, m.CollectionPost.position)
+            # Deleted posts drop out (their membership stays, so restoring one puts it back in place).
+            select(m.CollectionPost.collection_id, m.CollectionPost.post_id)
+            .join(m.Post, m.Post.id == m.CollectionPost.post_id)
+            .where(m.CollectionPost.collection_id.in_(collection_ids), m.Post.deleted_at.is_(None))
+            .order_by(m.CollectionPost.collection_id, m.CollectionPost.position)
         )
         for cid, pid in rows:
             out[cid].append(str(pid))

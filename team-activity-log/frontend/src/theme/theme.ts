@@ -79,6 +79,8 @@ export function createAppTheme(mode: Mode, density: Density, reducedMotion = fal
           "code, kbd, pre": { fontFamily: "'IBM Plex Mono', ui-monospace, monospace" },
           mark: { background: alpha(accent, mode === "light" ? 0.16 : 0.28), color: "inherit", borderRadius: 2, padding: "0 1px" },
           "*:focus-visible": { outline: `2px solid ${accent}`, outlineOffset: 2 },
+          // iOS zooms into any field under 16px when it's focused (and stays zoomed): keep touch fields at 16px.
+          "@media (pointer: coarse)": { "input, textarea, select": { fontSize: "16px !important" } },
           "@media print": { "[data-print-hide], .MuiSnackbar-root": { display: "none !important" }, body: { background: "#fff" } },
           // @mention suggestions (rendered by the comment editor outside React)
           ".tal-mentions": {

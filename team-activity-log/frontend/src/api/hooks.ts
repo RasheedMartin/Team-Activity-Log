@@ -310,7 +310,9 @@ export const usePost = (orgId: ID, id: ID | undefined) =>
 
 /** Search caches embed post copies; after a post changes, refresh them (and re-fetch lists). */
 export function invalidatePostLists(qc: QueryClient, orgId: ID) {
-  qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === "org" && q.queryKey[1] === orgId && (q.queryKey[4] === "search" || q.queryKey[4] === "drafts" || q.queryKey[4] === "trash" || q.queryKey[4] === "posts") });
+  // Collections and imports list posts too: a discarded draft must leave them everywhere at once.
+  const lists = ["search", "drafts", "trash", "posts", "collections"];
+  qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === "org" && q.queryKey[1] === orgId && (lists.includes(q.queryKey[4] as string) || q.queryKey[2] === "import") });
 }
 
 export function useCreateDraft(orgId: ID, wsId: ID) {

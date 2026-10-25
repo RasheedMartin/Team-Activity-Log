@@ -1,13 +1,14 @@
 import { CollectionsBookmarkOutlined, ManageSearchRounded, SlideshowRounded, UploadFileOutlined } from "@mui/icons-material";
-import { Box, Button, ButtonBase, Chip, Skeleton, Stack, Typography } from "@mui/material";
-import { useMemo } from "react";
+import { Box, Button, ButtonBase, Checkbox, Chip, Skeleton, Stack, Typography } from "@mui/material";
+import { useMemo, useState } from "react";
 import { Link as RouterLink, useParams } from "react-router-dom";
 import type { PostDetail } from "../../api/contract";
-import { useCollection, usePostDetails } from "../../api/hooks";
+import { useCollection, usePostAction, usePostDetails, useUpdateCollection } from "../../api/hooks";
 import { useOrigin } from "../../app/origin";
 import { useWs, wsPath } from "../../app/session";
 import { RichText } from "../../components/RichText";
 import { SlideCanvas } from "../../components/SlideCanvas";
+import { useNotify } from "../../components/notify";
 import { EmptyState, ErrorState } from "../../components/ui";
 import { blockDocs } from "../../lib/blocks";
 import { formatDay } from "../../lib/dates";
@@ -46,6 +47,46 @@ export default function CollectionPage() {
   const deck = c.data?.kind === "deck_import";
   const importJobId = loaded.find((d) => d.post.source?.kind === "import")?.post.source?.importJobId;
   const drafts = loaded.filter((d) => d.post.status === "draft").length;
+  const action = usePostAction(org.id);
+  const update = useUpdateCollection(org.id, ws.id);
+  const notify = useNotify();
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const ids = c.data?.postIds ?? [];
+  const chosen = ids.filter((x) => selected.has(x)); // posts that left the collection drop out of the selection
+  const all = chosen.length === ids.length && ids.length > 0;
+  const chosenDrafts = loaded.filter((d) => selected.has(d.post.id) && d.post.status === "draft").map((d) => d.post.id);
+  const onlyDrafts = chosen.every((x) => chosenDrafts.includes(x));
+  const toggle = (x: string) => setSelected((s) => (s.has(x) ? new Set([...s].filter((y) => y !== x)) : new Set([...s, x])));
+  const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
+
+  // Bulk actions use the same post actions as everywhere else, so Activity, Search, and the
+  // import page see the change at once (see invalidatePostLists).
+  const run = async (list: string[], act: "publish" | "delete") => {
+    setBusy(true);
+    const r = await Promise.allSettled(list.map((x) => action.mutateAsync({ id: x, action: act })));
+    setBusy(false);
+    const ok = list.filter((_, i) => r[i].status === "fulfilled");
+    setSelected(new Set(list.filter((x) => !ok.includes(x))));
+    return { ok, failed: list.length - ok.length };
+  };
+  const publish = async () => {
+    const { ok, failed } = await run(chosenDrafts, "publish");
+    notify(failed ? `Published ${ok.length}. ${failed} need${failed === 1 ? "s" : ""} attention: open ${failed === 1 ? "it" : "them"} to see why.` : `Published ${plural(ok.length, "post")}`);
+  };
+  const discard = async () => {
+    const verb = onlyDrafts ? "Discarded" : "Deleted";
+    const { ok, failed } = await run(chosen, "delete");
+    notify(
+      `${verb} ${plural(ok.length, "post")}${failed ? `. ${failed} couldn't be deleted (only the author or an admin can)` : ""}`,
+      ok.length ? () => ok.forEach((x) => action.mutate({ id: x, action: "restore" })) : undefined,
+    );
+  };
+  const remove = () => {
+    const before = ids;
+    update.mutate({ id, postIds: ids.filter((x) => !selected.has(x)) }, { onSuccess: () => notify(`Removed ${plural(chosen.length, "post")} from this collection`, () => update.mutate({ id, postIds: before })) });
+    setSelected(new Set());
+  };
 
   if (c.error) return <ErrorState error={c.error} onRetry={() => c.refetch()} />;
   if (!c.data) return <Skeleton variant="rounded" height={240} sx={{ m: 3 }} />;
@@ -84,15 +125,35 @@ export default function CollectionPage() {
       {!coll.postIds.length ? (
         <EmptyState icon={<CollectionsBookmarkOutlined />} title="Nothing here yet" body="Posts added to this collection show up here, in order." />
       ) : (
+        <>
+          <Stack direction="row" alignItems="center" spacing={1} useFlexGap sx={{ flexWrap: "wrap", mb: 1.5, minHeight: 40 }}>
+            <Checkbox size="small" checked={all} indeterminate={chosen.length > 0 && !all} onChange={() => setSelected(all ? new Set() : new Set(ids))} inputProps={{ "aria-label": all ? "Deselect all posts" : "Select all posts" }} />
+            <Typography variant="body2" color="text.secondary" sx={{ flex: 1, minWidth: 100 }}>{chosen.length ? `${chosen.length} selected` : "Select all"}</Typography>
+            {chosen.length > 0 && (
+              <>
+                {chosenDrafts.length > 0 && <Button size="small" variant="contained" disabled={busy} onClick={() => void publish()}>Publish {chosenDrafts.length}</Button>}
+                <Button size="small" disabled={busy || update.isPending} onClick={remove}>Remove from collection</Button>
+                <Button size="small" color="error" disabled={busy} onClick={() => void discard()}>{onlyDrafts ? "Discard" : "Delete"}</Button>
+              </>
+            )}
+          </Stack>
         <Box component="ol" aria-label="Posts in this collection" sx={{ listStyle: "none", p: 0, m: 0, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 2 }}>
           {details.map((q, i) =>
             q.data ? (
-              <Box component="li" key={q.data.post.id}>
+              <Box component="li" key={q.data.post.id} sx={{ position: "relative" }}>
+                {/* A sibling of the card link, not inside it, so it stays its own control. */}
+                <Checkbox
+                  size="small"
+                  checked={selected.has(q.data.post.id)}
+                  onChange={() => toggle(q.data!.post.id)}
+                  inputProps={{ "aria-label": `Select ${q.data.post.title || "untitled post"}` }}
+                  sx={{ position: "absolute", top: 12, left: 12, zIndex: 1, p: 0.5, bgcolor: "background.paper", borderRadius: 1, boxShadow: 1, "&:hover": { bgcolor: "background.paper" } }}
+                />
                 <ButtonBase
                   component={RouterLink}
                   to={q.data.post.status === "draft" ? `${base}/p/${q.data.post.id}/edit` : `${base}/p/${q.data.post.id}`}
                   state={origin}
-                  sx={{ display: "block", width: "100%", textAlign: "left", borderRadius: 1.5, p: 1, border: 1, borderColor: "divider", bgcolor: "background.paper", "&:hover": { borderColor: "primary.main" } }}
+                  sx={{ display: "block", width: "100%", textAlign: "left", borderRadius: 1.5, p: 1, border: 1, borderColor: selected.has(q.data.post.id) ? "primary.main" : "divider", bgcolor: "background.paper", "&:hover": { borderColor: "primary.main" } }}
                 >
                   <Box sx={{ pointerEvents: "none" }}>
                     <Preview d={q.data} />
@@ -115,6 +176,7 @@ export default function CollectionPage() {
             ) : null,
           )}
         </Box>
+        </>
       )}
     </Box>
   );

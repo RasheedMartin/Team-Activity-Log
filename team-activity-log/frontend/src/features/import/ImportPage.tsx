@@ -349,7 +349,7 @@ function DoneStep({ job, onNew }: { job: ImportJob; onNew: () => void }) {
         <Button variant="contained" disabled={published || act.isPending || (!posts.isPending && !mine.length)} onClick={() => act.mutate({ action: "publishAll" }, { onSuccess: () => (setPublished(true), notify("All imported drafts published")) })}>
           {published ? "Published" : "Publish all"}
         </Button>
-        {(published || out.length > 0) && <Button component={RouterLink} to={collectionUrl} startIcon={<CollectionsBookmarkOutlined />}>Open the deck</Button>}
+        {job.collectionId && <Button component={RouterLink} to={collectionUrl} startIcon={<CollectionsBookmarkOutlined />}>Open the deck</Button>}
         {job.collectionId && (
           <Tooltip describeChild title="All of this import's slides in Present, where you can also download them as a PowerPoint file">
             <Button component={RouterLink} to={`${wsPath(org, ws, "/present")}?collection=${job.collectionId}`} startIcon={<SlideshowRounded />}>

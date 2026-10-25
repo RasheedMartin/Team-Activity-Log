@@ -19,7 +19,10 @@ function togglePin(userId: ID, wsId: ID, ref: PinRef, on: boolean) {
 
 const kindOf = (c: Collection): LibraryKind => (c.kind === "notebook" ? "notebook" : "collection");
 const viewItem = (v: SavedView, me: ID): LibraryItem => ({ kind: "view", id: v.id, name: v.name, ownerId: v.ownerId, shared: v.shared, pinned: isPinned(me, v.workspaceId, "view", v.id), updatedAt: v.updatedAt ?? "1970-01-01T00:00:00Z", filterSpec: v.filterSpec });
-const collectionItem = (c: Collection, me: ID): LibraryItem => ({ kind: kindOf(c), id: c.id, name: c.name, ownerId: c.createdBy, shared: true, pinned: isPinned(me, c.workspaceId, kindOf(c), c.id), updatedAt: c.updatedAt ?? "1970-01-01T00:00:00Z", postCount: c.postIds.length, collectionKind: c.kind });
+/** Like the server: deleted posts drop out of a collection (membership stays, so a restore puts them back). */
+const live = (c: Collection): Collection => ({ ...c, postIds: c.postIds.filter((id) => !db.t.posts.get(id)?.deletedAt) });
+
+const collectionItem = (c: Collection, me: ID): LibraryItem => ({ kind: kindOf(c), id: c.id, name: c.name, ownerId: c.createdBy, shared: true, pinned: isPinned(me, c.workspaceId, kindOf(c), c.id), updatedAt: c.updatedAt ?? "1970-01-01T00:00:00Z", postCount: live(c).postIds.length, collectionKind: c.kind });
 const withPinned = (v: SavedView, me: ID): SavedView => ({ ...v, pinned: isPinned(me, v.workspaceId, "view", v.id) });
 
 /** Everything in a workspace the caller can see, as library items. */
@@ -156,7 +159,7 @@ export const libraryHandlers = [
       const ctx = workspaceCtx(cookies, params.org as string, params.ws as string);
       const c = db.t.collections.get(params.id as string);
       if (!c || c.workspaceId !== ctx.ws.id) fail(404, "not_found", "Collection not found");
-      return HttpResponse.json(c);
+      return HttpResponse.json(live(c!));
     }),
   ),
   http.get(
@@ -187,7 +190,7 @@ export const libraryHandlers = [
       }
       const c = db.t.collections.put({ id: uuidv7(), workspaceId: ctx.ws.id, name: body.name.trim(), kind: body.kind ?? "manual", postIds: body.postIds ?? [], createdBy: ctx.user.id, updatedAt: now(), sourceTagId: body.sourceTagId });
       syncPostCollections(c, []);
-      return HttpResponse.json(c, { status: 201 });
+      return HttpResponse.json(live(c), { status: 201 });
     }),
   ),
   http.patch(
@@ -208,7 +211,7 @@ export const libraryHandlers = [
         if (!roleAtLeast(ctx.role, "member")) fail(403, "forbidden", "Viewers can't change how this presents");
         db.t.collections.update(c!.id, { presentation: presentation ?? undefined, updatedAt: now() });
       }
-      return HttpResponse.json(db.t.collections.get(c!.id));
+      return HttpResponse.json(live(db.t.collections.get(c!.id)!));
     }),
   ),
   http.put(
@@ -221,7 +224,7 @@ export const libraryHandlers = [
       const before = c!.postIds;
       const next = db.t.collections.update(c!.id, { postIds, updatedAt: now() })!;
       syncPostCollections(next, before);
-      return HttpResponse.json(next);
+      return HttpResponse.json(live(next));
     }),
   ),
   http.delete(

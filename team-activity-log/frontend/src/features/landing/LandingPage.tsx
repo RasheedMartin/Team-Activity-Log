@@ -17,6 +17,7 @@ import { useMe } from "../../api/hooks";
 import { BRAND } from "../../app/brand";
 import { ACADEMIC_NOTE, PLANS } from "../../app/pricing";
 import { homePath } from "../../app/session";
+import { HeroArt } from "./HeroArt";
 import { HeroDemo, type DemoScene } from "./HeroDemo";
 
 const FEATURES: { icon: ReactNode; title: string; body: string; scene: DemoScene }[] = [
@@ -124,7 +125,7 @@ export default function LandingPage() {
                 )}
               </Stack>
             </Box>
-            <HeroDemo />
+            <HeroArt />
           </Box>
         </Container>
 
