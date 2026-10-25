@@ -153,9 +153,12 @@ export default function CollectionPage() {
               Publish all {drafts}
             </Button>
           )}
-          <Button startIcon={<AddRounded />} onClick={() => setAdding(true)}>
-            Add posts
-          </Button>
+          {/* An imported deck holds its slides: review is publish or discard (owner request). */}
+          {!deck && (
+            <Button startIcon={<AddRounded />} onClick={() => setAdding(true)}>
+              Add posts
+            </Button>
+          )}
           <AddPostsDialog open={adding} onClose={() => setAdding(false)} collectionId={coll.id} name={coll.name} postIds={coll.postIds} />
           <Button component={RouterLink} to={`${base}/search?${collectionParams(coll.id)}`} startIcon={<ManageSearchRounded />}>
             Search within
@@ -226,7 +229,7 @@ export default function CollectionPage() {
                     Split back
                   </Button>
                 ) : null}
-                <Button size="small" disabled={busy || update.isPending} onClick={remove}>Remove from collection</Button>
+                {!deck && <Button size="small" disabled={busy || update.isPending} onClick={remove}>Remove from collection</Button>}
                 <Button size="small" color="error" disabled={busy} onClick={() => void discard()}>{onlyDrafts ? "Discard" : "Delete"}</Button>
               </>
             )}

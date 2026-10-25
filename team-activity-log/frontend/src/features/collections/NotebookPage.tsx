@@ -30,7 +30,7 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link as RouterLink, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { CollectionEntry, ID, PostDetail, Tag, User } from "../../api/contract";
 import { useCollection, useCollectionEntries, useCreateCollection, useDeleteCollection, usePeople, usePostDetails, useTags, useUpdateCollection } from "../../api/hooks";
@@ -93,6 +93,48 @@ function Entry({ detail, people, tags, origin, pageBreak }: { detail: PostDetail
  * a time, only that entry and its neighbors loaded) so it stays fast for hundreds of entries and
  * every jump lands exactly; "Continuous" renders everything for reading straight through and printing.
  */
+
+/** Keep one entry at the top of the screen while the ones around it load and change height, until
+ *  the reader scrolls themselves. */
+function useAnchor() {
+  const target = useRef<string | null>(null);
+  useEffect(() => {
+    const stop = () => (target.current = null);
+    const place = () => target.current && document.getElementById(`nb-${target.current}`)?.scrollIntoView({ block: "start" });
+    const sizes = new ResizeObserver(place);
+    sizes.observe(document.body);
+    const opts = { passive: true } as const;
+    ["wheel", "touchmove", "keydown", "mousedown"].forEach((ev) => window.addEventListener(ev, stop, opts));
+    return () => (sizes.disconnect(), ["wheel", "touchmove", "keydown", "mousedown"].forEach((ev) => window.removeEventListener(ev, stop)));
+  }, []);
+  return {
+    hold: (id: string) => {
+      target.current = id;
+      requestAnimationFrame(() => document.getElementById(`nb-${id}`)?.scrollIntoView({ block: "start" }));
+    },
+  };
+}
+
+/** One entry of the continuous view: a placeholder until it's within a couple of screens. */
+function LazyEntry({ id, orgId, ...rest }: { id: ID; orgId: ID; people: Map<ID, User>; tags: Map<ID, Tag>; origin: Origin; pageBreak?: boolean }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [near, setNear] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || near) return;
+    const io = new IntersectionObserver(([e]) => e.isIntersecting && setNear(true), { rootMargin: "1500px 0px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [near]);
+  const [q] = usePostDetails(orgId, near ? [id] : []);
+  if (q?.data) return <Entry detail={q.data} {...rest} />;
+  return (
+    <Box ref={ref} id={`nb-${id}`} data-nb-section={id} data-nb-loading sx={{ scrollMarginTop: 16 }}>
+      <Skeleton variant="rounded" height={320} />
+    </Box>
+  );
+}
+
 export default function NotebookPage() {
   const { id = "" } = useParams();
   const { org, ws } = useWs();
@@ -118,11 +160,14 @@ export default function NotebookPage() {
   const printing = params.get("print") === "1";
   const index = Math.max(0, entries.findIndex((e) => e.id === params.get("entry")));
   const current = entries[index];
-  // Reader loads the current entry plus neighbors (instant prev/next); continuous loads all.
-  const ids = continuous ? entries.map((e) => e.id) : [entries[index - 1], current, entries[index + 1]].filter((e): e is CollectionEntry => !!e).map((e) => e.id);
+  // Reader loads the current entry plus neighbors (instant prev/next). Continuous loads each entry
+  // as it nears the screen (LazyEntry), so a long notebook doesn't fetch everything up front;
+  // only printing loads them all.
+  const ids = continuous ? (printing ? entries.map((e) => e.id) : []) : [entries[index - 1], current, entries[index + 1]].filter((e): e is CollectionEntry => !!e).map((e) => e.id);
   const details = usePostDetails(org.id, ids);
   const byId = new Map(details.filter((d) => d.data).map((d) => [d.data!.post.id, d.data!]));
-  const loadedAll = continuous && ids.every((x) => byId.has(x));
+  const loadedAll = continuous && printing && ids.every((x) => byId.has(x));
+  const anchor = useAnchor();
   const origin: Origin = { from: location.pathname + location.search, label: nb?.name ?? "notebook" };
 
   const setParam = (patch: Record<string, string | null>, replace = false) => {
@@ -132,8 +177,7 @@ export default function NotebookPage() {
   };
   const open = (entryId: string) => {
     if (continuous) {
-      // Before everything has loaded, just record the target; the effect below jumps once ready.
-      if (loadedAll) document.getElementById(`nb-${entryId}`)?.scrollIntoView({ block: "start" });
+      anchor.hold(entryId); // entries around it load as it comes into view; stay on it meanwhile
       setParam({ entry: entryId }, true);
     } else {
       setParam({ entry: entryId });
@@ -165,12 +209,13 @@ export default function NotebookPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [printing, loadedAll]);
 
-  // Continuous: once everything is laid out, show the current entry (also when returning from a post).
+  // Continuous: show the current entry (also when returning from a post).
   useEffect(() => {
-    if (continuous && loadedAll && params.get("entry")) document.getElementById(`nb-${params.get("entry")}`)?.scrollIntoView({ block: "start" });
-    // run once when the layout is complete
+    const entry = params.get("entry");
+    if (continuous && entry) anchor.hold(entry);
+    // on entering continuous view only
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [continuous, loadedAll]);
+  }, [continuous]);
 
   if (isPending) return <Skeleton variant="rounded" height={300} sx={{ m: 3 }} />;
   if (!nb) return <EmptyState title="Notebook not found" body="It may have been deleted." action={<Button component={RouterLink} to={wsPath(org, ws)}>Back to Home</Button>} />;
@@ -287,7 +332,7 @@ export default function NotebookPage() {
           <EmptyState title="This notebook is empty" body="Select posts in search and choose “Make notebook”, or make one from a tag on Explore." />
         ) : continuous ? (
           <>
-            {!loadedAll && (
+            {printing && !loadedAll && (
               <Box sx={{ mb: 2 }} data-print-hide>
                 <LinearProgress variant="determinate" value={(byId.size / ids.length) * 100} />
                 <Typography variant="caption" color="text.secondary">Loading {byId.size} of {ids.length} entries{printing ? " before printing" : ""}…</Typography>
@@ -295,8 +340,8 @@ export default function NotebookPage() {
             )}
             <Stack divider={<Divider sx={{ my: 4, "@media print": { display: "none" } }} />}>
               {entries.map((e, i) => {
-                const d = byId.get(e.id);
-                return d ? <Entry key={e.id} detail={d} people={people} tags={tags} origin={{ ...origin, from: `${location.pathname}?view=continuous&entry=${e.id}` }} pageBreak={i > 0} /> : <Skeleton key={e.id} variant="rounded" height={160} />;
+                const entryOrigin = { ...origin, from: `${location.pathname}?view=continuous&entry=${e.id}` };
+                return <LazyEntry key={e.id} id={e.id} orgId={org.id} people={people} tags={tags} origin={entryOrigin} pageBreak={i > 0} />;
               })}
             </Stack>
           </>

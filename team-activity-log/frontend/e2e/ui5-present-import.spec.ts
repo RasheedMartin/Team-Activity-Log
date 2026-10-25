@@ -185,16 +185,17 @@ test("notebook contents land exactly on the entry (reader and continuous)", asyn
   }
   await page.keyboard.press("ArrowRight");
   await expect(page.getByText(`Entry 3 of ${n}`).first()).toBeVisible();
-  // Continuous: once every entry has loaded, jumps land on the entry.
+  // Continuous: every entry has a place at once, but only those near the screen load (a long
+  // notebook isn't fetched all at once). Jumps land on the entry while the ones around it load.
   await page.getByRole("button", { name: "Continuous" }).click();
-  // (Wait on the entries themselves: right after the click the loading bar hasn't appeared yet.)
-  await expect(page.locator("[data-nb-section]")).toHaveCount(n, { timeout: 45_000 });
-  await expect(page.getByText(/^Loading \d+ of \d+ entries/)).toHaveCount(0);
+  await expect(page.locator("[data-nb-section]")).toHaveCount(n);
+  await expect.poll(() => page.locator("[data-nb-loading]").count()).toBeGreaterThan(n / 2); // most not fetched yet
   for (const i of [5, Math.min(40, n - 1)]) {
     await toc.nth(i).click();
     const id = (await page.locator("[data-nb-section]").nth(i).getAttribute("data-nb-section"))!;
-    const top = await page.evaluate((x) => Math.round(document.getElementById(`nb-${x}`)!.getBoundingClientRect().top), id);
-    expect(Math.abs(top - 16)).toBeLessThan(4);
+    await expect(page.locator(`#nb-${id}:not([data-nb-loading])`)).toBeVisible(); // it loaded
+    await expect.poll(() => page.evaluate((x) => Math.round(document.getElementById(`nb-${x}`)!.getBoundingClientRect().top), id)).toBeGreaterThan(12);
+    expect(Math.abs((await page.evaluate((x) => Math.round(document.getElementById(`nb-${x}`)!.getBoundingClientRect().top), id)) - 16)).toBeLessThan(4);
   }
 });
 
