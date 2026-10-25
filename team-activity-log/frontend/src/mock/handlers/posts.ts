@@ -127,7 +127,7 @@ export const postHandlers = [
     route(async ({ cookies, params, request }) => {
       const ctx = workspaceCtx(cookies, params.org as string, params.ws as string, "member");
       if (ctx.ws.archived) fail(409, "archived", "This workspace is archived");
-      const body = ((await request.json().catch(() => ({}))) ?? {}) as Partial<Post>;
+      const body = ((await request.json().catch(() => ({}))) ?? {}) as Partial<Post> & { collectionId?: string };
       const t = now();
       const p = db.t.posts.put({
         id: uuidv7(),
@@ -148,8 +148,14 @@ export const postHandlers = [
         updatedAt: t,
         counts: { comments: 0, reactions: 0, images: 0 },
         reactions: {},
-        collectionIds: [],
+        collectionIds: body.collectionId ? [body.collectionId] : [],
       });
+      if (body.collectionId) {
+        // "Write a page" in a notebook: the new post goes at its end (mirrors routes/posts.py).
+        const c = db.t.collections.get(body.collectionId);
+        if (!c || c.workspaceId !== ctx.ws.id) fail(404, "not_found", "Notebook not found");
+        db.t.collections.update(c!.id, { postIds: [...c!.postIds, p.id], updatedAt: t });
+      }
       return HttpResponse.json(detail(p), { status: 201 });
     }),
   ),

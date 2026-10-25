@@ -318,10 +318,12 @@ export function invalidatePostLists(qc: QueryClient, orgId: ID) {
 export function useCreateDraft(orgId: ID, wsId: ID) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (seed?: Partial<Post>) => post<PostDetail>(`${W(orgId, wsId)}/posts`, seed ?? {}),
-    onSuccess: (d) => {
+    // `collectionId`: write it as the next page of that notebook.
+    mutationFn: (seed?: Partial<Post> & { collectionId?: ID }) => post<PostDetail>(`${W(orgId, wsId)}/posts`, seed ?? {}),
+    onSuccess: (d, seed) => {
       qc.setQueryData(qk.post(orgId, d.post.id), d);
       qc.invalidateQueries({ queryKey: qk.drafts(orgId, wsId) });
+      if (seed?.collectionId) qc.invalidateQueries({ queryKey: qk.collections(orgId, wsId) }); // its notebook has a new page
     },
   });
 }
@@ -598,14 +600,19 @@ export function useUpdateCollection(orgId: ID, wsId: ID) {
 }
 export function useDeleteCollection(orgId: ID, wsId: ID) {
   const qc = useQueryClient();
-  // Returns the deleted collection so callers can offer Undo (recreate it with the same posts).
+  // Returns the deleted collection so callers can offer Undo (recreate it with the same posts), and
+  // with deleteMyPosts the caller's own posts it sent to the recycle bin (to restore on Undo).
   return useMutation({
-    mutationFn: async (id: ID) => {
+    mutationFn: async (v: ID | { id: ID; deleteMyPosts?: boolean }) => {
+      const { id, deleteMyPosts } = typeof v === "string" ? { id: v, deleteMyPosts: false } : v;
       const c = await get<Collection>(`${W(orgId, wsId)}/collections/${id}`);
-      await del(`${W(orgId, wsId)}/collections/${id}`);
-      return c;
+      const r = await del<{ deletedPostIds?: ID[] } | undefined>(`${W(orgId, wsId)}/collections/${id}${deleteMyPosts ? "?deleteMyPosts=true" : ""}`);
+      return { ...c, deletedPostIds: r?.deletedPostIds ?? [] };
     },
-    onSuccess: () => invalidateLibrary(qc, orgId, wsId),
+    onSuccess: (r) => {
+      invalidateLibrary(qc, orgId, wsId);
+      if (r.deletedPostIds.length) invalidatePostLists(qc, orgId);
+    },
   });
 }
 export const useCollectionEntries = (orgId: ID, wsId: ID, id: ID | undefined) =>

@@ -612,6 +612,8 @@ export interface CollectionEntry {
   title: string;
   workDate: ISODate;
   authorId: ID;
+  /** Drafts appear only to their author (unfinished, not private). */
+  status: "draft" | "published";
 }
 
 // ---- Import (v5) ----

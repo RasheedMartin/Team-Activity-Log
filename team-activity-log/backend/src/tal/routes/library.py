@@ -236,7 +236,7 @@ async def entries(org: str, ws: str, cid: str, u: m.User = Depends(require_user)
             continue
         if p.visibility != "visible" and p.author_id != u.id and not role_at_least(ctx.role, "admin"):
             continue
-        out.append({"id": str(p.id), "title": p.title, "workDate": p.work_date.isoformat(), "authorId": str(p.author_id)})
+        out.append({"id": str(p.id), "title": p.title, "workDate": p.work_date.isoformat(), "authorId": str(p.author_id), "status": p.status})
     return out
 
 
@@ -292,14 +292,22 @@ async def put_collection_posts(org: str, ws: str, cid: str, body: dict = Body(..
     return await _view_of(db, c)
 
 
-@router.delete("/orgs/{org}/workspaces/{ws}/collections/{cid}", status_code=204)
-async def delete_collection(org: str, ws: str, cid: str, u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
+@router.delete("/orgs/{org}/workspaces/{ws}/collections/{cid}")
+async def delete_collection(org: str, ws: str, cid: str, deleteMyPosts: bool = False, u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):  # noqa: N803 - query param name
+    """Removes the grouping. With deleteMyPosts, the caller's own posts in it go to the recycle bin
+    too (others' posts pulled into a notebook are never touched). Returns those post ids for undo."""
     ctx = await ws_ctx(db, u, org, ws, "member")
     c = await _collection(db, ctx, cid)
     if c.created_by != u.id and not ctx.is_admin:
         fail(403, "forbidden", "Only its creator or an admin can delete this")
-    # Deleting a collection never deletes posts; it only removes the grouping.
+    gone: list[str] = []
+    if deleteMyPosts:
+        t = now()
+        mine = (await db.execute(select(m.Post).join(m.CollectionPost, m.CollectionPost.post_id == m.Post.id).where(m.CollectionPost.collection_id == c.id, m.Post.author_id == u.id, m.Post.deleted_at.is_(None)))).scalars().all()
+        for p in mine:
+            p.deleted_at, p.version, p.updated_at = t, p.version + 1, t
+            gone.append(str(p.id))
     await set_collection_posts(db, c, [])
     await db.execute(delete(m.Pin).where(m.Pin.item_id == c.id))
     await db.delete(c)
-    return Response(status_code=204)
+    return {"deletedPostIds": gone}

@@ -6,7 +6,9 @@ import {
   ChevronRightRounded,
   CloseRounded,
   DeleteOutlineRounded,
+  EditNoteRounded,
   EditOutlined,
+  LinkRounded,
   MenuBookOutlined,
   PrintOutlined,
   SlideshowRounded,
@@ -14,7 +16,14 @@ import {
 import {
   Box,
   Button,
+  Checkbox,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
+  FormControlLabel,
   IconButton,
   InputBase,
   LinearProgress,
@@ -33,7 +42,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link as RouterLink, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { CollectionEntry, ID, PostDetail, Tag, User } from "../../api/contract";
-import { useCollection, useCollectionEntries, useCreateCollection, useDeleteCollection, usePeople, usePostDetails, useTags, useUpdateCollection } from "../../api/hooks";
+import { useCollection, useCollectionEntries, useCreateCollection, useCreateDraft, useDeleteCollection, usePeople, usePostAction, usePostDetails, useTags, useUpdateCollection } from "../../api/hooks";
 import type { Origin } from "../../app/origin";
 import { isTypingTarget } from "../../app/shortcuts";
 import { useWs, wsPath } from "../../app/session";
@@ -53,7 +62,15 @@ function Entry({ detail, people, tags, origin, pageBreak }: { detail: PostDetail
   const imgs = new Map(detail.images.map((x) => [x.id, x]));
   return (
     <Box id={`nb-${p.id}`} data-nb-section={p.id} component="article" sx={{ scrollMarginTop: "calc(var(--nb-bar, 0px) + 16px)", "@media print": { breakBefore: pageBreak ? "page" : "auto" } }}>
-      <Typography variant="overline" color="primary">{formatDay(p.workDate)}</Typography>
+      <Stack direction="row" spacing={1} alignItems="center">
+        <Typography variant="overline" color="primary">{formatDay(p.workDate)}</Typography>
+        {p.status === "draft" && (
+          <>
+            <Chip size="small" color="warning" variant="outlined" label="Draft · only you see it" />
+            <Button size="small" component={RouterLink} to={wsPath(org, ws, `/p/${p.id}/edit`)} state={origin} data-print-hide>Continue writing</Button>
+          </>
+        )}
+      </Stack>
       <Typography component="h2" variant="h2" sx={{ mb: 0.75 }}>
         <Box component={RouterLink} to={wsPath(org, ws, `/p/${p.id}`)} state={origin} sx={{ color: "inherit", textDecoration: "none", "&:hover": { textDecoration: "underline" } }}>
           {p.title}
@@ -137,7 +154,7 @@ function LazyEntry({ id, orgId, ...rest }: { id: ID; orgId: ID; people: Map<ID, 
 
 export default function NotebookPage() {
   const { id = "" } = useParams();
-  const { org, ws } = useWs();
+  const { org, ws, me } = useWs();
   const navigate = useNavigate();
   const location = useLocation();
   const notify = useNotify();
@@ -148,6 +165,10 @@ export default function NotebookPage() {
   const [adding, setAdding] = useState(false);
   const remove = useDeleteCollection(org.id, ws.id);
   const recreate = useCreateCollection(org.id, ws.id);
+  const createPage = useCreateDraft(org.id, ws.id);
+  const postAction = usePostAction(org.id);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteMine, setDeleteMine] = useState(false);
   const { data: peopleList = [] } = usePeople(org.id);
   const { data: tagData } = useTags(org.id);
   const people = useMemo(() => new Map(peopleList.map((p) => [p.id, p])), [peopleList]);
@@ -242,6 +263,30 @@ export default function NotebookPage() {
     [order[i], order[i + d]] = [order[i + d], order[i]];
     update.mutate({ id: nb.id, postIds: order }, { onError: (e) => notify(`Couldn't reorder: ${e.message}`) });
   };
+  const mine = entries.filter((e) => e.authorId === me.user.id).length;
+  // "Write a page": a new draft that's already this notebook's last page; back returns here.
+  const writePage = () =>
+    createPage.mutate({ collectionId: nb.id }, {
+      onSuccess: (d) => navigate(wsPath(org, ws, `/p/${d.post.id}/edit`), { state: { from: `${location.pathname}?${continuous ? "view=continuous&" : ""}entry=${d.post.id}`, label: nb.name } satisfies Origin }),
+      onError: (e) => notify(e.message),
+    });
+  const deleteNotebook = () => {
+    const snapshot = { name: nb.name, postIds: nb.postIds, kind: nb.kind, sourceTagId: nb.sourceTagId };
+    remove.mutate({ id: nb.id, deleteMyPosts: deleteMine }, {
+      onSuccess: (r) => {
+        setConfirmDelete(false);
+        navigate(wsPath(org, ws, "/notebooks"));
+        const pages = r.deletedPostIds.length;
+        // Undo runs after this page has unmounted, where per-call mutate callbacks are dropped: use promises.
+        notify(`Deleted notebook “${snapshot.name}”${pages ? ` and ${pages} of your pages` : ""}`, () =>
+          void Promise.all(r.deletedPostIds.map((x) => postAction.mutateAsync({ id: x, action: "restore" })))
+            .then(() => recreate.mutateAsync(snapshot))
+            .then((c) => navigate(wsPath(org, ws, `/notebooks/${c.id}`)), (e) => notify(`Couldn't undo: ${e.message}`)),
+        );
+      },
+      onError: (e) => notify(e.message),
+    });
+  };
   const range = entries.length ? { from: entries.reduce((m, e) => (e.workDate < m ? e.workDate : m), entries[0].workDate), to: entries.reduce((m, e) => (e.workDate > m ? e.workDate : m), entries[0].workDate) } : undefined;
   const byYear = new Map<string, CollectionEntry[]>();
   entries.forEach((e) => byYear.set(e.workDate.slice(0, 4), [...(byYear.get(e.workDate.slice(0, 4)) ?? []), e]));
@@ -286,7 +331,7 @@ export default function NotebookPage() {
                 sx={{ "& .MuiListItemSecondaryAction-root": { right: 4 } }}
               >
                 <ListItemButton selected={current?.id === e.id} onClick={() => open(e.id)} sx={{ py: 0.25, pr: editing ? "92px !important" : 2 }}>
-                  <ListItemText primary={e.title || "Untitled"} secondary={formatDay(e.workDate, false)} slotProps={{ primary: { noWrap: true, fontSize: "0.82rem" }, secondary: { fontSize: "0.7rem" } }} />
+                  <ListItemText primary={e.title || "Untitled"} secondary={e.status === "draft" ? "Draft · only you see it" : formatDay(e.workDate, false)} slotProps={{ primary: { noWrap: true, fontSize: "0.82rem" }, secondary: { fontSize: "0.7rem" } }} />
                 </ListItemButton>
               </ListItem>
             ))}
@@ -317,6 +362,7 @@ export default function NotebookPage() {
             <ToggleButton value="reader">One entry</ToggleButton>
             <ToggleButton value="continuous">Continuous</ToggleButton>
           </ToggleButtonGroup>
+          <Button size="small" variant="contained" startIcon={<EditNoteRounded />} disabled={createPage.isPending} onClick={writePage}>Write a page</Button>
           <Button size="small" startIcon={<SlideshowRounded />} onClick={() => navigate(`${wsPath(org, ws, "/present")}?collection=${nb.id}`)} disabled={!entries.length}>Present</Button>
           <Button size="small" startIcon={<PrintOutlined />} onClick={() => setParam({ view: "continuous", print: "1" })} disabled={!entries.length}>Print / PDF</Button>
           <Button size="small" startIcon={<AddRounded />} onClick={() => setAdding(true)}>Add posts</Button>
@@ -324,23 +370,32 @@ export default function NotebookPage() {
           <Tooltip describeChild title={editing ? "Done reordering" : "Reorder or remove entries in the contents list"}>
             <Button size="small" startIcon={<EditOutlined />} variant={editing ? "contained" : "text"} onClick={() => setEditing(!editing)}>{editing ? "Done" : "Edit"}</Button>
           </Tooltip>
-          <Tooltip title="Delete notebook (posts are kept)">
-            <IconButton
-              size="small"
-              aria-label="Delete notebook"
-              onClick={() => {
-                const snapshot = { name: nb.name, postIds: nb.postIds, kind: nb.kind, sourceTagId: nb.sourceTagId };
-                remove.mutate(nb.id, {
-                  onSuccess: () => {
-                    navigate(wsPath(org, ws));
-                    notify(`Deleted notebook “${snapshot.name}”`, () => recreate.mutate(snapshot, { onSuccess: (c) => navigate(wsPath(org, ws, `/notebooks/${c.id}`)) }));
-                  },
-                });
-              }}
-            >
+          <Tooltip title="Copy a link to this notebook">
+            <IconButton size="small" aria-label="Copy link" onClick={() => void navigator.clipboard.writeText(`${window.location.origin}${location.pathname}`).then(() => notify("Link copied. Anyone in this workspace can open it."), () => notify("Couldn't copy the link"))}>
+              <LinkRounded fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Delete notebook">
+            <IconButton size="small" aria-label="Delete notebook" onClick={() => (setDeleteMine(false), setConfirmDelete(true))}>
               <DeleteOutlineRounded fontSize="small" />
             </IconButton>
           </Tooltip>
+          <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)} maxWidth="xs">
+            <DialogTitle>Delete “{nb.name}”?</DialogTitle>
+            <DialogContent>
+              <Typography variant="body2" sx={{ mb: 1.5 }}>The notebook goes away. Pages other people wrote are never deleted; they stay where they are.</Typography>
+              {mine > 0 && (
+                <FormControlLabel
+                  control={<Checkbox checked={deleteMine} onChange={(e) => setDeleteMine(e.target.checked)} />}
+                  label={`Also delete the ${mine === 1 ? "page" : `${mine} pages`} I wrote in it`}
+                />
+              )}
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setConfirmDelete(false)}>Cancel</Button>
+              <Button color="error" variant="contained" disabled={remove.isPending} onClick={deleteNotebook}>Delete</Button>
+            </DialogActions>
+          </Dialog>
         </Stack>
         <InputBase
           fullWidth
@@ -357,7 +412,16 @@ export default function NotebookPage() {
         </Typography>
 
         {!entries.length ? (
-          <EmptyState title="This notebook is empty" body="Select posts in search and choose “Make notebook”, or make one from a tag on Explore." />
+          <EmptyState
+            title="This notebook is empty"
+            body="Write its first page, or add posts that already exist (yours or anyone's in this workspace)."
+            action={
+              <Stack direction="row" spacing={1} justifyContent="center">
+                <Button variant="contained" startIcon={<EditNoteRounded />} onClick={writePage}>Write a page</Button>
+                <Button startIcon={<AddRounded />} onClick={() => setAdding(true)}>Add posts</Button>
+              </Stack>
+            }
+          />
         ) : continuous ? (
           <>
             {printing && !loadedAll && (

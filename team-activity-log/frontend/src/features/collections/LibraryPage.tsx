@@ -39,6 +39,7 @@ import { errorMessage } from "../../lib/format";
 import { KINDS } from "./concepts";
 import { FavoriteButton } from "./FavoriteButton";
 import { libraryHref } from "./libraryLinks";
+import { NewNotebookButton } from "./NewNotebook";
 
 
 function RenameDialog({ item, onClose }: { item: LibraryItem; onClose: () => void }) {
@@ -162,7 +163,7 @@ export default function LibraryPage({ kind }: { kind: Exclude<LibraryKind, "view
 
   return (
     <Box sx={{ maxWidth: 960, width: "100%", mx: "auto", px: { xs: 1.5, sm: 3 }, py: 3 }}>
-      <PageHeader title={KINDS[kind].plural} sub={KINDS[kind].blurb} />
+      <PageHeader title={KINDS[kind].plural} sub={KINDS[kind].blurb} actions={kind === "notebook" ? <NewNotebookButton /> : undefined} />
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mb: 2 }}>
         <TextField
           placeholder="Search by name"
@@ -187,7 +188,7 @@ export default function LibraryPage({ kind }: { kind: Exclude<LibraryKind, "view
       ) : !items.length ? (
         <EmptyState
           title={debounced || mine ? "Nothing matches" : `No ${KINDS[kind].plural.toLowerCase()} yet`}
-          body={debounced || mine ? "Try a different name or clear the filters." : kind === "collection" ? "Import slides to make one per deck, or select posts in Search and choose New collection." : "Select posts in Search and choose New notebook, or make one from a tag on Home."}
+          body={debounced || mine ? "Try a different name or clear the filters." : kind === "collection" ? "Import slides to make one per deck, or select posts in Search and choose New collection." : "Make one with New notebook and write in it, or select posts in Search and choose New notebook."}
         />
       ) : (
         <Paper variant="outlined" sx={{ opacity: lib.isPlaceholderData ? 0.6 : 1 }}>

@@ -65,3 +65,20 @@ async def test_combine_drafts_and_split_them_back(client):
     assert "mergedFrom" not in (r.json()["post"]["source"] or {})
     assert len(r.json()["post"]["blocks"]) == 1
     assert (await deck()).json()["postIds"] == ids
+
+
+async def test_write_a_page_in_a_notebook_and_delete_it_with_my_posts(client):
+    other = await signup(client, "other@example.test")
+    org = other["orgs"][0]["org"]["id"]
+    ws = other["orgs"][0]["workspaces"][0]["id"]
+    theirs = (await client.post(f"/v1/orgs/{org}/workspaces/{ws}/posts", json={"title": "Their page", "blocks": [{"id": "b1", "type": "text", "doc": {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "hi"}]}]}}]})).json()["post"]
+    await client.post(f"/v1/orgs/{org}/posts/{theirs['id']}/publish", json={})
+
+    nb = (await client.post(f"/v1/orgs/{org}/workspaces/{ws}/collections", json={"name": "Lab book", "kind": "notebook", "postIds": [theirs["id"]]})).json()
+    page = (await client.post(f"/v1/orgs/{org}/workspaces/{ws}/posts", json={"collectionId": nb["id"]})).json()["post"]
+    got = (await client.get(f"/v1/orgs/{org}/workspaces/{ws}/collections/{nb['id']}")).json()
+    assert got["postIds"] == [theirs["id"], page["id"]]  # the new page goes at the end
+
+    r = await client.delete(f"/v1/orgs/{org}/workspaces/{ws}/collections/{nb['id']}", params={"deleteMyPosts": "true"})
+    assert r.status_code == 200 and r.json() == {"deletedPostIds": [theirs["id"], page["id"]]}  # both are mine here
+    assert (await client.get(f"/v1/orgs/{org}/posts/{page['id']}")).json()["post"]["deletedAt"]  # in the recycle bin

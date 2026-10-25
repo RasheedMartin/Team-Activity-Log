@@ -2,7 +2,7 @@ import { http, HttpResponse } from "msw";
 import type { Collection, ID, LibraryItem, LibraryKind, LibraryPage, PinRef, Presentation, SavedView } from "../../api/contract";
 import { uuidv7 } from "../../lib/ids";
 import { db } from "../db";
-import { engine, fail, now, roleAtLeast, route, workspaceCtx } from "../server";
+import { engine, fail, now, reindex, roleAtLeast, route, workspaceCtx } from "../server";
 
 // Saved views, collections, and notebooks — built for scale (owner request): a paged, searchable
 // library; per-user pins for the rail; single-item reads. In Postgres: saved_views, collections,
@@ -172,7 +172,7 @@ export const libraryHandlers = [
       const entries = c!.postIds
         .map((id) => db.t.posts.get(id))
         .filter((p) => !!p && !p.deletedAt && (p.status === "published" || p.authorId === ctx.user.id) && (p.visibility === "visible" || p.authorId === ctx.user.id || roleAtLeast(ctx.role, "admin")))
-        .map((p) => ({ id: p!.id, title: p!.title, workDate: p!.workDate, authorId: p!.authorId }));
+        .map((p) => ({ id: p!.id, title: p!.title, workDate: p!.workDate, authorId: p!.authorId, status: p!.status }));
       return HttpResponse.json(entries);
     }),
   ),
@@ -229,15 +229,27 @@ export const libraryHandlers = [
   ),
   http.delete(
     "/v1/orgs/:org/workspaces/:ws/collections/:id",
-    route(({ cookies, params }) => {
+    route(({ cookies, params, request }) => {
       const ctx = workspaceCtx(cookies, params.org as string, params.ws as string, "member");
       const c = db.t.collections.get(params.id as string);
       if (!c || c.workspaceId !== ctx.ws.id) fail(404, "not_found", "Collection not found");
       if (c!.createdBy !== ctx.user.id && !roleAtLeast(ctx.role, "admin")) fail(403, "forbidden", "Only its creator or an admin can delete this");
-      // Deleting a collection never deletes posts; it only removes the grouping.
+      // Removes the grouping; with deleteMyPosts the caller's own posts go to the recycle bin too.
+      const deletedPostIds: string[] = [];
+      if (new URL(request.url).searchParams.get("deleteMyPosts") === "true") {
+        const t = now();
+        for (const id of c!.postIds) {
+          const p = db.t.posts.get(id);
+          if (p && p.authorId === ctx.user.id && !p.deletedAt) {
+            db.t.posts.put({ ...p, deletedAt: t, version: p.version + 1, updatedAt: t });
+            reindex(p.id);
+            deletedPostIds.push(p.id);
+          }
+        }
+      }
       syncPostCollections({ ...c!, postIds: [] }, c!.postIds);
       db.t.collections.delete(c!.id);
-      return new HttpResponse(null, { status: 204 });
+      return HttpResponse.json({ deletedPostIds });
     }),
   ),
 ];
