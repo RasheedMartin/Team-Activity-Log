@@ -94,7 +94,7 @@ export async function createAsset(orgId: ID, blob: Blob, filename: string, sourc
   setTimeout(() => {
     const a = db.t.assets.get(row.id);
     if (!a) return;
-    db.t.assets.put({ ...a, processing: "ready", metadata: { ...a.metadata, ocrState: "ready", ocrEngine: "tesseract", ocrText: sourceKind === "pptx_import" ? a.metadata.ocrText : CANNED_OCR[type] } });
+    db.t.assets.put({ ...a, processing: "ready", metadata: { ...a.metadata, ocrState: "ready", ocrEngine: "mock", ocrText: sourceKind === "pptx_import" ? a.metadata.ocrText : CANNED_OCR[type] } });
     db.t.images.filter((i) => i.assetId === row.id && !!i.postId).forEach((i) => reindex(i.postId!));
   }, 1200);
   return { asset: row, created: true };

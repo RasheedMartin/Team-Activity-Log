@@ -211,6 +211,7 @@ function seedAssets(orgId: ID): AssetRow[] {
       metadata: {
         ocrText: m.ocrText,
         ocrState: "ready",
+        ocrEngine: "mock",
         detectedType: m.type as ImageType,
         sourceKind: "upload",
         ...(m.type === "photo" ? { exif: { capturedAt: faker.date.past({ years: 2 }).toISOString(), cameraMake: "Canon", cameraModel: "EOS R6" } } : {}),

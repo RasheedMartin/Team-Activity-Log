@@ -15,7 +15,7 @@ test("an image's text is shown, can be corrected, and search uses the correction
   await page.locator("main figure img").first().click();
   await page.getByRole("button", { name: "Details" }).click();
   const drawer = page.getByRole("presentation").filter({ hasText: "Text in this image" });
-  await expect(drawer.getByText(/^(Read by the built-in engine|Read automatically) · searchable$|^No text found\.$/)).toBeVisible();
+  await expect(drawer.getByText(/^(Read by the built-in engine|Read automatically|Sample text \(mock mode doesn't read images\)) · searchable$|^No text found\.$/)).toBeVisible();
 
   await drawer.getByRole("button", { name: /^(Correct|Add text)$/ }).click();
   await drawer.getByRole("textbox", { name: "Text in this image" }).fill("Zebrafish rig 7781\nbaseline after shielding");
