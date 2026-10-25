@@ -74,10 +74,16 @@ async def build_documents(db: AsyncSession, post_ids: Sequence[uuid.UUID]) -> tu
     file_ids = [x for p in live for x in (parse_uuid(i) for i in block_attachment_ids(p.blocks)) if x]
     files = {a.id: a for a in (await db.execute(select(m.Attachment).where(m.Attachment.id.in_(file_ids)))).scalars()} if file_ids else {}
 
+    chart_ids = [x for p in live for b in p.blocks or [] if b.get("type") == "chart" and (x := parse_uuid(b.get("chartId")))]
+    charts = {cid: (cname, sname) for cid, cname, sname in (await db.execute(select(m.SheetChart.id, m.SheetChart.name, m.Sheet.name).join(m.Sheet, m.Sheet.id == m.SheetChart.sheet_id).where(m.SheetChart.id.in_(chart_ids)))).all()} if chart_ids else {}
+
     docs: dict[uuid.UUID, dict] = {}
     for p in live:
         blocks = p.blocks or []
         body = "\n".join(doc_text(d) for d in block_docs(blocks))
+        for b in blocks:  # an embedded chart: its name and its sheet's name are findable
+            if b.get("type") == "chart" and (ch := charts.get(parse_uuid(b.get("chartId")))):
+                body += f"\n{ch[0]}\n{ch[1]}"
         for fid in (parse_uuid(i) for i in block_attachment_ids(blocks)):
             a = files.get(fid) if fid else None
             if a and a.org_id == p.org_id:

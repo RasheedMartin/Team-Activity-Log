@@ -322,6 +322,47 @@ class Attachment(Base):
     __table_args__ = (UniqueConstraint("org_id", "sha256"),)
 
 
+class Sheet(Base):
+    """A spreadsheet imported as data (owner request: Sheets). Tabs hold the tables; charts are
+    saved views of them that posts can embed."""
+
+    __tablename__ = "sheets"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    org_id: Mapped[uuid.UUID] = fk("organizations.id")
+    workspace_id: Mapped[uuid.UUID] = fk("workspaces.id")
+    name: Mapped[str] = mapped_column(String(300))
+    filename: Mapped[str] = mapped_column(Text)
+    sha256: Mapped[str] = mapped_column(String(64))
+    bytes: Mapped[int] = mapped_column(BigInteger)
+    search_text: Mapped[str] = mapped_column(Text, server_default="")
+    created_by: Mapped[uuid.UUID | None] = fk("users.id", "SET NULL", True)
+    created_at: Mapped[dt.datetime] = ts(False, True)
+    updated_at: Mapped[dt.datetime] = ts(False, True)
+
+
+class SheetTab(Base):
+    __tablename__ = "sheet_tabs"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    sheet_id: Mapped[uuid.UUID] = fk("sheets.id")
+    position: Mapped[int] = mapped_column(Integer)
+    name: Mapped[str] = mapped_column(String(300))
+    columns: Mapped[list] = mapped_column(JSONB)  # [{key, name, type}]
+    rows: Mapped[list] = mapped_column(JSONB)  # [[value, …], …] in column order
+    row_count: Mapped[int] = mapped_column(Integer)
+    truncated: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+
+
+class SheetChart(Base):
+    __tablename__ = "sheet_charts"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    sheet_id: Mapped[uuid.UUID] = fk("sheets.id")
+    tab_id: Mapped[uuid.UUID] = fk("sheet_tabs.id")
+    name: Mapped[str] = mapped_column(String(300))
+    spec: Mapped[dict] = mapped_column(JSONB)  # {type, x, y: [keys], groupBy?, agg}
+    created_by: Mapped[uuid.UUID | None] = fk("users.id", "SET NULL", True)
+    created_at: Mapped[dt.datetime] = ts(False, True)
+
+
 class CollectionMember(Base):
     """Who may change a collection or notebook beyond viewing (everyone in the workspace can view).
     Its creator is always an owner and has no row; everyone else is a viewer unless listed here."""
