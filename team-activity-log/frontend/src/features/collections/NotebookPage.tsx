@@ -11,6 +11,7 @@ import {
   LinkRounded,
   LockOutlined,
   PersonAddAltRounded,
+  SellOutlined,
   VisibilityOutlined,
   MenuBookOutlined,
   PrintOutlined,
@@ -31,6 +32,8 @@ import {
   InputBase,
   LinearProgress,
   List,
+  Menu,
+  MenuItem,
   ListItem,
   ListItemButton,
   ListItemText,
@@ -176,6 +179,7 @@ export default function NotebookPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleteMine, setDeleteMine] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [followAnchor, setFollowAnchor] = useState<HTMLElement | null>(null);
   // Roles (owner request): everyone views; editors write and arrange; owners also share and delete.
   const canEdit = nb?.myRole !== "viewer";
   const isOwner = nb?.myRole === "owner" || nb?.myRole === undefined;
@@ -396,6 +400,28 @@ export default function NotebookPage() {
               </Tooltip>
             </>
           )}
+          {nb.followsTag && nb.sourceTagId && tags.get(nb.sourceTagId) ? (
+            <Tooltip title="New published posts with this tag are added automatically">
+              <Chip
+                size="small"
+                icon={<SellOutlined />}
+                label={`Following ${tags.get(nb.sourceTagId)!.name}`}
+                onDelete={canEdit ? () => update.mutate({ id: nb.id, followTagId: null }, { onSuccess: () => notify("Stopped following the tag; the notebook is manual now") }) : undefined}
+              />
+            </Tooltip>
+          ) : canEdit ? (
+            <>
+              <Button size="small" startIcon={<SellOutlined />} onClick={(e) => setFollowAnchor(e.currentTarget)}>Follow a tag</Button>
+              <Menu anchorEl={followAnchor} open={!!followAnchor} onClose={() => setFollowAnchor(null)} slotProps={{ paper: { sx: { maxHeight: 360 } } }}>
+                <MenuItem disabled sx={{ opacity: "1 !important" }}><Typography variant="caption" color="text.secondary">New published posts with the tag are added to the end.</Typography></MenuItem>
+                {[...tags.values()].sort((a, b) => a.name.localeCompare(b.name)).map((t) => (
+                  <MenuItem key={t.id} onClick={() => (setFollowAnchor(null), update.mutate({ id: nb.id, followTagId: t.id }, { onSuccess: () => notify(`Following ${t.name}: its published posts are in, and new ones will be added`), onError: (e) => notify(e.message) }))}>
+                    {t.name}
+                  </MenuItem>
+                ))}
+              </Menu>
+            </>
+          ) : null}
           {isOwner && (
             <>
               <Button size="small" startIcon={<PersonAddAltRounded />} onClick={() => setSharing(true)} aria-label="Share notebook">Share</Button>

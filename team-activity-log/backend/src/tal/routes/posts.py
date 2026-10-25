@@ -9,7 +9,7 @@ from fastapi import APIRouter, Body, Depends, Request, Response
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import collection_access, storage
+from .. import collection_access, follow, storage
 from .. import models as m
 from .. import sanitize as clean
 from ..config import get_settings
@@ -169,6 +169,9 @@ async def patch_post(org: str, post_id: str, body: dict = Body(...), u: m.User =
     if p.status == "published":
         await snapshot_revision(db, p, u.id)
         await changed(db, p)
+        if "tagIds" in body:
+            await db.flush()
+            await follow.post_published(db, p)  # a newly added tag may be followed by a notebook
     return await detail(db, p)
 
 
@@ -193,6 +196,7 @@ async def publish(org: str, post_id: str, body: dict = Body(default={}), u: m.Us
     p.status, p.published_at, p.updated_at, p.revision, p.version = "published", t, t, 1, p.version + 1
     await snapshot_revision(db, p, u.id)
     await changed(db, p)
+    await follow.post_published(db, p)  # into notebooks that follow one of its tags
     return await detail(db, p)
 
 

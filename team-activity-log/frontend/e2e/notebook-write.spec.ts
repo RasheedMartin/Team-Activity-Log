@@ -49,3 +49,27 @@ test("write a notebook: empty, write pages, pull in posts, delete with my pages,
   await expect(page.getByLabel("Notebook title")).toHaveValue("Detector lab book");
   await expect(page.getByText(/^\d+ entr/)).toHaveText(/^3 entries/);
 });
+
+test("a notebook can follow a tag: published posts with it are added", async ({ page }) => {
+  await openScenario(page, "small");
+  await page.getByRole("navigation", { name: "Workspace" }).getByRole("link", { name: "Notebooks" }).click();
+  await page.getByRole("button", { name: "New notebook" }).click();
+  await page.getByRole("dialog").getByLabel("Name").fill("Cooldown log");
+  await page.getByRole("dialog").getByRole("button", { name: "Create" }).click();
+  await expect(page.getByText("This notebook is empty")).toBeVisible();
+  await page.getByRole("button", { name: "Follow a tag" }).click();
+  await page.getByRole("menuitem", { name: "cooldown", exact: true }).click();
+  await expect(page.getByText("Following cooldown")).toBeVisible();
+  await expect(page.getByText(/^\d+ entr/)).toHaveText(/^[1-9]\d* entr/); // the tag's published posts came in
+  await page.getByRole("button", { name: "Write a page" }).first().click();
+  await page.getByLabel("Title", { exact: true }).fill("Cooldown run 4513");
+  await page.getByLabel("Text block 1").click();
+  await page.keyboard.type("Second cooldown.");
+  await page.getByRole("combobox", { name: "Tags" }).click();
+  await page.getByRole("combobox", { name: "Tags" }).fill("cool");
+  await page.getByRole("option", { name: "cooldown" }).click();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("status")).toContainText("Saved", { timeout: 10_000 });
+  await page.getByRole("button", { name: /^Publish/ }).click();
+  await expect(page.getByRole("navigation", { name: "Contents" })).toContainText("Cooldown run 4513");
+});

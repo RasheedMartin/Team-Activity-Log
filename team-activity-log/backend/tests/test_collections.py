@@ -38,7 +38,7 @@ async def test_others_see_only_published_posts_in_a_collection(client):
     await add_member(client, org, "colleague@example.test")
     seen = (await client.get(f"/v1/orgs/{org}/workspaces/{ws}/collections/{deck['id']}")).json()
     assert seen["postIds"] == [ids[0]]  # only the published one
-    lib = {i["id"]: i["postCount"] for i in (await client.get(f"/v1/orgs/{org}/workspaces/{ws}/library", params={"kind": "collection"})).json()["items"]}
+    lib = {i["id"]: i["postCount"] for i in (await client.get(f"/v1/orgs/{org}/workspaces/{ws}/library", params={"kind": "notebook"})).json()["items"]}
     assert lib == {deck["id"]: 1}  # counts what they can see; the drafts-only collection isn't listed
     assert (await client.get(f"/v1/orgs/{org}/workspaces/{ws}/collections/{drafts_only['id']}")).status_code == 404
 
@@ -86,3 +86,27 @@ async def test_a_notebook_shared_with_people_is_hidden_from_everyone_else(client
     shared = (await lib(shared="1")).json()["items"]
     assert [(i["id"], i["sharedWithMe"]) for i in shared] == [(nb["id"], True)]
     assert (await client.put(f"{url}/posts", json={"postIds": []})).status_code == 403  # viewing only
+
+
+async def test_a_notebook_can_follow_a_tag(client):
+    me = await signup(client, "follow@example.test")
+    org, ws = me["orgs"][0]["org"]["id"], me["orgs"][0]["workspaces"][0]["id"]
+    tag = (await client.post(f"/v1/orgs/{org}/tags", json={"name": "calibration"})).json()
+    tid = tag.get("id") or tag.get("tag", {}).get("id")
+    new = lambda t, tags: client.post(f"/v1/orgs/{org}/workspaces/{ws}/posts", json={"title": t, "tagIds": tags, "blocks": [{"id": "b", "type": "text", "doc": DOC}]})  # noqa: E731
+    old = (await new("Old calibration", [tid])).json()["post"]["id"]
+    await client.post(f"/v1/orgs/{org}/posts/{old}/publish", json={})
+    nb = (await client.post(f"/v1/orgs/{org}/workspaces/{ws}/collections", json={"name": "Calibration log", "postIds": []})).json()
+    assert nb["kind"] == "notebook" and not nb.get("followsTag")  # manual unless asked
+
+    url = f"/v1/orgs/{org}/workspaces/{ws}/collections/{nb['id']}"
+    r = await client.patch(url, json={"followTagId": tid})
+    assert r.json()["followsTag"] is True and r.json()["postIds"] == [old]  # existing posts come in
+    fresh = (await new("New calibration", [tid])).json()["post"]["id"]
+    assert (await client.get(url)).json()["postIds"] == [old]  # drafts don't
+    await client.post(f"/v1/orgs/{org}/posts/{fresh}/publish", json={})
+    assert (await client.get(url)).json()["postIds"] == [old, fresh]  # published ones are appended
+    await client.patch(url, json={"followTagId": None})
+    other = (await new("Later", [tid])).json()["post"]["id"]
+    await client.post(f"/v1/orgs/{org}/posts/{other}/publish", json={})
+    assert (await client.get(url)).json()["postIds"] == [old, fresh]  # stopped following

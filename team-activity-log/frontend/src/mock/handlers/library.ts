@@ -4,6 +4,7 @@ import { uuidv7 } from "../../lib/ids";
 import { db } from "../db";
 import { engine, fail, now, reindex, roleAtLeast, route, workspaceCtx, type OrgCtx } from "../server";
 import { membersOf, requireRole, roleIn, setMembers, sharedWith } from "./collectionAccess";
+import { backfill } from "../follow";
 
 // Saved views, collections, and notebooks — built for scale (owner request): a paged, searchable
 // library; per-user pins for the rail; single-item reads. In Postgres: saved_views, collections,
@@ -18,7 +19,8 @@ function togglePin(userId: ID, wsId: ID, ref: PinRef, on: boolean) {
   setPins(userId, wsId, on ? [...pins, ref] : pins);
 }
 
-const kindOf = (c: Collection): LibraryKind => (c.kind === "notebook" ? "notebook" : "collection");
+// Only imported decks are "collections" now; anything hand-picked (older rows too) is a notebook.
+const kindOf = (c: Collection): LibraryKind => (c.kind === "deck_import" ? "collection" : "notebook");
 const viewItem = (v: SavedView, me: ID): LibraryItem => ({ kind: "view", id: v.id, name: v.name, ownerId: v.ownerId, shared: v.shared, pinned: isPinned(me, v.workspaceId, "view", v.id), updatedAt: v.updatedAt ?? "1970-01-01T00:00:00Z", filterSpec: v.filterSpec });
 /** Like the server (views.visible_to): deleted posts, and others' drafts or hidden posts, drop out
  *  of what a person sees in a collection; membership stays, so restoring or publishing one puts it
@@ -204,7 +206,7 @@ export const libraryHandlers = [
         if (byTag) fail(409, "exists", `This tag already has a notebook: “${byTag.name}”`, { existingId: byTag.id });
         assertUniqueNotebookName(ctx.ws.id, body.name);
       }
-      const c = db.t.collections.put({ id: uuidv7(), workspaceId: ctx.ws.id, name: body.name.trim(), kind: body.kind ?? "manual", postIds: body.postIds ?? [], createdBy: ctx.user.id, updatedAt: now(), sourceTagId: body.sourceTagId });
+      const c = db.t.collections.put({ id: uuidv7(), workspaceId: ctx.ws.id, name: body.name.trim(), kind: "notebook", followsTag: !!body.sourceTagId || undefined, postIds: body.postIds ?? [], createdBy: ctx.user.id, updatedAt: now(), sourceTagId: body.sourceTagId });
       syncPostCollections(c, []);
       return HttpResponse.json(view(c, ctx), { status: 201 });
     }),
@@ -215,7 +217,15 @@ export const libraryHandlers = [
       const ctx = workspaceCtx(cookies, params.org as string, params.ws as string);
       const c = db.t.collections.get(params.id as string);
       if (!c || c.workspaceId !== ctx.ws.id) fail(404, "not_found", "Collection not found");
-      const { name, pinned, presentation } = (await request.json()) as { name?: string; pinned?: boolean; presentation?: Presentation | null };
+      const { name, pinned, presentation, followTagId } = (await request.json()) as { name?: string; pinned?: boolean; presentation?: Presentation | null; followTagId?: string | null };
+      if (followTagId !== undefined) {
+        requireRole(ctx, c!, "editor");
+        if (followTagId) {
+          const clash = db.t.collections.find((x) => x.workspaceId === ctx.ws.id && x.kind === "notebook" && x.sourceTagId === followTagId && x.id !== c!.id);
+          if (clash) fail(409, "exists", `“${clash.name}” already follows this tag`, { existingId: clash.id });
+          backfill(db.t.collections.update(c!.id, { sourceTagId: followTagId, followsTag: true, updatedAt: now() })!);
+        } else db.t.collections.update(c!.id, { followsTag: false, updatedAt: now() });
+      }
       if (pinned !== undefined) togglePin(ctx.user.id, ctx.ws.id, { kind: kindOf(c!), id: c!.id }, pinned);
       if (name !== undefined) {
         requireRole(ctx, c!, "editor");

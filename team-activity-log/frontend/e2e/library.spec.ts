@@ -4,23 +4,24 @@ import { openScenario } from "./helpers";
 // Collections and Notebooks each have their own page in the rail (owner request, replacing the
 // Library): paged, searchable by name, star to favorite, delete with undo. Saved searches live in
 // Search's menu.
-test("collections and notebooks pages at scale: search, paging, favorites, delete with undo", async ({ page }) => {
+test("decks and notebooks pages at scale: search, paging, favorites, delete with undo", async ({ page }) => {
   test.setTimeout(120_000);
   await openScenario(page, "busy");
   const nav = page.getByRole("navigation", { name: "Workspace" });
   await expect(nav.getByRole("link", { name: "Library" })).toHaveCount(0);
 
-  await nav.getByRole("link", { name: "Collections" }).click();
-  await expect(page.getByRole("main").getByRole("heading", { name: "Collections" })).toBeVisible();
-  const collections = page.getByRole("list", { name: "Collections" }).getByRole("listitem");
-  await expect(collections).toHaveCount(40); // paged: first page is limited; "Show more" loads the next
-  await page.getByRole("button", { name: /Show more/ }).click();
-  await expect(collections).toHaveCount(80);
-  await collections.first().getByRole("link").click();
-  await expect(page).toHaveURL(/\/collections\/[^/]+$/); // its own page, not Search
+  // Decks: imported slides, and where importing starts.
+  await nav.getByRole("link", { name: "Decks" }).click();
+  await expect(page.getByRole("main").getByRole("heading", { name: "Decks" })).toBeVisible();
+  await expect(page.getByRole("main").getByRole("link", { name: "Import slides" })).toBeVisible();
 
+  // Notebooks (hand-picked groups are notebooks now), paged.
   await nav.getByRole("link", { name: "Notebooks" }).click();
-  await expect(page.getByText("Posts in an order, read start to finish.")).toBeVisible(); // each kind says what it is
+  await expect(page.getByText(/^Posts in an order/)).toBeVisible(); // each kind says what it is
+  const all = page.getByRole("list", { name: "Notebooks" }).getByRole("listitem");
+  await expect(all).toHaveCount(40); // paged: first page is limited; "Show more" loads the next
+  await page.getByRole("button", { name: /Show more/ }).click();
+  await expect(all).toHaveCount(80);
   const rows = page.getByRole("list", { name: "Notebooks" }).getByRole("listitem");
   await page.getByLabel("Find notebooks").fill("notebook 1");
   await expect(rows.first()).toContainText("notebook 1");

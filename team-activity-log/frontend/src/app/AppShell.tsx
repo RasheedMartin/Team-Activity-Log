@@ -5,7 +5,6 @@ import {
   SearchRounded,
   ExpandMoreRounded,
   NotificationsNoneRounded,
-  CollectionsBookmarkOutlined,
   MenuBookOutlined,
   LogoutRounded,
   MenuRounded,
@@ -225,10 +224,6 @@ function Rail({ onNavigate }: { onNavigate?: () => void }) {
           >
             New post
           </Button>
-          {/* Second way in: decks become searchable posts. A button, not a nav row, because it starts work. */}
-          <Button fullWidth variant="outlined" component={RouterLink} to={`${base}/import`} onClick={onNavigate} startIcon={<SlideshowOutlined />} sx={{ mt: 1, justifyContent: "flex-start" }}>
-            Import slides
-          </Button>
         </Box>
       )}
       <Box sx={{ flex: 1, overflow: "auto", px: 1 }}>
@@ -237,7 +232,7 @@ function Rail({ onNavigate }: { onNavigate?: () => void }) {
           {/* Search is the all-posts list; it's "current" unless a pinned view/collection is. */}
           <NavItem to={`${base}/search`} icon={<SearchRounded />} label="Search" active={onSearch && !pinActive} onClick={onNavigate} />
           <NavItem to={`${base}/activity`} icon={<NotificationsNoneRounded />} label="Activity" badge={unread} onClick={onNavigate} />
-          <NavItem to={`${base}/collections`} icon={<CollectionsBookmarkOutlined />} label="Collections" onClick={onNavigate} />
+          <NavItem to={`${base}/collections`} icon={<SlideshowOutlined />} label="Decks" onClick={onNavigate} />
           <NavItem to={`${base}/notebooks`} icon={<MenuBookOutlined />} label="Notebooks" onClick={onNavigate} />
         </List>
         {/* Favorites: what *you* starred (the API calls them pins). Hidden until there's one. */}

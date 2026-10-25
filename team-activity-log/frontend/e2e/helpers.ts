@@ -28,3 +28,9 @@ export async function openScenario(page: Page, scenario: "empty" | "small" | "bu
     await expect(page.getByRole("combobox", { name: "Search" })).toBeVisible();
   }
 }
+
+/** Import slides starts on the Decks page (rail → Decks → Import slides). */
+export async function openImport(page: Page) {
+  await page.getByRole("navigation", { name: "Workspace" }).getByRole("link", { name: "Decks" }).click();
+  await page.getByRole("main").getByRole("link", { name: "Import slides" }).click();
+}

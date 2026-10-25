@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { openScenario } from "./helpers";
+import { openImport, openScenario } from "./helpers";
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -11,7 +11,7 @@ const deck = (name: string, real = true) => ({ name, mimeType: PPTX_MIME, buffer
 const EXPECTED_ITEMS: Record<string, number> = { "One post per slide": 8, "One post for the deck": 1, "Group by section": 3 };
 
 async function startImport(page: Page, file: ReturnType<typeof deck>, mode: string) {
-  await page.getByRole("complementary").getByRole("link", { name: "Import slides" }).click();
+  await openImport(page);
   await page.getByLabel("PowerPoint file").setInputFiles(file);
   await page.getByRole("radio", { name: new RegExp(mode) }).click();
   await page.getByRole("button", { name: "Start import" }).click();
@@ -199,7 +199,7 @@ test("notebook contents land exactly on the entry (reader and continuous)", asyn
 
 test("import slides is easy to find, and a deck dropped anywhere starts an import", async ({ page }) => {
   await openScenario(page, "small", "home");
-  await expect(page.getByRole("complementary").getByRole("link", { name: "Import slides" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Workspace" }).getByRole("link", { name: "Decks" })).toBeVisible();
 
   // Drag a real .pptx over the Home page and drop it.
   const dt = await page.evaluateHandle(({ bytes, type }) => {

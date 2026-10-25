@@ -99,8 +99,8 @@ export function AddToDialog({ postIds, onClose, onDone }: { postIds: ID[]; onClo
   const query = useDeferredValue(q.trim());
   const [target, setTarget] = useState<ID | null>(null);
   const notebooks = useLibrary(org.id, ws.id, { kind: "notebook", q: query, limit: 20 });
-  const collections = useLibrary(org.id, ws.id, { kind: "collection", q: query, limit: 20 });
-  const items = [...(notebooks.data?.pages.flatMap((p) => p.items) ?? []), ...(collections.data?.pages.flatMap((p) => p.items) ?? [])];
+  // Only notebooks take posts by hand; decks hold their imported slides.
+  const items = notebooks.data?.pages.flatMap((p) => p.items) ?? [];
   const chosen = useCollection(org.id, ws.id, target);
   const update = useUpdateCollection(org.id, ws.id);
   const notify = useNotify();
@@ -118,13 +118,13 @@ export function AddToDialog({ postIds, onClose, onDone }: { postIds: ID[]; onClo
     <Dialog open onClose={onClose} fullWidth maxWidth="xs">
       <DialogTitle>Add {postIds.length} post{postIds.length === 1 ? "" : "s"} to…</DialogTitle>
       <DialogContent>
-        <TextField fullWidth autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a notebook or collection" inputProps={{ "aria-label": "Find a notebook or collection" }} sx={{ mt: 1 }} />
-        {notebooks.isPending || collections.isPending ? (
+        <TextField fullWidth autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a notebook" inputProps={{ "aria-label": "Find a notebook" }} sx={{ mt: 1 }} />
+        {notebooks.isPending ? (
           [0, 1, 2].map((i) => <Skeleton key={i} height={44} />)
         ) : !items.length ? (
-          <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>No notebooks or collections{query ? " match" : " yet"}.</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>No notebooks{query ? " match" : " yet"}.</Typography>
         ) : (
-          <List dense aria-label="Notebooks and collections" sx={{ maxHeight: 320, overflow: "auto" }}>
+          <List dense aria-label="Notebooks" sx={{ maxHeight: 320, overflow: "auto" }}>
             {items.map((i) => (
               <ListItemButton key={i.id} selected={target === i.id} onClick={() => setTarget(i.id)}>
                 <ListItemIcon sx={{ minWidth: 36 }}>

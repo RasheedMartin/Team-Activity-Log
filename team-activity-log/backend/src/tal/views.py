@@ -234,7 +234,7 @@ def saved_view_view(v: m.SavedView, pinned: bool) -> dict:
 
 def collection_view(c: m.CollectionRow, post_ids: list[str]) -> dict:
     return clean(
-        {"id": s(c.id), "workspaceId": s(c.workspace_id), "name": c.name, "kind": c.kind, "postIds": post_ids, "createdBy": s(c.created_by), "updatedAt": iso(c.updated_at), "sourceTagId": s(c.source_tag_id), "presentation": c.presentation, "visibility": c.visibility}
+        {"id": s(c.id), "workspaceId": s(c.workspace_id), "name": c.name, "kind": c.kind, "postIds": post_ids, "createdBy": s(c.created_by), "updatedAt": iso(c.updated_at), "sourceTagId": s(c.source_tag_id), "presentation": c.presentation, "visibility": c.visibility, "followsTag": c.follows_tag or None}
     )
 
 

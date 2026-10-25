@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { openScenario } from "./helpers";
+import { openImport, openScenario } from "./helpers";
 
 // Designed slides (slides step 2): an imported deck keeps its layout, its text stays searchable,
 // it presents as designed, and it scales down to a phone.
@@ -11,7 +11,7 @@ const FIXTURE = readFileSync(path.join(path.dirname(new URL(import.meta.url).pat
 
 async function importDeck(page: Page, design: "Automatic" | "Keep the design") {
   await openScenario(page, "small");
-  await page.getByRole("complementary").getByRole("link", { name: "Import slides" }).click();
+  await openImport(page);
   await page.getByLabel("PowerPoint file").setInputFiles({ name: "Formatting_2024.pptx", mimeType: PPTX_MIME, buffer: FIXTURE });
   await page.getByRole("radio", { name: /One post for the deck/ }).click();
   await page.getByRole("radio", { name: new RegExp(`^${design}`) }).click();

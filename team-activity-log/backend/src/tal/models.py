@@ -292,6 +292,8 @@ class CollectionRow(Base):
     presentation: Mapped[dict | None] = mapped_column(JSONB)  # {"theme": SlideTheme} for presenting
     # "workspace": everyone in it can view; "people": only those it's shared with (collection_members).
     visibility: Mapped[str] = mapped_column(String(12), server_default="workspace")
+    # A notebook following source_tag_id: newly published posts with that tag are appended.
+    follows_tag: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     created_at: Mapped[dt.datetime] = ts(False, True)
     updated_at: Mapped[dt.datetime] = ts(False, True)
     __table_args__ = (

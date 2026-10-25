@@ -32,7 +32,7 @@ async def test_deleted_drafts_leave_collections_until_restored(client):
 
     async def listed():
         one = (await client.get(f"/v1/orgs/{org}/workspaces/{ws}/collections/{c['id']}")).json()["postIds"]
-        lib = (await client.get(f"/v1/orgs/{org}/workspaces/{ws}/library", params={"kind": "collection"})).json()["items"]
+        lib = (await client.get(f"/v1/orgs/{org}/workspaces/{ws}/library", params={"kind": "notebook"})).json()["items"]
         return one, next(i["postCount"] for i in lib if i["id"] == c["id"])
 
     assert await listed() == (ids, 3)

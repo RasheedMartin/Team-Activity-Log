@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { openScenario } from "./helpers";
+import { openImport, openScenario } from "./helpers";
 
 // Owner feedback: reviewing imported drafts lost the way back, publishing several needed a
 // select-all, and the import page, Activity, and the deck page each reviewed the same drafts. Now
@@ -11,7 +11,7 @@ import { openScenario } from "./helpers";
 const FIXTURE = readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), "fixtures", "Lab_Notes_2021.pptx"));
 
 async function importPerSlide(page: Page) {
-  await page.getByRole("complementary").getByRole("link", { name: "Import slides" }).click();
+  await openImport(page);
   await page.getByLabel("PowerPoint file").setInputFiles({ name: "Lab_Notes_2021.pptx", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", buffer: FIXTURE });
   await page.getByRole("radio", { name: /One post per slide/ }).click();
   await page.getByRole("button", { name: "Start import" }).click();
@@ -105,21 +105,21 @@ test("the deck review fits a phone", async ({ page }) => {
 test("an unfinished import is easy to get back to", async ({ page }) => {
   await openScenario(page, "small");
   // Uploaded and parsed, but left at review without creating anything.
-  await page.getByRole("complementary").getByRole("link", { name: "Import slides" }).click();
+  await openImport(page);
   await page.getByLabel("PowerPoint file").setInputFiles({ name: "Left_halfway.pptx", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", buffer: FIXTURE });
   await page.getByRole("button", { name: "Start import" }).click();
   await expect(page.getByRole("button", { name: /^Create \d+ drafts$/ })).toBeVisible({ timeout: 20_000 });
   // And one committed with drafts still to review.
   await inApp(page, new URL(page.url()).pathname);
   await importPerSlide(page);
-  await page.getByRole("complementary").getByRole("link", { name: "Import slides" }).click();
+  await openImport(page);
 
   const yours = page.getByRole("list", { name: "Your imports" });
   await expect(yours.getByRole("listitem")).toHaveCount(2);
   await expect(yours.getByRole("listitem").filter({ hasText: "Lab_Notes_2021.pptx" })).toContainText("0 of 8 published · 8 left to review");
   await yours.getByRole("listitem").filter({ hasText: "Lab_Notes_2021.pptx" }).getByRole("button").click();
   await expect(page.getByRole("tab", { name: "To review (8)", selected: true })).toBeVisible(); // a created import opens its deck
-  await page.getByRole("complementary").getByRole("link", { name: "Import slides" }).click();
+  await openImport(page);
   await yours.getByRole("listitem").filter({ hasText: "Left_halfway.pptx" }).getByText(/Ready to review/).click();
   await expect(page.getByRole("button", { name: /^Create \d+ drafts$/ })).toBeVisible(); // back in review, where it was left
 });
@@ -141,8 +141,8 @@ test("an imported deck has its own page, like a notebook", async ({ page }) => {
   await links.nth(1).click();
   await page.getByRole("button", { name: /Back to Lab_Notes_2021/ }).click();
   await expect(page).toHaveURL(/\/collections\//);
-  // The rail's Collections page lists it, and opens it here too, not in Search.
-  await page.getByRole("navigation", { name: "Workspace" }).getByRole("link", { name: "Collections" }).click();
+  // The rail's Decks page lists it, and opens it here too, not in Search.
+  await page.getByRole("navigation", { name: "Workspace" }).getByRole("link", { name: "Decks" }).click();
   await page.getByRole("main").getByRole("link", { name: /Lab_Notes_2021/ }).first().click();
   await expect(page).toHaveURL(/\/collections\//);
   // Present from here returns here.
@@ -228,7 +228,7 @@ test("combine drafts on the deck into one post, and split them back until it's p
 test("importing the same deck again points to the one already in the workspace", async ({ page }) => {
   await openScenario(page, "small");
   await importPerSlide(page);
-  await page.getByRole("complementary").getByRole("link", { name: "Import slides" }).click();
+  await openImport(page);
   await page.getByLabel("PowerPoint file").setInputFiles({ name: "Lab_Notes_2021 (1).pptx", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", buffer: FIXTURE });
   await page.getByRole("button", { name: "Start import" }).click();
   const notice = page.getByRole("alert").filter({ hasText: /already imported this deck/ });
@@ -239,7 +239,7 @@ test("importing the same deck again points to the one already in the workspace",
 
 test("a deck can be kept to yourself at import", async ({ page }) => {
   await openScenario(page, "small");
-  await page.getByRole("complementary").getByRole("link", { name: "Import slides" }).click();
+  await openImport(page);
   await page.getByLabel("PowerPoint file").setInputFiles({ name: "Mine_only.pptx", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", buffer: FIXTURE });
   await page.getByRole("button", { name: "Start import" }).click();
   await page.getByRole("checkbox", { name: /Share this deck with the workspace/ }).uncheck({ timeout: 20_000 });

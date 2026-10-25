@@ -49,7 +49,7 @@ test("posts selected in search can be added to an existing notebook", async ({ p
   for (const i of [0, 1, 2]) await boxes.nth(i).check();
   await page.getByRole("button", { name: "Add to…" }).click();
   const dialog = page.getByRole("dialog");
-  await dialog.getByLabel("Find a notebook or collection").fill("Grows later");
+  await dialog.getByLabel("Find a notebook").fill("Grows later");
   await dialog.getByRole("button", { name: /Grows later/ }).click();
   await dialog.getByRole("button", { name: "Add", exact: true }).click();
   await expect(page.getByText(/Added 2 posts to “Grows later”/)).toBeVisible(); // the first was already in it

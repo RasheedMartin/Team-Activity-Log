@@ -9,6 +9,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import collection_access as access
+from .. import follow
 from .. import models as m
 from .. import sanitize as clean
 from ..context import WsCtx, require_user, role_at_least, ws_ctx
@@ -266,7 +267,8 @@ async def entries(org: str, ws: str, cid: str, u: m.User = Depends(require_user)
 async def create_collection(org: str, ws: str, body: dict = Body(...), u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
     ctx = await ws_ctx(db, u, org, ws, "member")
     name = clean.text(body.get("name"), "name", 300, required=True, label="Name") or ""
-    kind = body.get("kind") if body.get("kind") in ("manual", "deck_import", "saved_selection", "notebook") else "manual"
+    # Hand-picked groups are notebooks now (owner decision); decks come only from imports.
+    kind = "notebook"
     tag_id = parse_uuid(body.get("sourceTagId"))
     if kind == "notebook":
         # One notebook per tag (survives renames), and notebook names are unique.
@@ -278,7 +280,9 @@ async def create_collection(org: str, ws: str, body: dict = Body(...), u: m.User
                 fail(409, "exists", f"This tag already has a notebook: “{by_tag.name}”", {"existingId": str(by_tag.id)})
         await assert_unique_notebook_name(db, ctx.ws.id, name)
     t = now()
-    c = m.CollectionRow(id=uuid7(), org_id=ctx.org.id, workspace_id=ctx.ws.id, name=name, kind=kind, created_by=u.id, source_tag_id=tag_id, created_at=t, updated_at=t)
+    # Notebooks are manual, except one made from a tag, which follows it (owner decision); anyone
+    # can switch following on or off later.
+    c = m.CollectionRow(id=uuid7(), org_id=ctx.org.id, workspace_id=ctx.ws.id, name=name, kind=kind, created_by=u.id, source_tag_id=tag_id, follows_tag=bool(tag_id), created_at=t, updated_at=t)
     db.add(c)
     await db.flush()
     await set_collection_posts(db, c, body.get("postIds") or [], keep_unseen_by=ctx.user.id)
@@ -297,6 +301,20 @@ async def patch_collection(org: str, ws: str, cid: str, body: dict = Body(...), 
         if c.kind == "notebook":
             await assert_unique_notebook_name(db, ctx.ws.id, name, c.id)
         c.name, c.updated_at = name, now()
+    if "followTagId" in body:  # null stops following
+        await access.require(db, ctx, c, "editor")
+        tag = parse_uuid(str(body["followTagId"])) if body["followTagId"] else None
+        if tag and not await db.scalar(select(m.Tag.id).where(m.Tag.id == tag, m.Tag.org_id == ctx.org.id)):
+            fail(422, "invalid", "Unknown tag")
+        if tag:
+            clash = (await db.execute(select(m.CollectionRow).where(m.CollectionRow.workspace_id == ctx.ws.id, m.CollectionRow.kind == "notebook", m.CollectionRow.source_tag_id == tag, m.CollectionRow.id != c.id))).scalars().first()
+            if clash:
+                fail(409, "exists", f"“{clash.name}” already follows this tag", {"existingId": str(clash.id)})
+            c.source_tag_id, c.follows_tag = tag, True
+            await follow.backfill(db, c)
+        else:
+            c.follows_tag = False
+        c.updated_at = now()
     if "visibility" in body:
         await access.require(db, ctx, c, "owner")
         if body["visibility"] not in ("workspace", "people"):

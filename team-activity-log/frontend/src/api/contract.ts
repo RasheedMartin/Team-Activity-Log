@@ -589,6 +589,8 @@ export interface Collection {
   members?: { userId: ID; role: CollectionRole }[];
   /** The caller's role: owner if they created it, else what an owner granted (viewer by default). */
   myRole?: CollectionRole;
+  /** A notebook following its sourceTagId: newly published posts with the tag are appended. */
+  followsTag?: boolean;
   /** "workspace": everyone in it can view (default); "people": only those it's shared with. */
   visibility?: "workspace" | "people";
 }

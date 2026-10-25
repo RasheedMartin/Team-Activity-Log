@@ -4,6 +4,7 @@ import { todayISO } from "../../lib/dates";
 import { uuidv7 } from "../../lib/ids";
 import { blockImageIds, hasContent as blocksHaveContent } from "../../lib/blocks";
 import { createAsset } from "../assets";
+import { postPublished } from "../follow";
 import { requireRole } from "./collectionAccess";
 import { db, type PostRow } from "../db";
 import {
@@ -202,6 +203,7 @@ export const postHandlers = [
         counts: { ...p.counts, images: imageCount(blocks) },
       });
       if (p.status === "published") snapshotRevision(next, ctx.user.id);
+      if (p.status === "published" && fields.tagIds) postPublished(next); // a newly added tag may be followed
       if (p.status === "published") changed(p.id, next);
       return HttpResponse.json(detail(next));
     }),
@@ -225,6 +227,7 @@ export const postHandlers = [
       const next = db.t.posts.put({ ...p, status: "published", publishedAt: t, updatedAt: t, revision: 1, version: p.version + 1 });
       snapshotRevision(next, ctx.user.id);
       changed(p.id, next);
+      postPublished(next); // into notebooks that follow one of its tags
       return HttpResponse.json(detail(next));
     }),
   ),

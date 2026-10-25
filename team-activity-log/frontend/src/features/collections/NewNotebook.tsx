@@ -1,7 +1,7 @@
-import { AddRounded } from "@mui/icons-material";
+import { AddRounded, UploadFileOutlined } from "@mui/icons-material";
 import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, TextField } from "@mui/material";
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link as RouterLink, useNavigate } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import { useCreateCollection } from "../../api/hooks";
 import { useWs, wsPath } from "../../app/session";
@@ -35,5 +35,15 @@ export function NewNotebookButton() {
         </DialogActions>
       </Dialog>
     </>
+  );
+}
+
+/** Decks page (owner request): importing slides starts here, where its decks live. */
+export function ImportSlidesButton() {
+  const { org, ws } = useWs();
+  return (
+    <Button variant="contained" startIcon={<UploadFileOutlined />} component={RouterLink} to={wsPath(org, ws, "/import")}>
+      Import slides
+    </Button>
   );
 }

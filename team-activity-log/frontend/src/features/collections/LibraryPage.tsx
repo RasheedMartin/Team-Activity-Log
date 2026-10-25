@@ -39,7 +39,7 @@ import { errorMessage } from "../../lib/format";
 import { KINDS } from "./concepts";
 import { FavoriteButton } from "./FavoriteButton";
 import { libraryHref } from "./libraryLinks";
-import { NewNotebookButton } from "./NewNotebook";
+import { ImportSlidesButton, NewNotebookButton } from "./NewNotebook";
 
 
 function RenameDialog({ item, onClose }: { item: LibraryItem; onClose: () => void }) {
@@ -164,7 +164,7 @@ export default function LibraryPage({ kind }: { kind: Exclude<LibraryKind, "view
 
   return (
     <Box sx={{ maxWidth: 960, width: "100%", mx: "auto", px: { xs: 1.5, sm: 3 }, py: 3 }}>
-      <PageHeader title={KINDS[kind].plural} sub={KINDS[kind].blurb} actions={kind === "notebook" ? <NewNotebookButton /> : undefined} />
+      <PageHeader title={KINDS[kind].plural} sub={KINDS[kind].blurb} actions={kind === "notebook" ? <NewNotebookButton /> : <ImportSlidesButton />} />
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mb: 2 }}>
         <TextField
           placeholder="Search by name"

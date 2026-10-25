@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { openScenario } from "./helpers";
+import { openImport, openScenario } from "./helpers";
 
 // Imported slides converted to post text keep their formatting and reading order (scripts/make-test-deck.mjs builds the
 // deck), the result stays editable, and both read on a phone.
@@ -11,7 +11,7 @@ const FIXTURE = readFileSync(path.join(path.dirname(new URL(import.meta.url).pat
 
 async function importDeck(page: Page) {
   await openScenario(page, "small");
-  await page.getByRole("complementary").getByRole("link", { name: "Import slides" }).click();
+  await openImport(page);
   await page.getByLabel("PowerPoint file").setInputFiles({ name: "Formatting_2024.pptx", mimeType: PPTX_MIME, buffer: FIXTURE });
   await page.getByRole("radio", { name: /One post for the deck/ }).click();
   await page.getByRole("radio", { name: /^Text only/ }).click(); // these tests are about the conversion to post text

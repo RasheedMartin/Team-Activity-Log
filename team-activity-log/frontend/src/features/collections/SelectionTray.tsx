@@ -1,4 +1,4 @@
-import { ArrowDownwardRounded, ArrowUpwardRounded, CloseRounded, CollectionsBookmarkOutlined, MenuBookOutlined, PlaylistAddRounded, SlideshowRounded } from "@mui/icons-material";
+import { ArrowDownwardRounded, ArrowUpwardRounded, CloseRounded, MenuBookOutlined, PlaylistAddRounded, SlideshowRounded } from "@mui/icons-material";
 import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, List, ListItem, ListItemText, Paper, Stack, TextField, Typography } from "@mui/material";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -12,7 +12,7 @@ import { KINDS } from "./concepts";
 import { formatDay } from "../../lib/dates";
 import { errorMessage } from "../../lib/format";
 
-type Action = "present" | "collection" | "notebook";
+type Action = "present" | "notebook";
 
 /** §W5.2: arrange a selection (reorder, skip), then present it, save it, or make a notebook. */
 function ArrangeDialog({ posts, action, onClose, onDone }: { posts: Post[]; action: Action; onClose: () => void; onDone: () => void }) {
@@ -49,7 +49,7 @@ function ArrangeDialog({ posts, action, onClose, onDone }: { posts: Post[]; acti
       },
     );
   };
-  const title = { present: "Present selection", collection: "New collection", notebook: "New notebook" }[action];
+  const title = { present: "Present selection", notebook: "New notebook" }[action];
   return (
     <Dialog open onClose={onClose} fullWidth maxWidth="sm">
       <DialogTitle>{title}</DialogTitle>
@@ -84,7 +84,7 @@ function ArrangeDialog({ posts, action, onClose, onDone }: { posts: Post[]; acti
       <DialogActions>
         <Button onClick={onClose}>Cancel</Button>
         <Button variant="contained" disabled={!order.length || (action !== "present" && !name.trim()) || !!clash || create.isPending} onClick={go}>
-          {action === "present" ? "Start presenting" : action === "notebook" ? "Create notebook" : "Save collection"}
+          {action === "present" ? "Start presenting" : "Create notebook"}
         </Button>
       </DialogActions>
     </Dialog>
@@ -106,7 +106,6 @@ export function SelectionTray({ selected, posts, onClear }: { selected: ID[]; po
       >
         <Typography variant="body2" sx={{ fontWeight: 600, mr: 1 }}>{selected.length} selected</Typography>
         <Button size="small" variant="contained" startIcon={<SlideshowRounded />} onClick={() => setAction("present")}>Present</Button>
-        <Button size="small" startIcon={<CollectionsBookmarkOutlined />} onClick={() => setAction("collection")}>New collection</Button>
         <Button size="small" startIcon={<MenuBookOutlined />} onClick={() => setAction("notebook")}>New notebook</Button>
         <Button size="small" startIcon={<PlaylistAddRounded />} onClick={() => setAddTo(true)}>Add to…</Button>
         <Box sx={{ flex: 1 }} />

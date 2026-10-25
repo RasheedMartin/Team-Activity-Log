@@ -585,8 +585,11 @@ export function useCreateCollection(orgId: ID, wsId: ID) {
 export function useUpdateCollection(orgId: ID, wsId: ID) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, name, postIds, presentation }: { id: ID; name?: string; postIds?: ID[]; presentation?: Presentation | null }): Promise<Collection> => {
-      let c = name !== undefined || presentation !== undefined ? await patch<Collection>(`${W(orgId, wsId)}/collections/${id}`, { ...(name !== undefined ? { name } : {}), ...(presentation !== undefined ? { presentation } : {}) }) : undefined;
+    mutationFn: async ({ id, name, postIds, presentation, followTagId }: { id: ID; name?: string; postIds?: ID[]; presentation?: Presentation | null; followTagId?: ID | null }): Promise<Collection> => {
+      let c =
+        name !== undefined || presentation !== undefined || followTagId !== undefined
+          ? await patch<Collection>(`${W(orgId, wsId)}/collections/${id}`, { ...(name !== undefined ? { name } : {}), ...(presentation !== undefined ? { presentation } : {}), ...(followTagId !== undefined ? { followTagId } : {}) })
+          : undefined;
       if (postIds) c = await put<Collection>(`${W(orgId, wsId)}/collections/${id}/posts`, { postIds });
       return c!;
     },
