@@ -186,8 +186,9 @@ test("notebook contents land exactly on the entry (reader and continuous)", asyn
   await expect(page.getByText(`Entry 3 of ${n}`).first()).toBeVisible();
   // Continuous: once every entry has loaded, jumps land on the entry.
   await page.getByRole("button", { name: "Continuous" }).click();
-  await expect(page.getByText(/^Loading \d+ of \d+ entries/)).toHaveCount(0, { timeout: 45_000 });
-  await expect(page.locator("[data-nb-section]")).toHaveCount(n);
+  // (Wait on the entries themselves: right after the click the loading bar hasn't appeared yet.)
+  await expect(page.locator("[data-nb-section]")).toHaveCount(n, { timeout: 45_000 });
+  await expect(page.getByText(/^Loading \d+ of \d+ entries/)).toHaveCount(0);
   for (const i of [5, Math.min(40, n - 1)]) {
     await toc.nth(i).click();
     const id = (await page.locator("[data-nb-section]").nth(i).getAttribute("data-nb-section"))!;
