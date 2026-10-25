@@ -9,9 +9,9 @@ from fastapi import APIRouter, Body, Depends, Request, Response
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .. import collection_access, storage
 from .. import models as m
 from .. import sanitize as clean
-from .. import storage
 from ..config import get_settings
 from ..context import OrgCtx, WsCtx, accessible_workspaces, can_edit_post, org_ctx, require_user, visible_post, ws_ctx
 from ..db import get_db
@@ -119,6 +119,7 @@ async def create_post(org: str, ws: str, body: dict = Body(default={}), u: m.Use
         c = await db.get(m.CollectionRow, parse_uuid(body["collectionId"]))
         if not c or c.workspace_id != ctx.ws.id:
             fail(404, "not_found", "Notebook not found")
+        await collection_access.require(db, ctx, c, "editor")
         last = (await db.execute(select(func.max(m.CollectionPost.position)).where(m.CollectionPost.collection_id == c.id))).scalar()
         db.add(m.CollectionPost(collection_id=c.id, post_id=p.id, position=(last if last is not None else -1) + 1))
         c.updated_at = t

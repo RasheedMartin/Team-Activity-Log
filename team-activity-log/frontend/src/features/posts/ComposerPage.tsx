@@ -168,12 +168,26 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
     return run;
   }, [update, notify]);
 
-  // Drafts autosave a moment after typing stops (§W2.5). Published posts save on "Update".
+  // Drafts autosave once typing pauses (§W2.5): 2 s of quiet, but at least every 10 s during a
+  // long burst, so a save never lands mid-word and nothing is lost. Published posts save on "Update".
+  const firstUnsaved = useRef<number | null>(null);
   useEffect(() => {
     if (!isDraft || !dirty || conflict) return;
-    const t = setTimeout(() => void save(), 1200);
+    firstUnsaved.current ??= Date.now();
+    const wait = Math.max(0, Math.min(2000, firstUnsaved.current + 10_000 - Date.now()));
+    const t = setTimeout(() => {
+      firstUnsaved.current = null;
+      void save();
+    }, wait);
     return () => clearTimeout(t);
   }, [f, dirty, isDraft, conflict, save]);
+  // "Saving…" only when a save is slow enough to notice; otherwise the status would flicker.
+  const [slowSave, setSlowSave] = useState(false);
+  useEffect(() => {
+    if (!update.isPending) return setSlowSave(false);
+    const t = setTimeout(() => setSlowSave(true), 600);
+    return () => clearTimeout(t);
+  }, [update.isPending]);
 
   // Leaving with unsaved published edits asks first; drafts flush on the way out.
   const leaving = useRef(false); // set right before an intentional navigation (Update, Cancel)
@@ -384,7 +398,8 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  const status = conflict ? "Not saved" : update.isPending ? "Saving…" : dirty ? (isDraft ? "Unsaved" : "Unsaved changes") : savedAt ? `Saved ${timeAgo(savedAt)}` : "";
+  // Drafts: keep showing the last save while typing (they save themselves); only a slow save shows.
+  const status = conflict ? "Not saved" : slowSave ? "Saving…" : dirty && !isDraft ? "Unsaved changes" : savedAt ? `Saved ${timeAgo(savedAt)}` : dirty ? "Saving soon" : "";
   const annotatingImg = annotating ? images.get(annotating) : undefined;
 
   return (

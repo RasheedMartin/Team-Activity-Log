@@ -300,6 +300,17 @@ class CollectionRow(Base):
     )
 
 
+class CollectionMember(Base):
+    """Who may change a collection or notebook beyond viewing (everyone in the workspace can view).
+    Its creator is always an owner and has no row; workspace admins act as owners."""
+
+    __tablename__ = "collection_members"
+    collection_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("collections.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    role: Mapped[str] = mapped_column(String(10))
+    __table_args__ = (CheckConstraint("role in ('viewer','editor','owner')", name="collection_members_role"),)
+
+
 class CollectionPost(Base):
     __tablename__ = "collection_posts"
     collection_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("collections.id", ondelete="CASCADE"), primary_key=True)

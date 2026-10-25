@@ -238,14 +238,24 @@ def collection_view(c: m.CollectionRow, post_ids: list[str]) -> dict:
     )
 
 
-async def collection_post_ids(db: AsyncSession, collection_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, list[str]]:
+def visible_to(viewer: uuid.UUID | None):
+    """Which collection members a person sees: not deleted, and published unless they wrote it
+    (others' drafts are unfinished, so they don't show or count)."""
+    alive = m.Post.deleted_at.is_(None)
+    if viewer is None:
+        return alive
+    return alive & ((m.Post.status == "published") | (m.Post.author_id == viewer)) & ((m.Post.visibility == "visible") | (m.Post.author_id == viewer))
+
+
+async def collection_post_ids(db: AsyncSession, collection_ids: Sequence[uuid.UUID], viewer: uuid.UUID | None = None) -> dict[uuid.UUID, list[str]]:
     out: dict[uuid.UUID, list[str]] = defaultdict(list)
     if collection_ids:
         rows = await db.execute(
-            # Deleted posts drop out (their membership stays, so restoring one puts it back in place).
+            # Deleted posts (and, for a viewer, others' drafts) drop out; their membership stays, so
+            # restoring or publishing one puts it back in place.
             select(m.CollectionPost.collection_id, m.CollectionPost.post_id)
             .join(m.Post, m.Post.id == m.CollectionPost.post_id)
-            .where(m.CollectionPost.collection_id.in_(collection_ids), m.Post.deleted_at.is_(None))
+            .where(m.CollectionPost.collection_id.in_(collection_ids), visible_to(viewer))
             .order_by(m.CollectionPost.collection_id, m.CollectionPost.position)
         )
         for cid, pid in rows:

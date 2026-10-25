@@ -8,6 +8,7 @@ from fastapi import APIRouter, Body, Depends, Response
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .. import collection_access as access
 from .. import models as m
 from .. import sanitize as clean
 from ..context import WsCtx, require_user, role_at_least, ws_ctx
@@ -16,7 +17,7 @@ from ..errors import fail
 from ..ids import parse_uuid, uuid7
 from ..outbox import enqueue
 from ..timeutil import iso, now
-from ..views import collection_post_ids, collection_view, saved_view_view
+from ..views import collection_post_ids, collection_view, saved_view_view, visible_to
 
 router = APIRouter()
 PAGE = 40
@@ -48,7 +49,10 @@ async def library_items(db: AsyncSession, ctx: WsCtx) -> list[dict]:
         await db.execute(select(m.SavedView).where(m.SavedView.workspace_id == ctx.ws.id, (m.SavedView.shared.is_(True)) | (m.SavedView.owner_id == ctx.user.id)))
     ).scalars().all()
     colls = (await db.execute(select(m.CollectionRow).where(m.CollectionRow.workspace_id == ctx.ws.id))).scalars().all()
-    counts = dict((await db.execute(select(m.CollectionPost.collection_id, func.count()).join(m.Post, m.Post.id == m.CollectionPost.post_id).where(m.CollectionPost.collection_id.in_([c.id for c in colls]), m.Post.deleted_at.is_(None)).group_by(m.CollectionPost.collection_id))).all()) if colls else {}
+    # Counts are what this person can see; a collection with nothing they can see (e.g. an import
+    # whose slides are all someone else's drafts) isn't listed for them, except their own.
+    counts = dict((await db.execute(select(m.CollectionPost.collection_id, func.count()).join(m.Post, m.Post.id == m.CollectionPost.post_id).where(m.CollectionPost.collection_id.in_([c.id for c in colls]), visible_to(ctx.user.id)).group_by(m.CollectionPost.collection_id))).all()) if colls else {}
+    colls = [c for c in colls if counts.get(c.id) or c.created_by == ctx.user.id]
     items = [
         {"kind": "view", "id": str(v.id), "name": v.name, "ownerId": str(v.owner_id), "shared": v.shared, "pinned": ("view", v.id) in pinned, "updatedAt": iso(v.updated_at) or EPOCH, "filterSpec": v.filter_spec}
         for v in views
@@ -193,9 +197,13 @@ async def _collection(db: AsyncSession, ctx: WsCtx, cid: str) -> m.CollectionRow
     return c
 
 
-async def _view_of(db: AsyncSession, c: m.CollectionRow) -> dict:
+async def _view_of(db: AsyncSession, c: m.CollectionRow, viewer: uuid.UUID, ctx: WsCtx | None = None) -> dict:
     await db.flush()
-    return collection_view(c, (await collection_post_ids(db, [c.id]))[c.id])
+    view = collection_view(c, (await collection_post_ids(db, [c.id], viewer))[c.id])
+    view["members"] = await access.members(db, c)
+    if ctx is not None:
+        view["myRole"] = await access.role_in(db, ctx, c)
+    return view
 
 
 async def assert_unique_notebook_name(db: AsyncSession, ws_id, name: str, except_id=None) -> None:
@@ -207,10 +215,16 @@ async def assert_unique_notebook_name(db: AsyncSession, ws_id, name: str, except
         fail(409, "name_taken", f"A notebook named “{clash.name}” already exists", {"existingId": str(clash.id)})
 
 
-async def set_collection_posts(db: AsyncSession, c: m.CollectionRow, post_ids: list) -> None:
-    """Replace membership; reindex every post that joined or left (collection is a search filter)."""
+async def set_collection_posts(db: AsyncSession, c: m.CollectionRow, post_ids: list, keep_unseen_by: uuid.UUID | None = None) -> None:
+    """Replace membership; reindex every post that joined or left (collection is a search filter).
+    With keep_unseen_by, members that person can't see (others' drafts, deleted posts) are kept,
+    after the ones they arranged: someone reordering a deck can't drop a colleague's drafts."""
     before = set((await db.execute(select(m.CollectionPost.post_id).where(m.CollectionPost.collection_id == c.id))).scalars())
     ids = clean.uuid_list(post_ids, "postIds", 5000)
+    if keep_unseen_by is not None:
+        seen = set((await db.execute(select(m.CollectionPost.post_id).join(m.Post, m.Post.id == m.CollectionPost.post_id).where(m.CollectionPost.collection_id == c.id, visible_to(keep_unseen_by)))).scalars())
+        unseen = (await db.execute(select(m.CollectionPost.post_id).where(m.CollectionPost.collection_id == c.id, m.CollectionPost.post_id.not_in(seen or {uuid.uuid4()})).order_by(m.CollectionPost.position))).scalars().all()
+        ids = [*ids, *(x for x in unseen if x not in ids)]
     valid = set((await db.execute(select(m.Post.id).where(m.Post.id.in_(ids), m.Post.org_id == c.org_id))).scalars()) if ids else set()
     await db.execute(delete(m.CollectionPost).where(m.CollectionPost.collection_id == c.id))
     for pos, pid in enumerate(x for x in ids if x in valid):
@@ -221,7 +235,11 @@ async def set_collection_posts(db: AsyncSession, c: m.CollectionRow, post_ids: l
 @router.get("/orgs/{org}/workspaces/{ws}/collections/{cid}")
 async def get_collection(org: str, ws: str, cid: str, u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
     ctx = await ws_ctx(db, u, org, ws)
-    return await _view_of(db, await _collection(db, ctx, cid))
+    c = await _collection(db, ctx, cid)
+    view = await _view_of(db, c, ctx.user.id, ctx)
+    if not view["postIds"] and view["myRole"] == "viewer":
+        fail(404, "not_found", "Collection not found")  # nothing published in it yet
+    return view
 
 
 @router.get("/orgs/{org}/workspaces/{ws}/collections/{cid}/entries")
@@ -259,8 +277,8 @@ async def create_collection(org: str, ws: str, body: dict = Body(...), u: m.User
     c = m.CollectionRow(id=uuid7(), org_id=ctx.org.id, workspace_id=ctx.ws.id, name=name, kind=kind, created_by=u.id, source_tag_id=tag_id, created_at=t, updated_at=t)
     db.add(c)
     await db.flush()
-    await set_collection_posts(db, c, body.get("postIds") or [])
-    return await _view_of(db, c)
+    await set_collection_posts(db, c, body.get("postIds") or [], keep_unseen_by=ctx.user.id)
+    return await _view_of(db, c, ctx.user.id, ctx)
 
 
 @router.patch("/orgs/{org}/workspaces/{ws}/collections/{cid}")
@@ -270,26 +288,25 @@ async def patch_collection(org: str, ws: str, cid: str, body: dict = Body(...), 
     if body.get("pinned") is not None:
         await toggle_pin(db, ctx, kind_of(c), c.id, bool(body["pinned"]))
     if "name" in body and body["name"] is not None:
-        if not role_at_least(ctx.role, "member"):
-            fail(403, "forbidden", "Viewers can't rename collections")
+        await access.require(db, ctx, c, "editor")
         name = clean.text(body["name"], "name", 300, required=True, label="Name") or ""
         if c.kind == "notebook":
             await assert_unique_notebook_name(db, ctx.ws.id, name, c.id)
         c.name, c.updated_at = name, now()
     if "presentation" in body:
-        if not role_at_least(ctx.role, "member"):
-            fail(403, "forbidden", "Viewers can't change how this presents")
+        await access.require(db, ctx, c, "editor")
         c.presentation, c.updated_at = clean.presentation(body["presentation"]), now()
-    return await _view_of(db, c)
+    return await _view_of(db, c, ctx.user.id, ctx)
 
 
 @router.put("/orgs/{org}/workspaces/{ws}/collections/{cid}/posts")
 async def put_collection_posts(org: str, ws: str, cid: str, body: dict = Body(...), u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
     ctx = await ws_ctx(db, u, org, ws, "member")
     c = await _collection(db, ctx, cid)
-    await set_collection_posts(db, c, body.get("postIds") or [])
+    await access.require(db, ctx, c, "editor")
+    await set_collection_posts(db, c, body.get("postIds") or [], keep_unseen_by=ctx.user.id)
     c.updated_at = now()
-    return await _view_of(db, c)
+    return await _view_of(db, c, ctx.user.id, ctx)
 
 
 @router.delete("/orgs/{org}/workspaces/{ws}/collections/{cid}")
@@ -298,8 +315,7 @@ async def delete_collection(org: str, ws: str, cid: str, deleteMyPosts: bool = F
     too (others' posts pulled into a notebook are never touched). Returns those post ids for undo."""
     ctx = await ws_ctx(db, u, org, ws, "member")
     c = await _collection(db, ctx, cid)
-    if c.created_by != u.id and not ctx.is_admin:
-        fail(403, "forbidden", "Only its creator or an admin can delete this")
+    await access.require(db, ctx, c, "owner")
     gone: list[str] = []
     if deleteMyPosts:
         t = now()
@@ -311,3 +327,29 @@ async def delete_collection(org: str, ws: str, cid: str, deleteMyPosts: bool = F
     await db.execute(delete(m.Pin).where(m.Pin.item_id == c.id))
     await db.delete(c)
     return {"deletedPostIds": gone}
+
+
+@router.put("/orgs/{org}/workspaces/{ws}/collections/{cid}/members")
+async def put_members(org: str, ws: str, cid: str, body: dict = Body(...), u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
+    """Owners set who else can edit or own it: [{userId, role: viewer|editor|owner}]. Everyone in
+    the workspace can view regardless; "viewer" here just removes someone's extra access."""
+    ctx = await ws_ctx(db, u, org, ws, "member")
+    c = await _collection(db, ctx, cid)
+    await access.require(db, ctx, c, "owner")
+    wanted: dict[uuid.UUID, str] = {}
+    for x in body.get("members") or []:
+        uid, role = parse_uuid(str(x.get("userId"))), x.get("role")
+        if not uid or role not in access.ROLES:
+            fail(422, "invalid", "Each member needs a person and a role (viewer, editor, owner)")
+        if uid != c.created_by:
+            wanted[uid] = role
+    if wanted:
+        ok = set((await db.execute(select(m.Membership.user_id).where(m.Membership.org_id == ctx.org.id, m.Membership.user_id.in_(list(wanted)), m.Membership.status == "active"))).scalars())
+        if missing := set(wanted) - ok:
+            fail(422, "invalid", f"{len(missing)} of these people aren't in this organization")
+    await db.execute(delete(m.CollectionMember).where(m.CollectionMember.collection_id == c.id))
+    for uid, role in wanted.items():
+        if role != "viewer":
+            db.add(m.CollectionMember(collection_id=c.id, user_id=uid, role=role))
+    await db.flush()
+    return await _view_of(db, c, ctx.user.id, ctx)

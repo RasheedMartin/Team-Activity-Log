@@ -9,6 +9,7 @@ import {
   EditNoteRounded,
   EditOutlined,
   LinkRounded,
+  LockOutlined,
   MenuBookOutlined,
   PrintOutlined,
   SlideshowRounded,
@@ -66,7 +67,9 @@ function Entry({ detail, people, tags, origin, pageBreak }: { detail: PostDetail
         <Typography variant="overline" color="primary">{formatDay(p.workDate)}</Typography>
         {p.status === "draft" && (
           <>
-            <Chip size="small" color="warning" variant="outlined" label="Draft · only you see it" />
+            <Tooltip title="Only you can see drafts">
+              <Chip size="small" color="warning" variant="outlined" icon={<LockOutlined />} label="Draft" />
+            </Tooltip>
             <Button size="small" component={RouterLink} to={wsPath(org, ws, `/p/${p.id}/edit`)} state={origin} data-print-hide>Continue writing</Button>
           </>
         )}
@@ -331,7 +334,7 @@ export default function NotebookPage() {
                 sx={{ "& .MuiListItemSecondaryAction-root": { right: 4 } }}
               >
                 <ListItemButton selected={current?.id === e.id} onClick={() => open(e.id)} sx={{ py: 0.25, pr: editing ? "92px !important" : 2 }}>
-                  <ListItemText primary={e.title || "Untitled"} secondary={e.status === "draft" ? "Draft · only you see it" : formatDay(e.workDate, false)} slotProps={{ primary: { noWrap: true, fontSize: "0.82rem" }, secondary: { fontSize: "0.7rem" } }} />
+                  <ListItemText primary={e.title || "Untitled"} secondary={e.status === "draft" ? <Box component="span" title="Only you can see drafts" sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}><LockOutlined sx={{ fontSize: 12 }} />Draft</Box> : formatDay(e.workDate, false)} slotProps={{ primary: { noWrap: true, fontSize: "0.82rem" }, secondary: { fontSize: "0.7rem" } }} />
                 </ListItemButton>
               </ListItem>
             ))}

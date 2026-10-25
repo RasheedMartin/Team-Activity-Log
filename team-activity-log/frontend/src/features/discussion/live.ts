@@ -20,7 +20,9 @@ export function useLiveEvents(orgId: ID, wsId: ID) {
         qc.invalidateQueries({ queryKey: qk.comments(orgId, ev.postId) });
         qc.invalidateQueries({ queryKey: qk.post(orgId, ev.postId) });
       } else if (ev.type === "reaction" || ev.type === "post") {
-        qc.invalidateQueries({ queryKey: qk.post(orgId, ev.postId) });
+        // Our own save just put this post in the cache; its echo would only re-render the composer.
+        const fresh = (qc.getQueryState(qk.post(orgId, ev.postId))?.dataUpdatedAt ?? 0) > Date.now() - 3000;
+        if (ev.type === "reaction" || !fresh) qc.invalidateQueries({ queryKey: qk.post(orgId, ev.postId) });
       } else if (ev.type === "notification") {
         qc.invalidateQueries({ queryKey: qk.notifications(orgId) });
       }

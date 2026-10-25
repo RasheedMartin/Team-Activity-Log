@@ -31,7 +31,7 @@ test("write a notebook: empty, write pages, pull in posts, delete with my pages,
   await expect(page.getByRole("status")).toContainText("Saved", { timeout: 10_000 });
   await page.getByRole("button", { name: "Back", exact: true }).click();
   await expect(page.getByText(/^\d+ entr/)).toHaveText(/^2 entries/);
-  await expect(page.getByRole("navigation", { name: "Contents" })).toContainText("Draft · only you see it");
+  await expect(page.getByRole("navigation", { name: "Contents" })).toContainText("Draft");
 
   // Pull in someone else's post.
   await page.getByRole("button", { name: "Add posts" }).click();

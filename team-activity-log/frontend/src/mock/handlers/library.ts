@@ -19,17 +19,24 @@ function togglePin(userId: ID, wsId: ID, ref: PinRef, on: boolean) {
 
 const kindOf = (c: Collection): LibraryKind => (c.kind === "notebook" ? "notebook" : "collection");
 const viewItem = (v: SavedView, me: ID): LibraryItem => ({ kind: "view", id: v.id, name: v.name, ownerId: v.ownerId, shared: v.shared, pinned: isPinned(me, v.workspaceId, "view", v.id), updatedAt: v.updatedAt ?? "1970-01-01T00:00:00Z", filterSpec: v.filterSpec });
-/** Like the server: deleted posts drop out of a collection (membership stays, so a restore puts them back). */
-const live = (c: Collection): Collection => ({ ...c, postIds: c.postIds.filter((id) => !db.t.posts.get(id)?.deletedAt) });
+/** Like the server (views.visible_to): deleted posts, and others' drafts or hidden posts, drop out
+ *  of what a person sees in a collection; membership stays, so restoring or publishing one puts it
+ *  back in place. */
+const seesPost = (id: ID, me?: ID) => {
+  const p = db.t.posts.get(id);
+  return !!p && !p.deletedAt && (!me || ((p.status === "published" || p.authorId === me) && (p.visibility === "visible" || p.authorId === me)));
+};
+const live = (c: Collection, me?: ID): Collection => ({ ...c, postIds: c.postIds.filter((id) => seesPost(id, me)) });
 
-const collectionItem = (c: Collection, me: ID): LibraryItem => ({ kind: kindOf(c), id: c.id, name: c.name, ownerId: c.createdBy, shared: true, pinned: isPinned(me, c.workspaceId, kindOf(c), c.id), updatedAt: c.updatedAt ?? "1970-01-01T00:00:00Z", postCount: live(c).postIds.length, collectionKind: c.kind });
+const collectionItem = (c: Collection, me: ID): LibraryItem => ({ kind: kindOf(c), id: c.id, name: c.name, ownerId: c.createdBy, shared: true, pinned: isPinned(me, c.workspaceId, kindOf(c), c.id), updatedAt: c.updatedAt ?? "1970-01-01T00:00:00Z", postCount: live(c, me).postIds.length, collectionKind: c.kind });
 const withPinned = (v: SavedView, me: ID): SavedView => ({ ...v, pinned: isPinned(me, v.workspaceId, "view", v.id) });
 
 /** Everything in a workspace the caller can see, as library items. */
 function libraryItems(wsId: ID, me: ID): LibraryItem[] {
   return [
     ...db.t.savedViews.filter((v) => v.workspaceId === wsId && (v.shared || v.ownerId === me)).map((v) => viewItem(v, me)),
-    ...db.t.collections.filter((c) => c.workspaceId === wsId).map((c) => collectionItem(c, me)),
+    // A collection with nothing the person can see (e.g. all someone else's drafts) isn't listed, except their own.
+    ...db.t.collections.filter((c) => c.workspaceId === wsId && (c.createdBy === me || live(c, me).postIds.length > 0)).map((c) => collectionItem(c, me)),
   ];
 }
 
@@ -159,7 +166,9 @@ export const libraryHandlers = [
       const ctx = workspaceCtx(cookies, params.org as string, params.ws as string);
       const c = db.t.collections.get(params.id as string);
       if (!c || c.workspaceId !== ctx.ws.id) fail(404, "not_found", "Collection not found");
-      return HttpResponse.json(live(c!));
+      const seen = live(c!, ctx.user.id);
+      if (!seen.postIds.length && c!.createdBy !== ctx.user.id) fail(404, "not_found", "Collection not found"); // nothing published yet
+      return HttpResponse.json(seen);
     }),
   ),
   http.get(
@@ -190,7 +199,7 @@ export const libraryHandlers = [
       }
       const c = db.t.collections.put({ id: uuidv7(), workspaceId: ctx.ws.id, name: body.name.trim(), kind: body.kind ?? "manual", postIds: body.postIds ?? [], createdBy: ctx.user.id, updatedAt: now(), sourceTagId: body.sourceTagId });
       syncPostCollections(c, []);
-      return HttpResponse.json(live(c), { status: 201 });
+      return HttpResponse.json(live(c, ctx.user.id), { status: 201 });
     }),
   ),
   http.patch(
@@ -211,7 +220,7 @@ export const libraryHandlers = [
         if (!roleAtLeast(ctx.role, "member")) fail(403, "forbidden", "Viewers can't change how this presents");
         db.t.collections.update(c!.id, { presentation: presentation ?? undefined, updatedAt: now() });
       }
-      return HttpResponse.json(live(db.t.collections.get(c!.id)!));
+      return HttpResponse.json(live(db.t.collections.get(c!.id)!, ctx.user.id));
     }),
   ),
   http.put(
@@ -220,11 +229,13 @@ export const libraryHandlers = [
       const ctx = workspaceCtx(cookies, params.org as string, params.ws as string, "member");
       const c = db.t.collections.get(params.id as string);
       if (!c || c.workspaceId !== ctx.ws.id) fail(404, "not_found", "Collection not found");
-      const { postIds } = (await request.json()) as { postIds: string[] };
+      const { postIds: arranged } = (await request.json()) as { postIds: string[] };
       const before = c!.postIds;
+      // Keep members this person can't see (others' drafts, deleted posts) after the ones they arranged.
+      const postIds = [...arranged, ...before.filter((id) => !seesPost(id, ctx.user.id) && !arranged.includes(id))];
       const next = db.t.collections.update(c!.id, { postIds, updatedAt: now() })!;
       syncPostCollections(next, before);
-      return HttpResponse.json(live(next));
+      return HttpResponse.json(live(next, ctx.user.id));
     }),
   ),
   http.delete(
