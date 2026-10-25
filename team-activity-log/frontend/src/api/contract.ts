@@ -582,6 +582,8 @@ export interface Collection {
   members?: { userId: ID; role: CollectionRole }[];
   /** The caller's role: owner if they created it, else what an owner granted (viewer by default). */
   myRole?: CollectionRole;
+  /** "workspace": everyone in it can view (default); "people": only those it's shared with. */
+  visibility?: "workspace" | "people";
 }
 export type CollectionRole = "viewer" | "editor" | "owner";
 
@@ -600,6 +602,8 @@ export interface LibraryItem {
   postCount?: number;
   collectionKind?: Collection["kind"];
   filterSpec?: FilterSpec;
+  /** Someone else's collection or notebook that was shared with the caller. */
+  sharedWithMe?: boolean;
 }
 export interface LibraryPage {
   items: LibraryItem[];

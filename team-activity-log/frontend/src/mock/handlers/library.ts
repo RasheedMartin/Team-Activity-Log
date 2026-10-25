@@ -3,7 +3,7 @@ import type { Collection, CollectionRole, ID, LibraryItem, LibraryKind, LibraryP
 import { uuidv7 } from "../../lib/ids";
 import { db } from "../db";
 import { engine, fail, now, reindex, roleAtLeast, route, workspaceCtx, type OrgCtx } from "../server";
-import { membersOf, requireRole, roleIn, setMembers } from "./collectionAccess";
+import { membersOf, requireRole, roleIn, setMembers, sharedWith } from "./collectionAccess";
 
 // Saved views, collections, and notebooks — built for scale (owner request): a paged, searchable
 // library; per-user pins for the rail; single-item reads. In Postgres: saved_views, collections,
@@ -30,9 +30,9 @@ const seesPost = (id: ID, me?: ID) => {
 const live = (c: Collection, me?: ID): Collection => ({ ...c, postIds: c.postIds.filter((id) => seesPost(id, me)) });
 
 /** A collection as the caller sees it: their visible posts, its members, and their role. */
-const view = (c: Collection, ctx: Pick<OrgCtx, "user" | "role">): Collection => ({ ...live(c, ctx.user.id), members: membersOf(c), myRole: roleIn(ctx, c) });
+const view = (c: Collection, ctx: Pick<OrgCtx, "user" | "role">): Collection => ({ ...live(c, ctx.user.id), visibility: c.visibility ?? "workspace", members: membersOf(c), myRole: roleIn(ctx, c) as CollectionRole });
 
-const collectionItem = (c: Collection, me: ID): LibraryItem => ({ kind: kindOf(c), id: c.id, name: c.name, ownerId: c.createdBy, shared: true, pinned: isPinned(me, c.workspaceId, kindOf(c), c.id), updatedAt: c.updatedAt ?? "1970-01-01T00:00:00Z", postCount: live(c, me).postIds.length, collectionKind: c.kind });
+const collectionItem = (c: Collection, me: ID): LibraryItem => ({ kind: kindOf(c), id: c.id, name: c.name, ownerId: c.createdBy, shared: c.visibility !== "people", sharedWithMe: sharedWith(c, me), pinned: isPinned(me, c.workspaceId, kindOf(c), c.id), updatedAt: c.updatedAt ?? "1970-01-01T00:00:00Z", postCount: live(c, me).postIds.length, collectionKind: c.kind });
 const withPinned = (v: SavedView, me: ID): SavedView => ({ ...v, pinned: isPinned(me, v.workspaceId, "view", v.id) });
 
 /** Everything in a workspace the caller can see, as library items. */
@@ -40,7 +40,9 @@ function libraryItems(wsId: ID, me: ID): LibraryItem[] {
   return [
     ...db.t.savedViews.filter((v) => v.workspaceId === wsId && (v.shared || v.ownerId === me)).map((v) => viewItem(v, me)),
     // A collection with nothing the person can see (e.g. all someone else's drafts) isn't listed, except their own.
-    ...db.t.collections.filter((c) => c.workspaceId === wsId && (c.createdBy === me || live(c, me).postIds.length > 0)).map((c) => collectionItem(c, me)),
+    ...db.t.collections
+      .filter((c) => c.workspaceId === wsId && (c.visibility !== "people" || c.createdBy === me || sharedWith(c, me)) && (c.createdBy === me || sharedWith(c, me) || live(c, me).postIds.length > 0))
+      .map((c) => collectionItem(c, me)),
   ];
 }
 
@@ -73,10 +75,11 @@ export const libraryHandlers = [
       const kind = u.get("kind") as LibraryKind | null;
       const q = (u.get("q") ?? "").trim().toLowerCase();
       const mine = u.get("mine") === "1";
+      const shared = u.get("shared") === "1";
       const sort = u.get("sort") === "name" ? "name" : "recent";
       const limit = Math.min(200, Number(u.get("limit") ?? PAGE));
       const offset = Number(u.get("cursor") ?? 0);
-      const scoped = libraryItems(ctx.ws.id, ctx.user.id).filter((i) => (!q || i.name.toLowerCase().includes(q)) && (!mine || i.ownerId === ctx.user.id));
+      const scoped = libraryItems(ctx.ws.id, ctx.user.id).filter((i) => (!q || i.name.toLowerCase().includes(q)) && (!mine || i.ownerId === ctx.user.id) && (!shared || !!i.sharedWithMe));
       const counts: Record<LibraryKind, number> = { view: 0, notebook: 0, collection: 0 };
       scoped.forEach((i) => counts[i.kind]++);
       const list = scoped
@@ -171,7 +174,7 @@ export const libraryHandlers = [
       const c = db.t.collections.get(params.id as string);
       if (!c || c.workspaceId !== ctx.ws.id) fail(404, "not_found", "Collection not found");
       const seen = view(c!, ctx);
-      if (!seen.postIds.length && seen.myRole === "viewer") fail(404, "not_found", "Collection not found"); // nothing published yet
+      if (roleIn(ctx, c!) === "none" || (!seen.postIds.length && seen.myRole === "viewer" && !sharedWith(c!, ctx.user.id))) fail(404, "not_found", "Collection not found");
       return HttpResponse.json(seen);
     }),
   ),
@@ -275,10 +278,11 @@ export const libraryHandlers = [
       const c = db.t.collections.get(params.id as string);
       if (!c || c.workspaceId !== ctx.ws.id) fail(404, "not_found", "Collection not found");
       requireRole(ctx, c!, "owner");
-      const { members = [] } = (await request.json()) as { members?: { userId: ID; role: CollectionRole }[] };
+      const { members = [], visibility } = (await request.json()) as { members?: { userId: ID; role: CollectionRole }[]; visibility?: Collection["visibility"] };
+      if (visibility) db.t.collections.update(c!.id, { visibility });
       if (members.some((x) => !["viewer", "editor", "owner"].includes(x.role))) fail(422, "invalid", "Each member needs a person and a role (viewer, editor, owner)");
       setMembers(c!, members);
-      return HttpResponse.json(view(c!, ctx));
+      return HttpResponse.json(view(db.t.collections.get(c!.id)!, ctx)); // re-read: visibility may have changed
     }),
   ),
 ];

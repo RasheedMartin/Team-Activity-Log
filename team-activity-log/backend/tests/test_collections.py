@@ -2,10 +2,10 @@
 nothing published yet isn't visible to them; rearranging never drops someone's drafts."""
 
 from sqlalchemy import select
-from test_plans_and_avatars import signup  # noqa: I001 (sibling test module)
 
 from tal import models as m
 from tal.db import sessionmaker
+from test_plans_and_avatars import signup  # noqa: I001 (sibling test module)
 
 DOC = {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "x"}]}]}
 
@@ -57,3 +57,32 @@ async def test_others_see_only_published_posts_in_a_collection(client):
     assert (await client.delete(f"/v1/orgs/{org}/workspaces/{ws}/collections/{deck['id']}")).status_code == 403
     await login(client, "owner@example.test")
     assert (await client.get(f"/v1/orgs/{org}/workspaces/{ws}/collections/{deck['id']}")).json()["postIds"] == ids
+
+
+async def test_a_notebook_shared_with_people_is_hidden_from_everyone_else(client):
+    me = await signup(client, "author@example.test")
+    org, ws = me["orgs"][0]["org"]["id"], me["orgs"][0]["workspaces"][0]["id"]
+    post = (await client.post(f"/v1/orgs/{org}/workspaces/{ws}/posts", json={"title": "Page", "blocks": [{"id": "b", "type": "text", "doc": DOC}]})).json()["post"]
+    await client.post(f"/v1/orgs/{org}/posts/{post['id']}/publish", json={})
+    nb = (await client.post(f"/v1/orgs/{org}/workspaces/{ws}/collections", json={"name": "Private book", "kind": "notebook", "postIds": [post["id"]]})).json()
+    assert nb["visibility"] == "workspace"  # public to the workspace by default
+
+    await add_member(client, org, "friend@example.test")
+    friend = (await client.get("/v1/me")).json()["user"]["id"]
+    await login(client, "author@example.test")
+    await add_member(client, org, "stranger@example.test")
+    await login(client, "author@example.test")
+    r = await client.put(f"/v1/orgs/{org}/workspaces/{ws}/collections/{nb['id']}/members", json={"visibility": "people", "members": [{"userId": friend, "role": "viewer"}]})
+    assert r.status_code == 200 and r.json()["visibility"] == "people"
+
+    url = f"/v1/orgs/{org}/workspaces/{ws}/collections/{nb['id']}"
+    lib = lambda **p: client.get(f"/v1/orgs/{org}/workspaces/{ws}/library", params={"kind": "notebook", **p})  # noqa: E731
+    await login(client, "stranger@example.test")
+    assert (await client.get(url)).status_code == 404
+    assert (await lib()).json()["items"] == []
+
+    await login(client, "friend@example.test")
+    assert (await client.get(url)).json()["myRole"] == "viewer"
+    shared = (await lib(shared="1")).json()["items"]
+    assert [(i["id"], i["sharedWithMe"]) for i in shared] == [(nb["id"], True)]
+    assert (await client.put(f"{url}/posts", json={"postIds": []})).status_code == 403  # viewing only

@@ -50,8 +50,40 @@ test("notebooks are view-only for others until the owner shares editing", async 
   // Now they can write and add, but still not delete or share.
   await signInAs(page, "Marcus Lindqvist");
   await go(page, nb);
-  await expect(page.getByRole("button", { name: "Write a page" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Add posts" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Write a page" }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add posts" }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Delete notebook" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Share notebook" })).toHaveCount(0);
+});
+
+test("a notebook shared with specific people is hidden from everyone else and listed under Shared with me", async ({ page }) => {
+  await openScenario(page, "small");
+  await page.getByRole("navigation", { name: "Workspace" }).getByRole("link", { name: "Notebooks" }).click();
+  await page.getByRole("button", { name: "New notebook" }).click();
+  await page.getByRole("dialog").getByLabel("Name").fill("Just for Marcus");
+  await page.getByRole("dialog").getByRole("button", { name: "Create" }).click();
+  await expect(page.getByLabel("Notebook title")).toHaveValue("Just for Marcus");
+  const nb = new URL(page.url()).pathname;
+  const notebooks = nb.replace(/\/[^/]+$/, "");
+
+  await page.getByRole("button", { name: "Share notebook" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("radio", { name: /Only the people added here/ }).check();
+  await dialog.getByLabel("Add a person").fill("Marcus");
+  await page.getByRole("option", { name: /Marcus Lindqvist/ }).click();
+  await expect(dialog.getByRole("combobox", { name: "Role for Marcus Lindqvist" })).toHaveText("Viewer");
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByLabel("Shared with specific people")).toBeVisible();
+
+  await signInAs(page, "Marcus Lindqvist");
+  await page.goto(`${notebooks}?shared=1`);
+  await expect(page.getByRole("main").getByText("Just for Marcus")).toBeVisible();
+  await expect(page.getByRole("main").getByText(/shared with you/)).toBeVisible();
+
+  await signInAs(page, "Amara Nwosu");
+  await page.goto(notebooks);
+  await expect(page.getByRole("button", { name: "New notebook" })).toBeVisible(); // the list has loaded
+  await expect(page.getByRole("main").getByText("Just for Marcus")).toHaveCount(0);
+  await page.goto(nb);
+  await expect(page.getByText("Notebook not found")).toBeVisible();
 });

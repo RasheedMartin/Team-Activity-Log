@@ -493,6 +493,8 @@ export interface LibraryQuery {
   q?: string;
   sort?: "recent" | "name";
   mine?: boolean;
+  /** Only others' collections and notebooks shared with the caller. */
+  shared?: boolean;
   limit?: number;
 }
 export function useLibrary(orgId: ID, wsId: ID, query: LibraryQuery, enabled = true) {
@@ -504,6 +506,7 @@ export function useLibrary(orgId: ID, wsId: ID, query: LibraryQuery, enabled = t
       if (query.q?.trim()) p.set("q", query.q.trim());
       if (query.sort) p.set("sort", query.sort);
       if (query.mine) p.set("mine", "1");
+      if (query.shared) p.set("shared", "1");
       if (query.limit) p.set("limit", String(query.limit));
       if (pageParam) p.set("cursor", pageParam);
       return get<LibraryPage>(`${W(orgId, wsId)}/library?${p}`, signal);
@@ -884,7 +887,8 @@ export function useSplitDraft(orgId: ID) {
 export function useSetCollectionMembers(orgId: ID, wsId: ID) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, members }: { id: ID; members: { userId: ID; role: import("./contract").CollectionRole }[] }) => put<Collection>(`${W(orgId, wsId)}/collections/${id}/members`, { members }),
+    mutationFn: ({ id, members, visibility }: { id: ID; members: { userId: ID; role: import("./contract").CollectionRole }[]; visibility?: Collection["visibility"] }) =>
+      put<Collection>(`${W(orgId, wsId)}/collections/${id}/members`, { members, ...(visibility ? { visibility } : {}) }),
     onSuccess: (c) => qc.setQueryData([...qk.collections(orgId, wsId), c.id], c),
   });
 }

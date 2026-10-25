@@ -367,6 +367,11 @@ export default function NotebookPage() {
             <Typography variant="overline" color="text.secondary">Notebook</Typography>
           )}
           <FavoriteButton kind="notebook" id={nb.id} name={nb.name} size="small" />
+          {nb.visibility === "people" && (
+            <Tooltip title="Shared with specific people only; hidden from the rest of the workspace">
+              <LockOutlined sx={{ fontSize: 16, color: "text.secondary" }} aria-label="Shared with specific people" />
+            </Tooltip>
+          )}
           <Box sx={{ flex: 1 }} />
           <ToggleButtonGroup size="small" exclusive value={continuous ? "continuous" : "reader"} onChange={(_, v) => v && setParam({ view: v === "continuous" ? "continuous" : null })} aria-label="Notebook layout" sx={{ "& .MuiToggleButton-root": { textTransform: "none", py: 0.25 } }}>
             <ToggleButton value="reader">One entry</ToggleButton>

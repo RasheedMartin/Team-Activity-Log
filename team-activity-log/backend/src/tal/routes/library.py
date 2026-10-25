@@ -52,7 +52,10 @@ async def library_items(db: AsyncSession, ctx: WsCtx) -> list[dict]:
     # Counts are what this person can see; a collection with nothing they can see (e.g. an import
     # whose slides are all someone else's drafts) isn't listed for them, except their own.
     counts = dict((await db.execute(select(m.CollectionPost.collection_id, func.count()).join(m.Post, m.Post.id == m.CollectionPost.post_id).where(m.CollectionPost.collection_id.in_([c.id for c in colls]), visible_to(ctx.user.id)).group_by(m.CollectionPost.collection_id))).all()) if colls else {}
-    colls = [c for c in colls if counts.get(c.id) or c.created_by == ctx.user.id]
+    grants = await access.grants_for(db, ctx.user.id)
+    # Hidden: shared-with-specific-people collections you weren't given, and (unless yours or shared
+    # with you) ones with nothing you can see yet.
+    colls = [c for c in colls if (c.visibility == "workspace" or c.created_by == ctx.user.id or c.id in grants) and (counts.get(c.id) or c.created_by == ctx.user.id or c.id in grants)]
     items = [
         {"kind": "view", "id": str(v.id), "name": v.name, "ownerId": str(v.owner_id), "shared": v.shared, "pinned": ("view", v.id) in pinned, "updatedAt": iso(v.updated_at) or EPOCH, "filterSpec": v.filter_spec}
         for v in views
@@ -63,7 +66,8 @@ async def library_items(db: AsyncSession, ctx: WsCtx) -> list[dict]:
             "id": str(c.id),
             "name": c.name,
             "ownerId": str(c.created_by),
-            "shared": True,
+            "shared": c.visibility == "workspace",
+            "sharedWithMe": c.created_by != ctx.user.id and c.id in grants,
             "pinned": (kind_of(c), c.id) in pinned,
             "updatedAt": iso(c.updated_at) or EPOCH,
             "postCount": counts.get(c.id, 0),
@@ -76,11 +80,11 @@ async def library_items(db: AsyncSession, ctx: WsCtx) -> list[dict]:
 
 @router.get("/orgs/{org}/workspaces/{ws}/library")
 async def library(
-    org: str, ws: str, kind: str | None = None, q: str = "", mine: str | None = None, sort: str = "recent", limit: int = PAGE, cursor: str | None = None, u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")
+    org: str, ws: str, kind: str | None = None, q: str = "", mine: str | None = None, shared: str | None = None, sort: str = "recent", limit: int = PAGE, cursor: str | None = None, u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")
 ):
     ctx = await ws_ctx(db, u, org, ws)
     needle = q.strip().lower()
-    scoped = [i for i in await library_items(db, ctx) if (not needle or needle in i["name"].lower()) and (mine != "1" or i["ownerId"] == str(u.id))]
+    scoped = [i for i in await library_items(db, ctx) if (not needle or needle in i["name"].lower()) and (mine != "1" or i["ownerId"] == str(u.id)) and (shared != "1" or i.get("sharedWithMe"))]
     counts = {"view": 0, "notebook": 0, "collection": 0}
     for i in scoped:
         counts[i["kind"]] += 1
@@ -192,8 +196,8 @@ async def delete_view(org: str, ws: str, view_id: str, u: m.User = Depends(requi
 
 async def _collection(db: AsyncSession, ctx: WsCtx, cid: str) -> m.CollectionRow:
     c = await db.get(m.CollectionRow, parse_uuid(cid)) if parse_uuid(cid) else None
-    if not c or c.workspace_id != ctx.ws.id:
-        fail(404, "not_found", "Collection not found")
+    if not c or c.workspace_id != ctx.ws.id or await access.role_in(db, ctx, c) == "none":
+        fail(404, "not_found", "Collection not found")  # a notebook shared with others only doesn't exist for you
     return c
 
 
@@ -293,6 +297,11 @@ async def patch_collection(org: str, ws: str, cid: str, body: dict = Body(...), 
         if c.kind == "notebook":
             await assert_unique_notebook_name(db, ctx.ws.id, name, c.id)
         c.name, c.updated_at = name, now()
+    if "visibility" in body:
+        await access.require(db, ctx, c, "owner")
+        if body["visibility"] not in ("workspace", "people"):
+            fail(422, "invalid", "Visibility is workspace or people")
+        c.visibility, c.updated_at = body["visibility"], now()
     if "presentation" in body:
         await access.require(db, ctx, c, "editor")
         c.presentation, c.updated_at = clean.presentation(body["presentation"]), now()
@@ -336,6 +345,10 @@ async def put_members(org: str, ws: str, cid: str, body: dict = Body(...), u: m.
     ctx = await ws_ctx(db, u, org, ws, "member")
     c = await _collection(db, ctx, cid)
     await access.require(db, ctx, c, "owner")
+    if "visibility" in body:  # set together with the people, from the Share dialog
+        if body["visibility"] not in ("workspace", "people"):
+            fail(422, "invalid", "Visibility is workspace or people")
+        c.visibility = body["visibility"]
     wanted: dict[uuid.UUID, str] = {}
     for x in body.get("members") or []:
         uid, role = parse_uuid(str(x.get("userId"))), x.get("role")
@@ -349,7 +362,7 @@ async def put_members(org: str, ws: str, cid: str, body: dict = Body(...), u: m.
             fail(422, "invalid", f"{len(missing)} of these people aren't in this organization")
     await db.execute(delete(m.CollectionMember).where(m.CollectionMember.collection_id == c.id))
     for uid, role in wanted.items():
-        if role != "viewer":
+        if role != "viewer" or c.visibility == "people":  # in a workspace-visible one, everyone views anyway
             db.add(m.CollectionMember(collection_id=c.id, user_id=uid, role=role))
     await db.flush()
     return await _view_of(db, c, ctx.user.id, ctx)
