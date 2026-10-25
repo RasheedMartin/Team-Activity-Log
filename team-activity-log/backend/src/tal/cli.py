@@ -6,7 +6,7 @@
     tal reindex [--org ID] [--new-version N]
                               rebuild search from Postgres (zero-downtime with --new-version)
     tal serve [--port 8000]   run the API (indexer included unless RUN_INDEXER=false)
-    tal worker                run only the outbox -> Elasticsearch indexer
+    tal worker                run only the background jobs (search indexer, email, OCR)
     tal plan ORG [PLAN]       show an organization's plan and imports this month; set it
 """
 
@@ -125,11 +125,12 @@ async def _reindex(org: str | None, new_version: int | None) -> None:
 
 async def _worker() -> None:
     from .mailer import run_mailer
+    from .ocr import run_ocr
     from .search.indexer import ensure_index, run_indexer
 
     await ensure_index()
     stop = asyncio.Event()
-    await asyncio.gather(run_indexer(stop), run_mailer(stop))
+    await asyncio.gather(run_indexer(stop), run_mailer(stop), run_ocr(stop))
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -202,7 +202,12 @@ export interface Post {
 export interface ImageMetadata {
   exif?: { capturedAt?: ISODateTime; cameraMake?: string; cameraModel?: string };
   ocrText?: string;
-  ocrState: "pending" | "ready" | "failed" | "none";
+  /** pending → running → ready (text found) | empty | failed; "edited" once a person corrects it. */
+  ocrState: "pending" | "running" | "ready" | "empty" | "failed" | "edited" | "none";
+  /** Which engine read it ("tesseract", "google", "azure", "aws"), or "person" for a correction. */
+  ocrEngine?: string;
+  ocrError?: string;
+  ocrAt?: ISODateTime;
   detectedType?: ImageType;
   dpi?: number;
   colorSpace?: string;
@@ -210,6 +215,20 @@ export interface ImageMetadata {
   sourceKind: "upload" | "paste" | "screenshot" | "pptx_import";
 }
 export type ImageType = "chart" | "photo" | "screenshot" | "diagram" | "table";
+
+export type OcrProviderId = "tesseract" | "google" | "azure" | "aws";
+/** Text in images (OCR) for an org: the built-in engine, or a cloud one with the org's own key. */
+export interface OcrSettings {
+  provider: OcrProviderId;
+  /** What's actually used: falls back to "tesseract" if the plan or key no longer allows the choice. */
+  active: OcrProviderId;
+  cloudAllowed: boolean;
+  builtInReady: boolean;
+  providers: { id: OcrProviderId; name: string; cloud: boolean; fields: string[] }[];
+  /** Saved keys, as hints ("…abcd"); secrets never come back. */
+  saved: Partial<Record<OcrProviderId, Record<string, string>>>;
+  counts: Partial<Record<ImageMetadata["ocrState"], number>>;
+}
 
 export interface Asset {
   id: ID;

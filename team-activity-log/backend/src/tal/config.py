@@ -105,6 +105,10 @@ class Settings(BaseSettings):
     cookie_secure: bool | None = Field(default=None, description="Defaults to true in production.")
     public_app_url: str = Field(default="http://localhost:5173", description="Base for links in emails.")
     run_indexer: bool = Field(default=True, description="Run the outbox → Elasticsearch indexer inside the API process.")
+    secret_key: str | None = Field(default=None, description="Encrypts stored third-party keys (e.g. an org's cloud OCR key). Long random string; changing it makes saved keys unreadable.")
+    ocr_enabled: bool = Field(default=True, description="Read text in images (OCR) in the background worker.")
+    tesseract_cmd: str = Field(default="tesseract", description="The Tesseract binary (built-in OCR engine).")
+    ocr_languages: str = Field(default="eng", description="Tesseract languages, e.g. eng+deu (each needs its language pack).")
     max_upload_bytes: int = 25 * 1024 * 1024
     max_import_bytes: int = 200 * 1024 * 1024
     log_level: str = "INFO"

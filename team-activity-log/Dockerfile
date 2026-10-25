@@ -13,6 +13,9 @@ RUN npx vite build
 # ---- backend ----
 FROM python:3.13-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+# Tesseract: the built-in engine that reads text in images (tal.ocr). English only by default;
+# add packs like tesseract-ocr-deu and set OCR_LANGUAGES=eng+deu for more.
+RUN apt-get update && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng && rm -rf /var/lib/apt/lists/*
 WORKDIR /app/backend
 COPY backend/pyproject.toml backend/README.md ./
 COPY backend/src ./src

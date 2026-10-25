@@ -121,6 +121,7 @@ class Organization(Base):
     trial_ends_at: Mapped[dt.datetime | None] = ts()
     storage_quota_bytes: Mapped[int | None] = mapped_column(BigInteger)
     settings: Mapped[dict] = mapped_column(JSONB, server_default="{}")
+    ocr_secret: Mapped[str | None] = mapped_column(Text)  # encrypted cloud OCR keys (tal.ocr.seal); never in a view
     created_at: Mapped[dt.datetime] = ts(False, True)
     __table_args__ = (
         CheckConstraint("plan in ('free','team','business','enterprise')", name="organizations_plan"),

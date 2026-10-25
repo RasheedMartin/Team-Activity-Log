@@ -816,3 +816,33 @@ export const usePersonas = () =>
   useQuery({ queryKey: ["dev", "personas"], queryFn: ({ signal }) => get<{ user: User; roles: string[] }[]>("/dev/personas", signal) });
 export const useDevEmails = () =>
   useQuery({ queryKey: ["dev", "emails"], queryFn: ({ signal }) => get<DevEmail[]>("/dev/emails", signal), refetchInterval: 3000 });
+
+// ---- text in images (OCR) ----
+
+export const useOcrSettings = (orgId: ID, enabled = true) =>
+  useQuery({ queryKey: ["org", orgId, "ocr"], enabled, queryFn: ({ signal }) => get<import("./contract").OcrSettings>(`${O(orgId)}/ocr`, signal) });
+export function useSaveOcr(orgId: ID) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { provider: import("./contract").OcrProviderId; credentials?: Record<string, string>; forget?: boolean }) => put<import("./contract").OcrSettings>(`${O(orgId)}/ocr`, v),
+    onSuccess: (d) => qc.setQueryData(["org", orgId, "ocr"], d),
+  });
+}
+export function useRereadOcr(orgId: ID) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (which: "failed" | "all") => post<{ queued: number }>(`${O(orgId)}/ocr/reread`, { which }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["org", orgId, "ocr"] }),
+  });
+}
+/** Correct (or add) the text in one image; every post showing it is reindexed. */
+export function useCorrectOcr(orgId: ID) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ assetId, text }: { assetId: ID; text: string }) => put<{ ocrState: string; ocrText: string }>(`${O(orgId)}/assets/${assetId}/ocr`, { text }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["org", orgId, "post"] });
+      invalidatePostLists(qc, orgId);
+    },
+  });
+}

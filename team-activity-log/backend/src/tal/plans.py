@@ -31,13 +31,14 @@ class Plan:
     storage_bytes: int | None  # pooled per org
     storage_bytes_per_member: int | None  # pooled, grows with members (paid plans)
     imports_per_month: int | None
+    cloud_ocr: bool = False  # bring-your-own-key Google / Azure / AWS OCR instead of built-in Tesseract
 
 
 PLANS: dict[str, Plan] = {
     "free": Plan("Free", members=10, workspaces=1, private_workspaces=False, storage_bytes=2 * GB, storage_bytes_per_member=None, imports_per_month=5),
     "team": Plan("Team", members=None, workspaces=None, private_workspaces=True, storage_bytes=None, storage_bytes_per_member=10 * GB, imports_per_month=None),
-    "business": Plan("Business", members=None, workspaces=None, private_workspaces=True, storage_bytes=None, storage_bytes_per_member=25 * GB, imports_per_month=None),
-    "enterprise": Plan("Enterprise", members=None, workspaces=None, private_workspaces=True, storage_bytes=None, storage_bytes_per_member=None, imports_per_month=None),
+    "business": Plan("Business", members=None, workspaces=None, private_workspaces=True, storage_bytes=None, storage_bytes_per_member=25 * GB, imports_per_month=None, cloud_ocr=True),
+    "enterprise": Plan("Enterprise", members=None, workspaces=None, private_workspaces=True, storage_bytes=None, storage_bytes_per_member=None, imports_per_month=None, cloud_ocr=True),
 }
 
 

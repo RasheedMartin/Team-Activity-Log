@@ -7,6 +7,7 @@ import { formatDay } from "../../lib/dates";
 import { can, useOrgScope } from "../../app/session";
 import { useNotify } from "../../components/notify";
 import { errorMessage } from "../../lib/format";
+import { OcrCard } from "./OcrCard";
 
 export function OrgSettingsPanel() {
   const { org, role } = useOrgScope()!;
@@ -28,6 +29,7 @@ export function OrgSettingsPanel() {
         {rename.error && <Alert severity="error" sx={{ mt: 1 }}>{errorMessage(rename.error)}</Alert>}
       </Paper>
       <PlanCard orgId={org.id} />
+      <OcrCard orgId={org.id} />
       <Paper variant="outlined" sx={{ p: 2 }}>
         <Typography variant="h4" sx={{ mb: 0.5 }}>Ownership</Typography>
         <Typography variant="body2" color="text.secondary">
