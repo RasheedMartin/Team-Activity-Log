@@ -81,17 +81,19 @@ export function SlideBody({ slide, people, tags, theme = THEMES[0], interactive 
   const ink = { color: theme.text, fontFamily: fontStack(theme.bodyFont) };
   const headingFont = fontStack(theme.headingFont ?? theme.bodyFont);
   if (slide.kind === "title") {
-    const author = people.get(slide.authorId);
+    const show = slide.show ?? { date: true, author: true, summary: true, tags: true };
+    const author = show.author ? people.get(slide.authorId) : undefined;
+    const tagNames = show.tags ? slide.tagIds.map((id) => tags.get(id)?.name).filter(Boolean) : [];
     return (
       <Stack justifyContent="center" sx={{ height: "100%", px: 12, ...ink }}>
         <Box sx={{ width: 96, height: 6, bgcolor: theme.accent, borderRadius: 1, mb: 3 }} />
-        <Typography sx={{ fontSize: 22, color: theme.accent, fontFamily: "inherit", fontWeight: 600, mb: 2, letterSpacing: "0.04em", textTransform: "uppercase" }}>{formatDay(slide.workDate)}</Typography>
+        {show.date && <Typography sx={{ fontSize: 22, color: theme.accent, fontFamily: "inherit", fontWeight: 600, mb: 2, letterSpacing: "0.04em", textTransform: "uppercase" }}>{formatDay(slide.workDate)}</Typography>}
         <Typography sx={{ fontSize: 64, fontWeight: 700, lineHeight: 1.1, letterSpacing: "-0.02em", mb: 3, color: theme.heading, fontFamily: headingFont }}>{slide.title}</Typography>
-        {slide.summary && <Typography sx={{ fontSize: 28, color: muted(theme), fontFamily: "inherit", mb: 4, maxWidth: 1000 }}>{slide.summary}</Typography>}
+        {show.summary && slide.summary && <Typography sx={{ fontSize: 28, color: muted(theme), fontFamily: "inherit", mb: 4, maxWidth: 1000 }}>{slide.summary}</Typography>}
         <Typography sx={{ fontSize: 24, color: muted(theme), fontFamily: "inherit" }}>
           {author?.name ?? ""}
-          {slide.tagIds.length > 0 && " · "}
-          {slide.tagIds.map((id) => tags.get(id)?.name).filter(Boolean).join(" · ")}
+          {author && tagNames.length > 0 && " · "}
+          {tagNames.join(" · ")}
         </Typography>
       </Stack>
     );

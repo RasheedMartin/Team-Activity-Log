@@ -1,4 +1,4 @@
-import { AddRounded, CallMergeRounded, PersonAddAltRounded, CallSplitRounded, CollectionsBookmarkOutlined, DeleteOutlineRounded, ManageSearchRounded, MoreVertRounded, SlideshowRounded, UploadFileOutlined, WarningAmberRounded } from "@mui/icons-material";
+import { AddRounded, CallMergeRounded, PersonAddAltRounded, CallSplitRounded, CollectionsBookmarkOutlined, DeleteOutlineRounded, MoreVertRounded, SlideshowRounded, UploadFileOutlined, WarningAmberRounded } from "@mui/icons-material";
 import { Box, Button, ButtonBase, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, ListItemIcon, Menu, MenuItem, Skeleton, Stack, Tab, Tabs, Tooltip, Typography } from "@mui/material";
 import { useMemo, useState } from "react";
 import { Link as RouterLink, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -17,7 +17,6 @@ import { docText } from "../../lib/prosemirror";
 import { AddPostsDialog } from "./AddPosts";
 import { FavoriteButton } from "./FavoriteButton";
 import { ShareDialog } from "./ShareDialog";
-import { collectionParams } from "./libraryLinks";
 
 /** A small picture of a post: its first designed slide, else its first picture, else its opening text. */
 function Preview({ d }: { d: PostDetail }) {
@@ -39,7 +38,7 @@ type Show = "all" | "review" | "published";
 
 /**
  * A collection's own page: its posts in order as slide-like cards, with Present, Favorite, and
- * Search within for filtering. An imported deck is also where its slides are reviewed (owner
+ * An imported deck is also where its slides are reviewed (owner
  * request): To review / Published tabs, Publish all, and deleting the import live here; the import
  * page is only for uploading.
  */
@@ -164,9 +163,6 @@ export default function CollectionPage() {
             </Button>
           )}
           <AddPostsDialog open={adding} onClose={() => setAdding(false)} collectionId={coll.id} name={coll.name} postIds={coll.postIds} />
-          <Button component={RouterLink} to={`${base}/search?${collectionParams(coll.id)}`} startIcon={<ManageSearchRounded />}>
-            Search within
-          </Button>
           <FavoriteButton kind="collection" id={coll.id} name={coll.name} />
           {isOwner && !deck && (
             <>

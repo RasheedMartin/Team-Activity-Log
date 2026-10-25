@@ -134,7 +134,6 @@ test("an imported deck has its own page, like a notebook", async ({ page }) => {
   const links = grid(page).getByRole("link");
   await expect(links).toHaveCount(8);
   await expect(links.nth(1)).toContainText("Cooldown curve");
-  await expect(page.getByRole("link", { name: "Search within" })).toHaveAttribute("href", /\/search\?/);
   await page.getByRole("button", { name: "More deck actions" }).click();
   await expect(page.getByRole("menuitem", { name: /Delete this import/ })).toBeVisible();
   await page.keyboard.press("Escape");

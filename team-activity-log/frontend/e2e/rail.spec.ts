@@ -13,8 +13,8 @@ test("only the clicked saved search or collection is highlighted", async ({ page
   await expect(rail.getByRole("link", { name: "Lab_Notes_2022.pptx" })).toHaveAttribute("aria-current", "page");
   await expect(views.first()).not.toHaveAttribute("aria-current", "page");
   await expect(page).toHaveURL(/\/collections\//); // a collection opens as its own page
-  // Searching within it means you're in Search, no longer "on" the collection.
-  await page.getByRole("main").getByRole("link", { name: "Search within" }).click();
+  // Going to Search means you're no longer "on" the collection.
+  await rail.getByRole("link", { name: "Search", exact: true }).click();
   await expect(rail.getByRole("link", { name: "Lab_Notes_2022.pptx" })).not.toHaveAttribute("aria-current", "page");
   // With an ad-hoc search (no favorite matches), Search is the current item.
   await expect(rail.getByRole("link", { name: "Search", exact: true })).toHaveAttribute("aria-current", "page");

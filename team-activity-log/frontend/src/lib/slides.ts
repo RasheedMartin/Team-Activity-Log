@@ -1,4 +1,4 @@
-import type { Block, ID, ImageView, Post, SlideDesign } from "../api/contract";
+import type { Block, ID, ImageView, Post, Presentation, SlideDesign } from "../api/contract";
 import { docText, type PMNode } from "./prosemirror";
 
 // §W5.1 slide derivation [DECISION]: a title slide, then slides from blocks. Explicit slide-break
@@ -6,8 +6,19 @@ import { docText, type PMNode } from "./prosemirror";
 // text is chunked. Imported decks keep their original breaks (they arrive as slide_break blocks).
 // A designed slide block is always exactly one slide, shown as designed.
 
-export type Slide =
-  | { kind: "title"; postId: ID; title: string; summary?: string; workDate: string; authorId: ID; tagIds: ID[]; notes?: string }
+export type Slide = (
+  | {
+      kind: "title";
+      postId: ID;
+      title: string;
+      summary?: string;
+      workDate: string;
+      authorId: ID;
+      tagIds: ID[];
+      notes?: string;
+      /** Which parts show (Presentation.titleSlide); all by default. */
+      show?: { date: boolean; author: boolean; summary: boolean; tags: boolean };
+    }
   | {
       kind: "content";
       postId: ID;
@@ -20,9 +31,47 @@ export type Slide =
       /** Part of a text block split across slides: it can't be designed on its own. */
       partial?: boolean;
     }
-  | { kind: "designed"; postId: ID; design: SlideDesign; images: Map<ID, ImageView>; notes?: string };
+  | { kind: "designed"; postId: ID; design: SlideDesign; images: Map<ID, ImageView>; notes?: string; blockId?: ID }
+) & {
+  /** Stable within a post's content: what Presentation.hidden refers to. */
+  key?: string;
+};
 
-const designed = (postId: ID, b: Extract<Block, { type: "slide" }>, images: Map<ID, ImageView>): Slide => ({ kind: "designed", postId, design: b.design, images, notes: b.notes });
+const designed = (postId: ID, b: Extract<Block, { type: "slide" }>, images: Map<ID, ImageView>): Slide => ({ kind: "designed", postId, design: b.design, images, notes: b.notes, blockId: b.id });
+
+/** Keys: the title slide, a designed slide's block, else the first block shown (+ a counter for
+ *  text split over several slides). Survive edits elsewhere in the post. */
+function withKeys(slides: Slide[]): Slide[] {
+  const seen = new Map<string, number>();
+  return slides.map((sl) => {
+    const base = sl.kind === "title" ? `${sl.postId}:title` : sl.kind === "designed" ? `${sl.postId}:d:${sl.blockId ?? ""}` : `${sl.postId}:c:${sl.blockIds[0] ?? ""}`;
+    const n = seen.get(base) ?? 0;
+    seen.set(base, n + 1);
+    return { ...sl, key: n ? `${base}:${n}` : base };
+  });
+}
+
+/**
+ * What actually presents (owner request): hidden slides out, optionally only designed slides,
+ * title slides trimmed to the parts chosen, skipped right before a designed slide, or hidden.
+ */
+export function applyPresentation(slides: Slide[], p?: Presentation | null): Slide[] {
+  if (!p) return slides;
+  const hidden = new Set(p.hidden ?? []);
+  const t = p.titleSlide ?? {};
+  const show = { date: t.date !== false, author: t.author !== false, summary: t.summary !== false, tags: t.tags !== false };
+  return slides.flatMap((sl, i): Slide[] => {
+    if (sl.key && hidden.has(sl.key)) return [];
+    if (sl.kind === "title") {
+      if (t.hide) return [];
+      const next = slides[i + 1];
+      if (t.skipBeforeDesigned && next?.postId === sl.postId && next.kind === "designed") return [];
+      return [{ ...sl, show }];
+    }
+    if (p.onlyDesigned && sl.kind !== "designed") return [];
+    return [sl];
+  });
+}
 
 const TEXT_BUDGET = 650; // characters of body text that comfortably fit beside nothing else
 const CAPTION_BUDGET = 260; // text that fits as a caption under an image
@@ -117,6 +166,10 @@ function contentSlides(postId: ID, blocks: Block[], images: Map<ID, ImageView>, 
 }
 
 export function deriveSlides(post: Post, images: ImageView[]): Slide[] {
+  return withKeys(rawSlides(post, images));
+}
+
+function rawSlides(post: Post, images: ImageView[]): Slide[] {
   const imgs = new Map(images.map((i) => [i.id, i]));
   const title: Slide = { kind: "title", postId: post.id, title: post.title || "Untitled", summary: post.summary, workDate: post.workDate, authorId: post.authorId, tagIds: post.tagIds };
   const hasBreaks = post.blocks.some((b) => b.type === "slide_break");

@@ -157,6 +157,13 @@ export interface SlideTheme {
 export interface Presentation {
   theme?: SlideTheme;
   deck?: SlideTheme;
+  /** Slides skipped when presenting and exporting, by slide key (lib/slides). */
+  hidden?: string[];
+  /** Present only designed slides (skip the automatic text slides). */
+  onlyDesigned?: boolean;
+  /** What each automatic title slide shows (all on by default), whether to skip it before a post's
+   *  designed slide, or hide title slides altogether. */
+  titleSlide?: { date?: boolean; author?: boolean; summary?: boolean; tags?: boolean; skipBeforeDesigned?: boolean; hide?: boolean };
 }
 
 export interface PostSource {

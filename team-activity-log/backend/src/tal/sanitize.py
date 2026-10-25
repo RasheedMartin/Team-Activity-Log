@@ -278,7 +278,22 @@ def presentation(value: Any, field: str = "presentation") -> dict | None:
         return None
     if not isinstance(value, dict):
         invalid(field, "presentation must be an object")
-    out = {k: t for k in ("theme", "deck") if (t := _theme(value.get(k), f"{field}.{k}"))}
+    out: dict = {k: t for k in ("theme", "deck") if (t := _theme(value.get(k), f"{field}.{k}"))}
+    # What presents (owner request): slides hidden by key, only designed slides, and what the
+    # automatic title slide shows.
+    hidden = value.get("hidden")
+    if hidden is not None:
+        if not isinstance(hidden, list) or len(hidden) > 5000 or not all(isinstance(x, str) and 0 < len(x) <= 200 for x in hidden):
+            invalid(f"{field}.hidden", "hidden must be a list of slide keys")
+        if hidden:
+            out["hidden"] = list(dict.fromkeys(hidden))
+    if isinstance(value.get("onlyDesigned"), bool) and value["onlyDesigned"]:
+        out["onlyDesigned"] = True
+    ts = value.get("titleSlide")
+    if isinstance(ts, dict):
+        flags = {k: ts[k] for k in ("date", "author", "summary", "tags", "skipBeforeDesigned", "hide") if isinstance(ts.get(k), bool)}
+        if flags:
+            out["titleSlide"] = flags
     return out or None
 
 
