@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import type { GalleryImage, ID, SearchHit, Tag, User } from "../../api/contract";
 import { useImage, usePost } from "../../api/hooks";
+import { FittedImage } from "./ImageCarousel";
 import { useWs, wsPath } from "../../app/session";
 import { AnnotationLayer } from "../../components/AnnotationLayer";
 import { RichText } from "../../components/RichText";
@@ -177,10 +178,10 @@ export function GalleryGrid({ images, onEndReached, onOpen }: { images: GalleryI
               component="button"
               onClick={() => onOpen(img)}
               aria-label={`${img.figureLabel ? `${img.figureLabel} ` : ""}${img.caption ?? "Image"} from ${img.postTitle}`}
-              sx={{ width: tile, flexShrink: 0, p: 0, border: 1, borderColor: "divider", borderRadius: 1, overflow: "hidden", bgcolor: "background.paper", cursor: "zoom-in", textAlign: "left", font: "inherit", color: "inherit", "&:hover img": { transform: "scale(1.02)" } }}
+              sx={{ width: tile, flexShrink: 0, p: 0, border: 1, borderColor: "divider", borderRadius: 1, overflow: "hidden", bgcolor: "background.paper", cursor: "zoom-in", textAlign: "left", font: "inherit", color: "inherit", "&:hover .tile-image": { transform: "scale(1.02)" } }}
             >
-              <Box sx={{ aspectRatio: "4 / 3", bgcolor: img.dominantColor ?? "action.hover", overflow: "hidden" }}>
-                <Box component="img" src={img.thumbUrl} alt="" loading="lazy" sx={{ width: "100%", height: "100%", objectFit: "cover", display: "block", transition: "transform 150ms" }} />
+              <Box sx={{ transition: "transform 150ms" }} className="tile-image">
+                <FittedImage img={img} ratio={4 / 3} fit="cover" />
               </Box>
               <Box sx={{ px: 1, py: 0.75 }}>
                 <Typography variant="caption" sx={{ fontWeight: 600 }} noWrap component="div">

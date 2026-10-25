@@ -31,6 +31,7 @@ import { Histogram, HistogramTable } from "./Histogram";
 import { OnboardingChecklist } from "./Onboarding";
 import { FavoriteButton } from "../collections/FavoriteButton";
 import { GalleryGrid, GalleryViewer, PeekPane, ResultsList } from "./Results";
+import { ImageCarousel } from "./ImageCarousel";
 import { SearchBar } from "./SearchBar";
 
 /** Collection IDs referenced anywhere in a spec (all/any/none and nested where groups). */
@@ -483,7 +484,10 @@ export function SearchPage() {
                   />
                 )
               ) : view === "gallery" ? (
-                <GalleryGrid images={images} onEndReached={onEndReached} onOpen={setViewer} />
+                <>
+                  <ImageCarousel images={images.slice(0, 8)} onOpen={setViewer} />
+                  <GalleryGrid images={images} onEndReached={onEndReached} onOpen={setViewer} />
+                </>
               ) : (
                 <ResultsList
                   hits={hits}

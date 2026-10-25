@@ -500,12 +500,16 @@ export interface GalleryImage {
   postId: ID;
   postTitle: string;
   thumbUrl: string;
+  /** A larger rendition (for the carousel); falls back to thumbUrl. */
+  imageUrl?: string;
   width: number;
   height: number;
   blurhash?: string;
   dominantColor?: string;
   caption?: string;
   figureLabel?: string;
+  /** Drawn on the thumbnail too, so the grid shows what the post shows. */
+  annotation?: { shapes: Shape[]; version: number };
 }
 
 export interface SearchResponse {

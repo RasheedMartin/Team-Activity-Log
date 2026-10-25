@@ -642,12 +642,14 @@ export class SearchEngine {
       postId: d.post.id,
       postTitle: d.post.title,
       thumbUrl: thumb?.url ?? "",
+      imageUrl: (img.asset.variants.find((v) => v.name === "medium") ?? thumb)?.url,
       width: img.asset.width,
       height: img.asset.height,
       blurhash: img.asset.blurhash,
       dominantColor: img.asset.dominantColors[0],
       caption: img.inst.caption,
       figureLabel: img.inst.figureLabel,
+      ...(img.inst.annotation?.shapes.length ? { annotation: img.inst.annotation } : {}),
     };
   }
 
