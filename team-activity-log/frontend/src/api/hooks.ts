@@ -9,6 +9,7 @@ import {
 } from "@tanstack/react-query";
 import { api, ApiError, del, get, patch, post, put } from "./client";
 import type {
+  Presentation,
   Collection,
   CollectionEntry,
   Comment,
@@ -575,8 +576,8 @@ export function useCreateCollection(orgId: ID, wsId: ID) {
 export function useUpdateCollection(orgId: ID, wsId: ID) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, name, postIds }: { id: ID; name?: string; postIds?: ID[] }): Promise<Collection> => {
-      let c = name !== undefined ? await patch<Collection>(`${W(orgId, wsId)}/collections/${id}`, { name }) : undefined;
+    mutationFn: async ({ id, name, postIds, presentation }: { id: ID; name?: string; postIds?: ID[]; presentation?: Presentation | null }): Promise<Collection> => {
+      let c = name !== undefined || presentation !== undefined ? await patch<Collection>(`${W(orgId, wsId)}/collections/${id}`, { ...(name !== undefined ? { name } : {}), ...(presentation !== undefined ? { presentation } : {}) }) : undefined;
       if (postIds) c = await put<Collection>(`${W(orgId, wsId)}/collections/${id}/posts`, { postIds });
       return c!;
     },
@@ -584,7 +585,7 @@ export function useUpdateCollection(orgId: ID, wsId: ID) {
       const key = [...qk.collections(orgId, wsId), v.id];
       await qc.cancelQueries({ queryKey: key });
       const prev = qc.getQueryData<Collection>(key);
-      if (prev) qc.setQueryData<Collection>(key, { ...prev, ...(v.name ? { name: v.name } : {}), ...(v.postIds ? { postIds: v.postIds } : {}) });
+      if (prev) qc.setQueryData<Collection>(key, { ...prev, ...(v.name ? { name: v.name } : {}), ...(v.postIds ? { postIds: v.postIds } : {}), ...(v.presentation !== undefined ? { presentation: v.presentation ?? undefined } : {}) });
       return { prev, key };
     },
     onError: (_e, _v, c) => c?.prev && qc.setQueryData(c.key, c.prev),

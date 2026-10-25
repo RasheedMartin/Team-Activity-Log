@@ -109,3 +109,45 @@ test("the slide editor fits a phone", async ({ page }) => {
   await editor.scrollIntoViewIfNeeded();
   await page.screenshot({ path: "test-results/slide-editor-phone.png" });
 });
+
+test("customize a slide from Present", async ({ page }) => {
+  await openScenario(page, "small");
+  await page.keyboard.press("c");
+  await page.getByLabel("Title").fill("Customize me");
+  await page.getByLabel("Text block 1").click();
+  await page.keyboard.type("Opening section.");
+  await page.getByRole("button", { name: "Slide break" }).click();
+  await page.getByRole("button", { name: "Text", exact: true }).click();
+  await page.keyboard.type("Results worth a layout");
+  await page.getByRole("button", { name: /Publish/ }).click();
+  await expect(page).toHaveURL(/\/p\/[^/]+$/);
+  await page.getByRole("button", { name: "Present" }).click();
+  await expect(page.getByText(/^1 \/ \d+$/)).toBeVisible();
+  await page.keyboard.press("End"); // the "Results" section's slide
+  await expect(page.getByText("Results worth a layout")).toBeVisible();
+  await page.getByRole("button", { name: "Customize this slide" }).click();
+  await expect(page).toHaveURL(/\/edit$/); // the request is used once, then cleared
+  const editor = slideEditor(page);
+  await expect(editor.getByRole("button", { name: "Text box: Results worth a layout" })).toBeVisible();
+  await expect(page.getByText("Opening section.")).toBeVisible(); // the rest of the post is untouched
+  await expect(page.getByRole("button", { name: "Design this slide" })).toHaveCount(0);
+});
+
+test("a slide cut from a long text explains why it can't be customized yet", async ({ page }) => {
+  await openScenario(page, "small");
+  await page.keyboard.press("c");
+  await page.getByLabel("Title").fill("Long one");
+  await page.getByLabel("Text block 1").click();
+  for (let i = 0; i < 14; i++) await page.keyboard.type(`Paragraph ${i} with enough words to fill a slide quickly. `.repeat(2) + "\n");
+  await page.getByRole("button", { name: /Publish/ }).click();
+  await expect(page).toHaveURL(/\/p\/[^/]+$/);
+  await page.getByRole("button", { name: "Present" }).click();
+  await expect(page.getByText(/^1 \/ \d+$/)).toBeVisible();
+  await page.keyboard.press("ArrowRight");
+  const btn = page.getByRole("button", { name: "Customize this slide" });
+  await expect(btn).toHaveAttribute("aria-disabled", "true");
+  await expect(btn).toHaveAccessibleDescription(/Add a slide break/);
+  await btn.click({ force: true }); // Playwright skips aria-disabled controls; people can still press it
+  await expect(page.getByRole("alert").or(page.getByRole("status")).filter({ hasText: "Add a slide break" }).first()).toBeVisible();
+  await expect(page).toHaveURL(/\/present/); // nothing changed
+});

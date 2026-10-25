@@ -276,6 +276,10 @@ async def patch_collection(org: str, ws: str, cid: str, body: dict = Body(...), 
         if c.kind == "notebook":
             await assert_unique_notebook_name(db, ctx.ws.id, name, c.id)
         c.name, c.updated_at = name, now()
+    if "presentation" in body:
+        if not role_at_least(ctx.role, "member"):
+            fail(403, "forbidden", "Viewers can't change how this presents")
+        c.presentation, c.updated_at = clean.presentation(body["presentation"]), now()
     return await _view_of(db, c)
 
 

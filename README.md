@@ -20,7 +20,11 @@ into a notebook or presented as slides.
   post text that keeps its formatting (colors, highlight, lists, links, headings). Charts come in
   as tables of their data. You review and publish; nothing publishes on its own.
 - **Designed slides.** Lay out a slide right in a post: move and resize, edit text in place, and
-  add shapes and pictures. Slide text is searchable like any post text.
+  add shapes, pictures, and charts (drawn from an editable data table). Slide text and chart data
+  are searchable like any post text.
+- **Present and download.** Present any post, selection, or notebook full-screen, in a theme of
+  your choice (or the imported deck's own look), and download it as a real PowerPoint file with
+  editable text, tables, native charts, and presenter notes.
 - **Explore, collections, and notebooks.** Browse by tag. A collection is posts you pick; a
   notebook is posts in reading order. Present any post, selection, or notebook full-screen.
 - **Discussion.** Threaded comments, @mentions, questions with accepted answers, reactions, and

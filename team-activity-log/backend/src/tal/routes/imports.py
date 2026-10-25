@@ -29,7 +29,7 @@ from ..httputil import read_limited
 from ..ids import parse_uuid, uuid7
 from ..images import create_asset
 from ..outbox import enqueue
-from ..pptx import ParsedDeck, ParsedSlide, PptxError, parse_pptx
+from ..pptx import ParsedDeck, ParsedSlide, PptxError, deck_look, parse_pptx
 from ..prosemirror import doc, empty_doc, heading
 from ..timeutil import now, today
 from ..views import block_image_ids, import_job_view
@@ -301,6 +301,7 @@ async def commit(org: str, job_id: str, u: m.User = Depends(require_user), db: A
         fail(409, "not_in_review", "Nothing to commit yet")
     deck = await _deck(db, j)
     by_slide = {x.n: x for x in deck.slides}
+    look = deck_look(deck.slides)
     t = now()
     coll = m.CollectionRow(id=uuid7(), org_id=ctx.org.id, workspace_id=j.workspace_id, name=j.defaults.get("collectionName") or j.source_filename, kind="deck_import", created_by=u.id, created_at=t, updated_at=t)
     db.add(coll)
@@ -334,6 +335,7 @@ async def commit(org: str, job_id: str, u: m.User = Depends(require_user), db: A
         await db.flush()
         blocks = await blocks_for(db, ctx, post_id, slides, j.defaults.get("slideDesign") or "auto")
         p.blocks = blocks or [{"id": str(uuid7()), "type": "text", "doc": empty_doc()}]
+        p.presentation = clean.presentation({"theme": {**look, "name": "From the deck"}, "deck": {**look, "name": "From the deck"}}) if look else None
         p.image_count = len(block_image_ids(blocks, content_only=True))
         await set_post_tags(db, ctx, p, j.defaults.get("tagIds") or [])
         db.add(m.CollectionPost(collection_id=coll.id, post_id=post_id, position=created))

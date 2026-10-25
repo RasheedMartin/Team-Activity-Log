@@ -92,6 +92,7 @@ class ParsedSlide:
     design: dict | None = None
     design_images: list[ParsedImage] = field(default_factory=list)
     rich: bool = False  # layout carries meaning (pictures, shapes, columns): keep it designed in "auto"
+    look: dict = field(default_factory=dict)  # the slide's theme: background, heading, text, accent, fonts
 
 
 @dataclass
@@ -188,8 +189,9 @@ def _theme_colors(pkg: _Package, slide_part: str) -> dict[str, str]:
     return out
 
 
-def _color(fill: ET.Element | None, theme: dict[str, str]) -> str | None:
-    """'#rrggbb' from a fill element's srgbClr/schemeClr/sysClr child, with lumMod/lumOff applied."""
+def _color(fill: ET.Element | None, theme: dict[str, str], alpha: bool = False) -> str | None:
+    """'#rrggbb' from a fill element's srgbClr/schemeClr/sysClr child, with lumMod/lumOff/tint/shade
+    applied. With `alpha`, a transparent color comes back as '#rrggbbaa'."""
     for c in list(fill) if fill is not None else []:
         if c.tag == q("a:srgbClr"):
             base = c.get("val", "")
@@ -204,6 +206,7 @@ def _color(fill: ET.Element | None, theme: dict[str, str]) -> str | None:
             return None
         r, g, b = (int(base[i : i + 2], 16) / 255 for i in (0, 2, 4))
         h, light, sat = colorsys.rgb_to_hls(r, g, b)
+        opacity = 1.0
         for mod in list(c):
             val = int(mod.get("val", "0")) / 100_000 if mod.get("val", "").isdigit() else None
             if val is None:
@@ -212,8 +215,15 @@ def _color(fill: ET.Element | None, theme: dict[str, str]) -> str | None:
                 light *= val
             elif mod.tag == q("a:lumOff"):
                 light += val
+            elif mod.tag == q("a:tint"):
+                light = light * val + (1 - val)  # toward white
+            elif mod.tag == q("a:shade"):
+                light *= val  # toward black
+            elif mod.tag == q("a:alpha"):
+                opacity = val
         r, g, b = colorsys.hls_to_rgb(h, min(1.0, max(0.0, light)), sat)
-        return "#" + "".join(f"{round(x * 255):02x}" for x in (r, g, b))
+        out = "#" + "".join(f"{round(x * 255):02x}" for x in (r, g, b))
+        return out + f"{round(opacity * 255):02x}" if alpha and opacity < 0.995 else out
     return None
 
 
@@ -237,9 +247,14 @@ class _Ctx:
     headings: bool = True  # large text / subtitles become headings (flowing text only)
     base_size: float | None = None  # a designed text box's size: runs that differ keep theirs
     font_scale: float = 1.0  # normAutofit shrink
+    fonts: dict[str, str] = field(default_factory=dict)  # theme heading/body fonts ("+mj-lt"/"+mn-lt")
+    base_font: str | None = None  # a designed text box's font: runs in another typeface keep theirs
+    table_styles: dict[str, ET.Element] = field(default_factory=dict)  # designed slides: PowerPoint table styles
+    design: bool = False  # designed slide: keep table geometry and styling
 
 
 _SAFE_HREF = re.compile(r"^(https?://|mailto:)", re.I)
+_FONT_NAME = re.compile(r"[\w .-]{1,64}")
 _ALIGN = {"ctr": "center", "r": "right", "just": "justify"}
 HEADING_SIZE = 2800  # hundredths of a point: 28 pt and up reads as a heading
 
@@ -275,6 +290,11 @@ def _runs(p: ET.Element, ctx: _Ctx | None = None) -> list[PMNode]:
                 sz = pr.get("sz", "")
                 if ctx.base_size and sz.isdigit() and abs(int(sz) / 100 - ctx.base_size) >= 0.5:
                     style["fontSize"] = f"{round(int(sz) / 100 * ctx.font_scale, 1):g}px"  # 1 px = 1 pt on a slide
+                latin = pr.find(q("a:latin"))
+                face = latin.get("typeface", "") if latin is not None and ctx.design else ""
+                face = {"+mj-lt": ctx.fonts.get("heading", ""), "+mn-lt": ctx.fonts.get("body", "")}.get(face, face)
+                if face and face != ctx.base_font and _FONT_NAME.fullmatch(face):
+                    style["fontFamily"] = face
                 if style:
                     marks.append({"type": "textStyle", "attrs": style})
                 hl = _color(pr.find(q("a:highlight")), ctx.theme)
@@ -353,21 +373,94 @@ def _text_body(body: ET.Element, bulleted: bool, ctx: _Ctx | None = None, subtit
     return out
 
 
+def _table_style_regions(style: ET.Element | None, theme: dict[str, str]) -> tuple[dict[str, dict], str | None]:
+    """A PowerPoint table style's regions (wholeTbl, firstRow, band1H, …) as {fill, color, bold},
+    and the style's border color."""
+    regions: dict[str, dict] = {}
+    border = None
+    for reg in list(style) if style is not None else []:
+        out: dict = {}
+        tc = reg.find(q("a:tcStyle"))
+        fill = tc.find(q("a:fill")) if tc is not None else None
+        solid = fill.find(q("a:solidFill")) if fill is not None else None
+        if solid is not None and (c := _color(solid, theme)):
+            out["fill"] = c
+        tx = reg.find(q("a:tcTxStyle"))
+        if tx is not None:
+            if c := _color(tx, theme):
+                out["color"] = c
+            if tx.get("b") == "on":
+                out["bold"] = True
+        if border is None and tc is not None and (bdr := tc.find(q("a:tcBdr"))) is not None:
+            border = next((c for ln in bdr.iter(q("a:ln")) if (c := _color(ln.find(q("a:solidFill")), theme))), None)
+        regions[_local(reg)] = out
+    return regions, border
+
+
+def _with_mark(nodes: list[PMNode], mark: dict) -> list[PMNode]:
+    """Add a mark to every text node that doesn't already have one of its type."""
+    out = []
+    for n in nodes:
+        if n.get("type") == "text" and not any(m["type"] == mark["type"] for m in n.get("marks", [])):
+            n = {**n, "marks": [*n.get("marks", []), mark]}
+        elif n.get("content"):
+            n = {**n, "content": _with_mark(n["content"], mark)}
+        out.append(n)
+    return out
+
+
 def _table(tbl: ET.Element, ctx: _Ctx | None = None) -> PMNode:
+    ctx = ctx or _Ctx()
     pr = tbl.find(q("a:tblPr"))
-    header = pr is None or pr.get("firstRow") == "1"
+    flag = lambda k: pr is not None and pr.get(k) == "1"  # noqa: E731
+    header = pr is None or flag("firstRow")
+    widths = [_pt(int(g.get("w", "0"))) for g in _els(tbl, "a:gridCol") if g.get("w", "").isdigit()] if ctx.design else []
+    style_id = pr.find(q("a:tableStyleId")) if pr is not None else None
+    regions, border = _table_style_regions(ctx.table_styles.get((style_id.text or "").strip()) if style_id is not None else None, ctx.theme) if ctx.design else ({}, None)
+    trs = _els(tbl, "a:tr")
     rows = []
-    for r, tr in enumerate(_els(tbl, "a:tr")):
+    for r, tr in enumerate(trs):
         cells = []
+        col = 0
         for tc in [c for c in list(tr) if c.tag == q("a:tc")]:
+            span = int(tc.get("gridSpan", "1")) if tc.get("gridSpan", "1").isdigit() else 1
             if tc.get("hMerge") == "1" or tc.get("vMerge") == "1":
+                col += 1
                 continue  # covered by a neighbor's span
             paras = [_block("paragraph", _runs(p, ctx), _align(p)) for p in _els(tc, "a:p")]
             paras = [x for x in paras if x["content"]] or [{"type": "paragraph"}]
-            attrs = {k: int(tc.get(a, "1")) for k, a in (("colspan", "gridSpan"), ("rowspan", "rowSpan")) if tc.get(a, "1").isdigit() and int(tc.get(a, "1")) > 1}
+            attrs: dict = {k: int(tc.get(a, "1")) for k, a in (("colspan", "gridSpan"), ("rowspan", "rowSpan")) if tc.get(a, "1").isdigit() and int(tc.get(a, "1")) > 1}
+            if ctx.design:
+                if widths[col : col + span]:
+                    attrs["colwidth"] = [round(w) for w in widths[col : col + span]]
+                # Style regions, most specific last; then the cell's own fill.
+                names = ["wholeTbl"]
+                if flag("bandRow") and not (header and r == 0):
+                    names.append("band1H" if (r - (1 if header else 0)) % 2 == 0 else "band2H")
+                if flag("firstCol") and col == 0:
+                    names.append("firstCol")
+                if flag("lastRow") and r == len(trs) - 1:
+                    names.append("lastRow")
+                if header and r == 0:
+                    names.append("firstRow")
+                look: dict = {}
+                for name in names:
+                    look.update(regions.get(name, {}))
+                tcpr = tc.find(q("a:tcPr"))
+                if tcpr is not None and tcpr.find(q("a:noFill")) is not None:
+                    look.pop("fill", None)
+                elif tcpr is not None and (own := _color(tcpr.find(q("a:solidFill")), ctx.theme)):
+                    look["fill"] = own
+                if look.get("fill"):
+                    attrs["background"] = look["fill"]
+                if look.get("color"):
+                    attrs["color"] = look["color"]
+                if look.get("bold"):
+                    paras = _with_mark(paras, {"type": "bold"})
             cells.append({"type": "tableHeader" if header and r == 0 else "tableCell", **({"attrs": attrs} if attrs else {}), "content": paras})
+            col += span
         rows.append({"type": "tableRow", "content": cells})
-    return {"type": "table", "content": rows}
+    return {"type": "table", **({"attrs": {"borderColor": border}} if border else {}), "content": rows}
 
 
 MAX_CHART_ROWS = 200
@@ -401,6 +494,32 @@ def _chart(pkg: _Package, part: str) -> list[PMNode]:
     rows += [{"type": "tableRow", "content": [cell("tableCell", cats.get(i, str(i + 1))), *(cell("tableCell", v.get(i, "")) for _, v in series)]} for i in idxs]
     caption = [{"type": "paragraph", "content": [{"type": "text", "text": title, "marks": [{"type": "bold"}]}]}] if title else []
     return [*caption, {"type": "table", "content": rows}]
+
+
+_CHART_TYPES = {
+    "barChart": "column", "bar3DChart": "column", "lineChart": "line", "line3DChart": "line", "areaChart": "area", "area3DChart": "area",
+    "pieChart": "pie", "pie3DChart": "pie", "ofPieChart": "pie", "doughnutChart": "doughnut", "scatterChart": "scatter",
+}  # fmt: skip
+
+
+def _chart_style(pkg: _Package, part: str, theme: dict[str, str]) -> tuple[str, list[str | None]]:
+    """A chart's type (column, bar, line, area, pie, doughnut, scatter) and its series colors
+    (None where the deck leaves it to the theme)."""
+    root = pkg.xml(part)
+    plot = _first(root, "c:plotArea")
+    kind = "column"
+    for el in list(plot) if plot is not None else []:
+        if _local(el) in _CHART_TYPES:
+            kind = _CHART_TYPES[_local(el)]
+            bar_dir = el.find(q("c:barDir"))
+            if kind == "column" and bar_dir is not None and bar_dir.get("val") == "bar":
+                kind = "bar"
+            break
+    colors: list[str | None] = []
+    for ser in _els(root, "c:ser")[:MAX_CHART_SERIES]:
+        pr = ser.find(q("c:spPr"))
+        colors.append((_color(pr.find(q("a:solidFill")), theme) or _color(_first(pr, "a:solidFill"), theme)) if pr is not None else None)
+    return kind, colors if any(colors) else []
 
 
 def _smartart(pkg: _Package, part: str) -> list[PMNode]:
@@ -533,7 +652,7 @@ def _fill(sp: ET.Element, theme: dict[str, str]) -> tuple[str | None, str | None
     width = None
     if pr is not None and _kid(pr, "noFill") is None:
         if (solid := _kid(pr, "solidFill")) is not None:
-            fill = _color(solid, theme)
+            fill = _color(solid, theme, alpha=True)
         elif (grad := _kid(pr, "gradFill")) is not None:
             stop = next(grad.iter(q("a:gs")), None)
             fill = _color(stop, theme)
@@ -544,7 +663,7 @@ def _fill(sp: ET.Element, theme: dict[str, str]) -> tuple[str | None, str | None
         width = _pt(int(ln.get("w", "0")))
     if ln is None or _kid(ln, "noFill") is None:
         if ln is not None and (solid := _kid(ln, "solidFill")) is not None:
-            line = _color(solid, theme)
+            line = _color(solid, theme, alpha=True)
         elif style is not None and (ref := _kid(style, "lnRef")) is not None and ref.get("idx", "0") != "0":
             line = _color(ref, theme)
             width = width or 0.75
@@ -576,6 +695,15 @@ def _box_style(chain: list[ET.Element], txstyle: ET.Element | None, theme: dict[
     return size, color, anchor
 
 
+def _default_size(pkg: _Package) -> float:
+    """The deck's default text size (presentation.xml defaultTextStyle), else PowerPoint's 18 pt."""
+    pres = pkg.xml("ppt/presentation.xml")
+    dts = _first(pres, "p:defaultTextStyle")
+    lvl1 = dts.find(q("a:lvl1pPr")) if dts is not None else None
+    dr = lvl1.find(q("a:defRPr")) if lvl1 is not None else None
+    return int(dr.get("sz", "")) / 100 if dr is not None and dr.get("sz", "").isdigit() else 18.0
+
+
 def _dominant_size(body: ET.Element) -> float | None:
     sizes: dict[str, int] = {}
     for r in body.iter(q("a:rPr")):
@@ -589,10 +717,15 @@ class _Design:
 
     def __init__(self, pkg: _Package, part: str, size: tuple[int, int], ctx: _Ctx):
         self.pkg, self.part, self.ctx = pkg, part, ctx
+        self.fonts = _theme_fonts(pkg, part)
+        self.default_size = _default_size(pkg)
+        styles = pkg.xml("ppt/tableStyles.xml") if pkg.has("ppt/tableStyles.xml") else None
+        self.table_styles = {s.get("styleId", ""): s for s in styles.iter(q("a:tblStyle"))} if styles is not None else {}
         self.w, self.h = size
         self.images: list[ParsedImage] = []
         self.elements: list[dict] = []
         self.rich = False  # the slide itself has pictures, shapes, groups, charts, or several text boxes
+        self.look: dict = {}
         self.text_boxes = 0
         self.layout = pkg.rel(part, "slideLayout")
         self.master = pkg.rel(self.layout, "slideMaster") if self.layout else None
@@ -662,6 +795,22 @@ class _Design:
         out: dict = {"size": {"w": _pt(self.w), "h": _pt(self.h)}, "elements": self.elements}
         if background:
             out["background"] = background
+        # The slide's look, for presenting its text-only neighbors the same way (post themes).
+        title = next((e for e in self.elements if e.get("role") == "title"), None)
+        body = next((e for e in self.elements if e["kind"] != "image" and e.get("doc") and not e.get("role") and not e.get("decorative")), None)
+        accent = self.ctx.theme.get("accent1")
+        self.look = {
+            k: v
+            for k, v in {
+                "background": background,
+                "heading": title.get("color") if title else None,
+                "text": body.get("color") if body else None,
+                "accent": f"#{accent.lower()}" if accent else None,
+                "headingFont": self.fonts.get("heading"),
+                "bodyFont": self.fonts.get("body"),
+            }.items()
+            if v
+        }
         return out
 
     def walk(self, tree: ET.Element | None, part: str | None, xf: _Xf, template: bool) -> None:
@@ -730,15 +879,17 @@ class _Design:
             return
         body = _kid(sp, "txBody")
         style_name = _STYLE_FOR.get(typ or "", "otherStyle") if ph is not None else "otherStyle"
-        txstyle = _first(self.master_root, f"p:{style_name}") if self.master_root is not None else None
+        # Master text styles apply to placeholders; a plain text box takes the deck's default size.
+        txstyle = _first(self.master_root, f"p:{style_name}") if self.master_root is not None and ph is not None else None
         size, color, anchor = _box_style(chain, txstyle, self.ctx.theme)
         bpr = _kid(body, "bodyPr")
         scale = 1.0
         fit = _kid(bpr, "normAutofit")
         if fit is not None and fit.get("fontScale", "").isdigit():
             scale = int(fit.get("fontScale", "100000")) / 100_000
-        base = (_dominant_size(body) if body is not None else None) or size or (40.0 if typ in ("title", "ctrTitle") else 18.0)
-        ctx = _Ctx(theme=self.ctx.theme, links=self._links(part), keep_colors=True, headings=False, base_size=base, font_scale=scale)
+        base = (_dominant_size(body) if body is not None else None) or size or (40.0 if typ in ("title", "ctrTitle") else self.default_size)
+        role_font = self.fonts.get("heading" if typ in ("title", "ctrTitle") else "body") or self.fonts.get("body")
+        ctx = _Ctx(theme=self.ctx.theme, links=self._links(part), keep_colors=True, headings=False, base_size=base, font_scale=scale, fonts=self.fonts, base_font=role_font, design=True)
         nodes = _text_body(body, typ in ("body", "obj"), ctx) if body is not None else []
         geom = _kid(_kid(sp, "spPr"), "prstGeom")
         prst = geom.get("prst", "rect") if geom is not None else ("line" if _local(sp) == "cxnSp" else "rect")
@@ -798,14 +949,21 @@ class _Design:
         rels = {r["id"]: r for r in self.pkg.rels(part)}
         tbl = _first(el, "a:tbl")
         nodes: list[PMNode] = []
-        size = 18.0
+        size = self.default_size
         if tbl is not None:
-            nodes = [_table(tbl, _Ctx(theme=self.ctx.theme, links=self._links(part), keep_colors=True, headings=False))]
-            size = _dominant_size(tbl) or 18.0
+            ctx = _Ctx(theme=self.ctx.theme, links=self._links(part), keep_colors=True, headings=False, fonts=self.fonts, base_font=self.fonts.get("body"), table_styles=self.table_styles, design=True)
+            nodes = [_table(tbl, ctx)]
+            size = _dominant_size(tbl) or self.default_size
         elif (ref := _first(el, "c:chart")) is not None:
             target = rels.get(ref.get(q("r:id"), ""), {}).get("target")
             nodes = _chart(self.pkg, target) if target and self.pkg.has(target) else []
-            size = 12.0
+            if nodes:
+                # Drawn from its data table (the doc), so editing the numbers redraws it.
+                kind, colors = _chart_style(self.pkg, target, self.ctx.theme)  # type: ignore[arg-type]
+                self.rich = True
+                el_ = {"id": self._id(), "kind": "chart", **self._box(box), "chartType": kind, "doc": {"type": "doc", "content": nodes}, "fontSize": 12.0, "color": "#000000"}
+                self.elements.append({**el_, "colors": colors} if colors else el_)
+                return
         elif (ids := _first(el, "dgm:relIds")) is not None:
             if self.smartart(ids, part, box):
                 self.rich = True
@@ -990,8 +1148,15 @@ def _parse_slide(pkg: _Package, part: str, n: int, size: tuple[int, int] = (12_1
     text_all = f"{title}\n{doc_text({'type': 'doc', 'content': content})}".strip()
     return ParsedSlide(
         n=n, title=title, is_section_header=is_header, content=content, images=images, notes=notes, text=text_all, date=guess_date(text_all), warnings=warnings, parts=parts,
-        design=design, design_images=designer.images, rich=designer.rich,
+        design=design, design_images=designer.images, rich=designer.rich, look=designer.look,
     )  # fmt: skip
+
+
+def deck_look(slides: list[ParsedSlide]) -> dict:
+    """The deck's look for presenting: the first content slide with both a heading and body text
+    (title slides are often styled differently), else the first slide."""
+    full = [s.look for s in slides if {"heading", "text"} <= s.look.keys()]
+    return dict(full[0] if full else (slides[0].look if slides else {}))
 
 
 def parse_pptx(data: bytes, on_progress: Callable[[float], None] | None = None) -> ParsedDeck:

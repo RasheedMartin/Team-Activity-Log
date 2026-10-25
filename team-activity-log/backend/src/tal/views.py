@@ -178,6 +178,7 @@ def post_view(p: m.Post, tag_ids: list[str], co_author_ids: list[str], collectio
             "reactions": p.reactions or {},
             "collectionIds": collection_ids,
             "source": p.source,
+            "presentation": p.presentation,
         }
     )
 
@@ -232,7 +233,9 @@ def saved_view_view(v: m.SavedView, pinned: bool) -> dict:
 
 
 def collection_view(c: m.CollectionRow, post_ids: list[str]) -> dict:
-    return clean({"id": s(c.id), "workspaceId": s(c.workspace_id), "name": c.name, "kind": c.kind, "postIds": post_ids, "createdBy": s(c.created_by), "updatedAt": iso(c.updated_at), "sourceTagId": s(c.source_tag_id)})
+    return clean(
+        {"id": s(c.id), "workspaceId": s(c.workspace_id), "name": c.name, "kind": c.kind, "postIds": post_ids, "createdBy": s(c.created_by), "updatedAt": iso(c.updated_at), "sourceTagId": s(c.source_tag_id), "presentation": c.presentation}
+    )
 
 
 async def collection_post_ids(db: AsyncSession, collection_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, list[str]]:

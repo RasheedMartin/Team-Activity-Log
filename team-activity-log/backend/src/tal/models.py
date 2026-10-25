@@ -231,6 +231,7 @@ class Post(Base):
     blocks: Mapped[list] = mapped_column(JSONB, server_default="[]")
     reactions: Mapped[dict] = mapped_column(JSONB, server_default="{}")
     source: Mapped[dict | None] = mapped_column(JSONB)
+    presentation: Mapped[dict | None] = mapped_column(JSONB)  # {"theme": SlideTheme} for presenting
     revision: Mapped[int] = mapped_column(Integer, server_default="0")
     version: Mapped[int] = mapped_column(Integer, server_default="1")
     comment_count: Mapped[int] = mapped_column(Integer, server_default="0")
@@ -286,6 +287,7 @@ class CollectionRow(Base):
     kind: Mapped[str] = mapped_column(String(20), server_default="manual")
     created_by: Mapped[uuid.UUID] = fk("users.id", "RESTRICT", False, False)
     source_tag_id: Mapped[uuid.UUID | None] = fk("tags.id", "SET NULL", True, False)
+    presentation: Mapped[dict | None] = mapped_column(JSONB)  # {"theme": SlideTheme} for presenting
     created_at: Mapped[dt.datetime] = ts(False, True)
     updated_at: Mapped[dt.datetime] = ts(False, True)
     __table_args__ = (

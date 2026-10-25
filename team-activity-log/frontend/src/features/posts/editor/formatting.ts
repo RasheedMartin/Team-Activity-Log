@@ -1,6 +1,7 @@
 import Highlight from "@tiptap/extension-highlight";
 import TextAlign from "@tiptap/extension-text-align";
-import { Color, TextStyle } from "@tiptap/extension-text-style";
+import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
+import { Color, FontFamily, FontSize, TextStyle } from "@tiptap/extension-text-style";
 
 // Text color, highlight, and alignment (§C1). Stored as plain hex on the textStyle/highlight marks
 // and textAlign on paragraphs/headings — the backend sanitizer accepts nothing else. Colors render
@@ -45,6 +46,25 @@ const HighlightColor = Highlight.extend({
     };
   },
 }).configure({ multicolor: true });
+
+/** A hex attribute kept on a node and shown as a style (cell fills, cell text color, table borders). */
+const hexAttr = (name: string, css: (v: string) => string) => ({
+  default: null,
+  parseHTML: (el: HTMLElement) => toHex(el.getAttribute(`data-${name}`)),
+  renderHTML: (a: Record<string, unknown>) => (typeof a[name] === "string" && HEX.test(a[name] as string) ? { [`data-${name}`]: a[name], style: css(a[name] as string) } : {}),
+});
+const cellAttrs = { background: hexAttr("background", (v) => `background: ${v}`), color: hexAttr("color", (v) => `color: ${v}`) };
+
+/** Tables that keep imported styling (column widths come with TipTap's cells). */
+export const tableExtensions = [
+  Table.extend({ addAttributes: () => ({ borderColor: hexAttr("borderColor", (v) => `--tb: ${v}`) }) }).configure({ resizable: false }),
+  TableRow,
+  TableHeader.extend({ addAttributes() { return { ...this.parent?.(), ...cellAttrs }; } }),
+  TableCell.extend({ addAttributes() { return { ...this.parent?.(), ...cellAttrs }; } }),
+]; // prettier-ignore
+
+/** What designed-slide text adds: per-run sizes and typefaces from the deck. */
+export const slideTextExtensions = [FontSize, FontFamily];
 
 export const formattingExtensions = [TextStyle, TextColor, HighlightColor, TextAlign.configure({ types: ["heading", "paragraph"] })];
 

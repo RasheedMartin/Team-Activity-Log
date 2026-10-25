@@ -1,5 +1,5 @@
 import { http, HttpResponse } from "msw";
-import type { Collection, ID, LibraryItem, LibraryKind, LibraryPage, PinRef, SavedView } from "../../api/contract";
+import type { Collection, ID, LibraryItem, LibraryKind, LibraryPage, PinRef, Presentation, SavedView } from "../../api/contract";
 import { uuidv7 } from "../../lib/ids";
 import { db } from "../db";
 import { engine, fail, now, roleAtLeast, route, workspaceCtx } from "../server";
@@ -196,13 +196,17 @@ export const libraryHandlers = [
       const ctx = workspaceCtx(cookies, params.org as string, params.ws as string);
       const c = db.t.collections.get(params.id as string);
       if (!c || c.workspaceId !== ctx.ws.id) fail(404, "not_found", "Collection not found");
-      const { name, pinned } = (await request.json()) as { name?: string; pinned?: boolean };
+      const { name, pinned, presentation } = (await request.json()) as { name?: string; pinned?: boolean; presentation?: Presentation | null };
       if (pinned !== undefined) togglePin(ctx.user.id, ctx.ws.id, { kind: kindOf(c!), id: c!.id }, pinned);
       if (name !== undefined) {
         if (!roleAtLeast(ctx.role, "member")) fail(403, "forbidden", "Viewers can't rename collections");
         if (!name.trim()) fail(422, "invalid", "Name can't be empty");
         if (c!.kind === "notebook") assertUniqueNotebookName(ctx.ws.id, name, c!.id);
         db.t.collections.update(c!.id, { name: name.trim(), updatedAt: now() });
+      }
+      if (presentation !== undefined) {
+        if (!roleAtLeast(ctx.role, "member")) fail(403, "forbidden", "Viewers can't change how this presents");
+        db.t.collections.update(c!.id, { presentation: presentation ?? undefined, updatedAt: now() });
       }
       return HttpResponse.json(db.t.collections.get(c!.id));
     }),

@@ -148,13 +148,22 @@ NODES: dict[str, set[str]] = {
     "codeBlock": {"language"},
     "hardBreak": set(),
     "horizontalRule": set(),
-    "table": set(),
+    "table": {"borderColor"},
     "tableRow": set(),
-    "tableCell": {"colspan", "rowspan", "colwidth"},
-    "tableHeader": {"colspan", "rowspan", "colwidth"},
+    "tableCell": {"colspan", "rowspan", "colwidth", "background", "color"},
+    "tableHeader": {"colspan", "rowspan", "colwidth", "background", "color"},
     "mention": {"id", "label", "mentionSuggestionChar"},
 }
-MARKS: dict[str, set[str]] = {"bold": set(), "italic": set(), "underline": set(), "strike": set(), "code": set(), "link": {"href"}, "textStyle": {"color", "fontSize"}, "highlight": {"color"}}
+MARKS: dict[str, set[str]] = {
+    "bold": set(),
+    "italic": set(),
+    "underline": set(),
+    "strike": set(),
+    "code": set(),
+    "link": {"href"},
+    "textStyle": {"color", "fontSize", "fontFamily"},
+    "highlight": {"color"},
+}
 ALIGNMENTS = {"left", "center", "right", "justify"}
 HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 FONT_SIZE = re.compile(r"^\d{1,3}(\.\d)?px$")  # designed slides: 1 px = 1 pt
@@ -178,6 +187,10 @@ def _attr(node_type: str, key: str, v: Any) -> Any:
         return v if v in ALIGNMENTS else None
     if key == "fontSize":
         return v if isinstance(v, str) and FONT_SIZE.match(v) and 1 <= float(v[:-2]) <= 400 else None
+    if key == "fontFamily":
+        return v if isinstance(v, str) and FONT_NAME.match(v) else None  # a name, never CSS
+    if key in ("background", "borderColor"):
+        return v.lower() if isinstance(v, str) and HEX_COLOR.match(v) else None
     if key == "color":
         return v.lower() if isinstance(v, str) and HEX_COLOR.match(v) else None  # never a CSS expression
     if key in ("id",):
@@ -220,7 +233,11 @@ def doc(value: Any, field: str = "doc") -> dict:
                 if isinstance(mk, dict) and mk.get("type") in MARKS:
                     ma = mk.get("attrs") if isinstance(mk.get("attrs"), dict) else {}
                     mclean = {k: _attr(mk["type"], k, ma[k]) for k in MARKS[mk["type"]] if k in ma}
-                    if (mk["type"] == "link" and not mclean.get("href")) or (mk["type"] == "highlight" and not mclean.get("color")) or (mk["type"] == "textStyle" and not any(mclean.values())):
+                    if (
+                        (mk["type"] == "link" and not mclean.get("href"))
+                        or (mk["type"] == "highlight" and not mclean.get("color"))
+                        or (mk["type"] == "textStyle" and not any(v is not None for v in mclean.values()))
+                    ):
                         continue  # unsafe or missing value: keep the text, drop the mark
                     marks.append({"type": mk["type"], **({"attrs": {k: v for k, v in mclean.items() if v is not None}} if mclean else {})})
             if marks:
@@ -239,7 +256,34 @@ def doc(value: Any, field: str = "doc") -> dict:
     return root  # type: ignore[return-value]
 
 
+THEME_COLORS = ("background", "heading", "text", "accent")
+
+
+def _theme(theme: Any, field: str) -> dict | None:
+    if not isinstance(theme, dict):
+        return None
+    out: dict[str, Any] = {k: c for k in THEME_COLORS if (c := _hex(theme.get(k)))}
+    for k in ("headingFont", "bodyFont"):
+        if isinstance(theme.get(k), str) and FONT_NAME.match(theme[k]):
+            out[k] = theme[k]
+    if name := text(theme.get("name"), f"{field}.name", 40):
+        out["name"] = name
+    return out or None
+
+
+def presentation(value: Any, field: str = "presentation") -> dict | None:
+    """How a post or notebook presents: {"theme": the chosen theme, "deck": an imported deck's own
+    look, kept so it can be chosen again}. Themes are a name, #rrggbb colors and font names."""
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        invalid(field, "presentation must be an object")
+    out = {k: t for k in ("theme", "deck") if (t := _theme(value.get(k), f"{field}.{k}"))}
+    return out or None
+
+
 BLOCK_TYPES = {"text", "table", "image", "slide_break", "slide"}
+CHART_TYPES = {"column", "bar", "line", "area", "pie", "doughnut", "scatter"}
 SLIDE_SHAPES = {"rect", "roundRect", "ellipse", "triangle", "line", "arrow"}
 SLIDE_VALIGN = {"top", "middle", "bottom"}
 SLIDE_ROLES = {"title", "body"}
@@ -256,6 +300,14 @@ def _finite(v: Any, lo: float, hi: float) -> float | None:
 
 def _hex(v: Any) -> str | None:
     return v.lower() if isinstance(v, str) and HEX_COLOR.match(v) else None
+
+
+HEX_ALPHA = re.compile(r"^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$")
+
+
+def _hex_alpha(v: Any) -> str | None:
+    """#rrggbb, or #rrggbbaa for a see-through fill or outline."""
+    return v.lower() if isinstance(v, str) and HEX_ALPHA.match(v) else None
 
 
 def slide_design(value: Any, field: str = "design") -> dict:
@@ -278,7 +330,7 @@ def slide_design(value: Any, field: str = "design") -> dict:
     if len(elements) > MAX_SLIDE_ELEMENTS:
         invalid(field, f"A slide can have at most {MAX_SLIDE_ELEMENTS} elements")
     for e in elements:
-        if not isinstance(e, dict) or e.get("kind") not in ("text", "shape", "image"):
+        if not isinstance(e, dict) or e.get("kind") not in ("text", "shape", "image", "chart"):
             continue
         geo = {k: _finite(e.get(k), lo, hi) for k, lo, hi in (("x", -2 * w, 3 * w), ("y", -2 * h, 3 * h), ("w", 0, 4 * w), ("h", 0, 4 * h))}
         if any(v is None for v in geo.values()):
@@ -296,13 +348,19 @@ def slide_design(value: Any, field: str = "design") -> dict:
                 el["doc"] = doc(e.get("doc"), f"{field}.doc")
             if fs := _finite(e.get("fontSize"), 1, 400):
                 el["fontSize"] = fs
-            for k in ("color", "fill", "line"):
-                if c := _hex(e.get(k)):
+            if c := _hex(e.get("color")):
+                el["color"] = c
+            for k in ("fill", "line"):
+                if c := _hex_alpha(e.get(k)):
                     el[k] = c
             if e.get("valign") in SLIDE_VALIGN:
                 el["valign"] = e["valign"]
             if e.get("role") in SLIDE_ROLES:
                 el["role"] = e["role"]
+            if e["kind"] == "chart":
+                el["chartType"] = e.get("chartType") if e.get("chartType") in CHART_TYPES else "column"
+                if isinstance(e.get("colors"), list):
+                    el["colors"] = [_hex(c) for c in e["colors"][:20]]
             if e["kind"] == "shape":
                 el["shape"] = e.get("shape") if e.get("shape") in SLIDE_SHAPES else "rect"
                 if (lw := _finite(e.get("lineWidth"), 0, 100)) is not None:

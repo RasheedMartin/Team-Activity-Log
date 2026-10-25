@@ -28,6 +28,9 @@ from ..views import asset_view, block_docs, block_image_ids, image_views, post_d
 router = APIRouter()
 
 
+CONTENT_FIELDS = {"title", "summary", "workDate", "blocks", "tagIds", "coAuthorIds"}
+
+
 def image_count(blocks: list) -> int:
     return len(block_image_ids(blocks, content_only=True))
 
@@ -142,6 +145,11 @@ async def patch_post(org: str, post_id: str, body: dict = Body(...), u: m.User =
         await set_tags(db, ctx, p, clean.uuid_list(body["tagIds"], "tagIds", 50))
     if "coAuthorIds" in body and body["coAuthorIds"] is not None:
         await set_co_authors(db, ctx, p, clean.uuid_list(body["coAuthorIds"], "coAuthorIds", 20))
+    if "presentation" in body:
+        p.presentation = clean.presentation(body["presentation"])
+    if not CONTENT_FIELDS & body.keys():  # a theme change isn't an edit: no revision, no reindex
+        p.version += 1
+        return await detail(db, p)
     if p.status == "published":
         # Rapid edits by the same person coalesce into one revision (§A5).
         last = await db.get(m.PostRevision, (p.id, p.revision))
@@ -253,7 +261,12 @@ async def drafts(org: str, ws: str, u: m.User = Depends(require_user), db: Async
     rows = await db.execute(
         select(m.Post).where(m.Post.workspace_id == ctx.ws.id, m.Post.status == "draft", m.Post.author_id == u.id, m.Post.deleted_at.is_(None)).order_by(m.Post.updated_at.desc())
     )
-    return [{"id": str(p.id), "title": p.title, "updatedAt": iso(p.updated_at), "imageCount": image_count(p.blocks), "workspaceId": str(p.workspace_id)} for p in rows.scalars()]
+    def summary(p: m.Post) -> dict:
+        s = p.source or {}
+        src = {k: s[k] for k in ("importJobId", "fileName", "slide", "slideCount") if k in s} if s.get("kind") == "import" else None
+        return {"id": str(p.id), "title": p.title, "updatedAt": iso(p.updated_at), "imageCount": image_count(p.blocks), "workspaceId": str(p.workspace_id), **({"source": src} if src else {})}
+
+    return [summary(p) for p in rows.scalars()]
 
 
 @router.get("/orgs/{org}/workspaces/{ws}/trash")

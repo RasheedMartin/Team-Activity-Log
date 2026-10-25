@@ -20,8 +20,6 @@ import {
   WallpaperRounded,
 } from "@mui/icons-material";
 import { Box, Button, Divider, IconButton, ListItemIcon, ListItemText, Menu, MenuItem, Popover, Stack, Tooltip, Typography } from "@mui/material";
-import { TableKit } from "@tiptap/extension-table";
-import { FontSize } from "@tiptap/extension-text-style";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
@@ -30,7 +28,7 @@ import { SlideCanvas } from "../../../components/SlideCanvas";
 import { boxTextSx, slideProseSx } from "../../../components/slideStyles";
 import { hasTable } from "../../../lib/prosemirror";
 import { imageElement, newElement } from "../../../lib/slideLayouts";
-import { HIGHLIGHTS, TEXT_COLORS, formattingExtensions } from "./formatting";
+import { HIGHLIGHTS, TEXT_COLORS, formattingExtensions, slideTextExtensions, tableExtensions } from "./formatting";
 import { EditorToolbar } from "./TextBlockEditor";
 
 // Edit a designed slide in place (slides step 3): click to select, drag to move, handles to
@@ -39,7 +37,7 @@ import { EditorToolbar } from "./TextBlockEditor";
 // committed on release, so the post isn't re-saved on every pointer move.
 
 type El = SlideElement;
-type TextLike = Extract<El, { kind: "text" | "shape" }>;
+type TextLike = Extract<El, { kind: "text" | "shape" | "chart" }>;
 const HANDLES = ["nw", "n", "ne", "e", "se", "s", "sw", "w"] as const;
 type Handle = (typeof HANDLES)[number];
 const MIN = 8;
@@ -58,7 +56,7 @@ const FILLS = ["#ffffff", "#000000", "#1f2328", "#4472c4", "#ed7d31", ...TEXT_CO
 const describe = (e: El) => {
   if (e.kind === "image") return "Picture";
   const text = (JSON.stringify(e.doc ?? "").match(/"text":"([^"]*)"/g) ?? []).map((m) => m.slice(8, -1)).join(" ").trim();
-  const what = e.kind === "shape" ? (SHAPES.find((s) => s.id === e.shape)?.label ?? "Shape") : e.role === "title" ? "Title" : "Text box";
+  const what = e.kind === "chart" ? "Chart" : e.kind === "shape" ? (SHAPES.find((s) => s.id === e.shape)?.label ?? "Shape") : e.role === "title" ? "Title" : "Text box";
   return text ? `${what}: ${text.slice(0, 40)}` : what;
 };
 
@@ -104,7 +102,7 @@ function SlideTextEditor({ e, fonts, onDoc, onEditor, onDone }: { e: TextLike; f
     onDocRef.current = onDoc;
   });
   const editor = useEditor({
-    extensions: [StarterKit.configure({ heading: { levels: [2, 3, 4] }, link: { openOnClick: false, autolink: true, protocols: ["http", "https", "mailto"] } }), ...formattingExtensions, FontSize, ...(hasTable(e.doc) ? [TableKit.configure({ table: { resizable: false } })] : [])],
+    extensions: [StarterKit.configure({ heading: { levels: [2, 3, 4] }, link: { openOnClick: false, autolink: true, protocols: ["http", "https", "mailto"] } }), ...formattingExtensions, ...slideTextExtensions, ...(hasTable(e.doc) ? tableExtensions : [])],
     content: (e.doc as object) ?? { type: "doc", content: [{ type: "paragraph" }] },
     autofocus: "end",
     immediatelyRender: true,
@@ -395,8 +393,8 @@ export function SlideEditor({ design, images, label, onChange, onUploadImage, on
               ))}
             </>
           )}
-          {textLike && !isLine && <ColorButton label="Fill" icon={<FormatColorFillRounded />} value={textLike.fill} allowNone onPick={(c) => update(textLike.id, { fill: c })} />}
-          {textLike && <ColorButton label={isLine ? "Line color" : "Outline"} icon={<BorderColorRounded />} value={textLike.line} allowNone={!isLine} onPick={(c) => update(textLike.id, { line: c })} />}
+          {textLike && textLike.kind !== "chart" && !isLine && <ColorButton label="Fill" icon={<FormatColorFillRounded />} value={textLike.fill} allowNone onPick={(c) => update(textLike.id, { fill: c })} />}
+          {textLike && textLike.kind !== "chart" && <ColorButton label={isLine ? "Line color" : "Outline"} icon={<BorderColorRounded />} value={textLike.line} allowNone={!isLine} onPick={(c) => update(textLike.id, { line: c })} />}
           <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
           <Tooltip title="Bring to front">
             <IconButton size="small" aria-label="Bring to front" onClick={() => arrange(sel.id, "front")} sx={{ borderRadius: 1, "& svg": { fontSize: 18 } }}><FlipToFrontRounded /></IconButton>

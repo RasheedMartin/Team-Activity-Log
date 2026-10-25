@@ -137,7 +137,27 @@ export interface SlideBox {
 export type SlideElement =
   | (SlideElementBase & SlideBox & { kind: "text"; fill?: string; line?: string })
   | (SlideElementBase & SlideBox & { kind: "shape"; shape: SlideShape; fill?: string; line?: string; lineWidth?: number; flipH?: boolean; flipV?: boolean })
-  | (SlideElementBase & { kind: "image"; imageInstanceId: ID });
+  | (SlideElementBase & { kind: "image"; imageInstanceId: ID })
+  /** Drawn from the data table in its doc (header row: series names; first column: categories),
+   *  so editing the table redraws the chart and its numbers are searchable. */
+  | (SlideElementBase & SlideBox & { kind: "chart"; chartType: ChartType; colors?: (string | null)[] });
+export type ChartType = "column" | "bar" | "line" | "area" | "pie" | "doughnut" | "scatter";
+
+/** How automatic slides look when presenting (designed slides keep their own design). */
+export interface SlideTheme {
+  name?: string;
+  background?: string; // #rrggbb
+  heading?: string;
+  text?: string;
+  accent?: string;
+  headingFont?: string;
+  bodyFont?: string;
+}
+/** A post's or notebook's presentation settings; `deck` keeps an imported deck's own look. */
+export interface Presentation {
+  theme?: SlideTheme;
+  deck?: SlideTheme;
+}
 
 export interface PostSource {
   kind: "import";
@@ -175,6 +195,7 @@ export interface Post {
   reactions: Record<string, ID[]>;
   collectionIds: ID[];
   source?: PostSource;
+  presentation?: Presentation;
 }
 
 /** Image metadata (§B10): what the author provides lives on ImageInstance; this is extracted. */
@@ -268,6 +289,8 @@ export interface DraftSummary {
   updatedAt: ISODateTime;
   imageCount: number;
   workspaceId: ID;
+  /** Drafts made by importing slides: which import, file, and slide. */
+  source?: Pick<PostSource, "importJobId" | "fileName" | "slide" | "slideCount">;
 }
 
 export interface PostPatch {
@@ -278,6 +301,7 @@ export interface PostPatch {
   tagIds?: ID[];
   coAuthorIds?: ID[];
   blocks?: Block[];
+  presentation?: Presentation | null; // not a content edit: no new revision
 }
 
 // ---- Discussion (v3) ----
@@ -507,6 +531,7 @@ export interface Collection {
   updatedAt?: ISODateTime;
   /** Notebooks made from a tag remember it, so there is one per tag even after a rename. */
   sourceTagId?: ID;
+  presentation?: Presentation;
 }
 
 // ---- Library (scale): everything a person can save, searchable and paged ----

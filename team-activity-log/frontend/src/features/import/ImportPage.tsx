@@ -34,7 +34,8 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { Link as RouterLink, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import type { ImportItem, ImportJob, ImportMode, SlideDesignMode } from "../../api/contract";
-import { useImportAction, useImportJob, useStartImport } from "../../api/hooks";
+import { useDrafts, useImportAction, useImportJob, useStartImport } from "../../api/hooks";
+import { DraftList } from "../activity/DraftList";
 import { can, useWs, wsPath } from "../../app/session";
 import { useNotify } from "../../components/notify";
 import { TagPicker } from "../../components/Pickers";
@@ -329,6 +330,8 @@ function DoneStep({ job, onNew }: { job: ImportJob; onNew: () => void }) {
   const [confirm, setConfirm] = useState(false);
   const [published, setPublished] = useState(false);
   const r = job.report;
+  const drafts = useDrafts(org.id, ws.id);
+  const mine = (drafts.data ?? []).filter((d) => d.source?.importJobId === job.id).sort((a, b) => (a.source?.slide ?? 0) - (b.source?.slide ?? 0));
   const downloadReport = () => {
     const lines = [
       `Import report: ${job.sourceFilename}`,
@@ -349,15 +352,21 @@ function DoneStep({ job, onNew }: { job: ImportJob; onNew: () => void }) {
         Created {r?.created ?? 0} drafts from “{job.sourceFilename}”{r?.skipped ? `, skipped ${r.skipped}` : ""}{r?.warnings ? `, with ${r.warnings} warnings to review` : ""}.
       </Alert>
       <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
-        <Button variant="contained" disabled={published || act.isPending} onClick={() => act.mutate({ action: "publishAll" }, { onSuccess: () => (setPublished(true), notify("All imported drafts published")) })}>
+        <Button variant="contained" disabled={published || act.isPending || (!drafts.isPending && !mine.length)} onClick={() => act.mutate({ action: "publishAll" }, { onSuccess: () => (setPublished(true), notify("All imported drafts published")) })}>
           {published ? "Published" : "Publish all"}
         </Button>
-        <Button component={RouterLink} to={wsPath(org, ws, "/activity/drafts")}>Review drafts</Button>
-        {published && <Button component={RouterLink} to={collectionUrl} startIcon={<SearchRounded />}>Search these slides</Button>}
+        {(published || (!drafts.isPending && mine.length < (r?.created ?? 0))) && <Button component={RouterLink} to={collectionUrl} startIcon={<SearchRounded />}>Search these slides</Button>}
         <Button startIcon={<DownloadRounded />} onClick={downloadReport}>Download report</Button>
         <Button onClick={onNew}>Import more slides</Button>
         <Button color="error" onClick={() => setConfirm(true)}>Delete this import</Button>
       </Stack>
+      <Box sx={{ width: "100%" }}>
+        <Typography variant="h4" sx={{ mb: 0.5 }}>Drafts to review</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+          Open one to edit it; each draft links back here. Select several to publish them together.
+        </Typography>
+        {mine.length ? <DraftList drafts={mine} hideSource /> : <Typography variant="body2" color="text.secondary">Nothing left to review: every post from this import is published or discarded.</Typography>}
+      </Box>
       <Dialog open={confirm} onClose={() => setConfirm(false)} maxWidth="xs">
         <DialogTitle>Delete this import?</DialogTitle>
         <DialogContent>

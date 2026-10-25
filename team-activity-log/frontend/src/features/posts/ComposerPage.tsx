@@ -16,7 +16,7 @@ import {
 import { Alert, Box, Button, Divider, IconButton, InputBase, LinearProgress, Menu, MenuItem, Paper, Skeleton, Stack, TextField, Tooltip, Typography } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useBlocker, useNavigate, useParams } from "react-router-dom";
+import { useBlocker, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import type { Block, ImageView, Post, PostDetail, Shape } from "../../api/contract";
 import { createImageInstance, patchImageInCaches, qk, uploadImage, useCreateDraft, usePost, usePostAction, useSaveAnnotation, useUpdateImage, useUpdatePost } from "../../api/hooks";
@@ -35,6 +35,7 @@ import { ImageBlock, UploadingBlock, type UploadState } from "./editor/ImageBloc
 import { emptyTable } from "./editor/emptyTable";
 import { SlideEditor } from "./editor/SlideEditor";
 import { TextBlockEditor } from "./editor/TextBlockEditor";
+import { ImportTrail } from "../import/ImportTrail";
 import { ImageMetadataDrawer } from "./ImageMetadataDrawer";
 
 type LocalBlock = Block | { id: string; type: "uploading" };
@@ -212,6 +213,30 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
     const { design, rest } = sectionToDesign(section, images);
     replaceBlocks(breakIndex, n + 1, [{ id: uuidv7(), type: "slide", design, ...(brk.notes ? { notes: brk.notes } : {}) }, ...rest]);
   };
+  // "Customize this slide" (Present) arrives with ?design=<block ids>: those blocks become a designed
+  // slide, once, and the composer scrolls to it.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const designIds = searchParams.get("design");
+  useEffect(() => {
+    if (!designIds) return;
+    const ids = designIds.split(",");
+    const idx = ids.map((id) => f.blocks.findIndex((b) => b.id === id)).filter((i) => i >= 0).sort((a, b) => a - b);
+    setSearchParams((p) => (p.delete("design"), p), { replace: true });
+    if (!idx.length || idx[idx.length - 1] - idx[0] !== idx.length - 1) return; // stale or not contiguous: leave the post as it is
+    const start = idx[0];
+    const before = f.blocks[start - 1];
+    const fullSection = before?.type === "slide_break" && sectionLength(start - 1) === idx.length;
+    if (fullSection) designSection(start - 1);
+    else {
+      const section = f.blocks.slice(start, start + idx.length).filter((b): b is Block => b.type !== "uploading");
+      const { design, rest } = sectionToDesign(section, images);
+      replaceBlocks(start, idx.length, [{ id: uuidv7(), type: "slide", design }, ...rest]);
+    }
+    notify("Your slide is ready to lay out");
+    setTimeout(() => document.querySelector("[aria-label$='designed slide editor']")?.scrollIntoView({ block: "center" }), 100);
+    // Runs once per arrival; the blocks it reads are the ones loaded with the post.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [designIds]);
   const uploadForSlide = async (file: File) => {
     try {
       const asset = await uploadImage(orgId, file);
@@ -411,6 +436,7 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
               This post changed in another tab or by someone else. Load the latest version, or keep yours and overwrite it.
             </Alert>
           )}
+          {post.source?.kind === "import" && isDraft && <ImportTrail source={post.source} postId={post.id} />}
           <Paper variant="outlined" sx={{ p: { xs: 2, sm: 3 } }}>
             <InputBase
               fullWidth

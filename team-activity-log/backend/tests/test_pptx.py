@@ -127,6 +127,22 @@ def summarize(deck) -> list[dict]:
             "rich": s.rich,
             "design": s.design,
             "designImages": len(s.design_images),
+            "look": s.look,
         }
         for s in deck.slides
     ]
+
+
+def test_designed_slides_keep_table_styles_fonts_and_transparency(fmt):
+    els = fmt.slides[3].design["elements"]
+    code = next(e for e in els if "code" in json.dumps(e.get("doc")))
+    assert marks_of(code["doc"]["content"], "code") == [{"type": "textStyle", "attrs": {"fontFamily": "Courier New"}}]
+    assert code["fontSize"] == 16  # the deck's default text size, not a guess
+    glass = next(e for e in els if e.get("shape") == "ellipse")
+    assert glass["fill"] == "#4472c466"  # 40% opaque
+    table = next(e for e in els if '"table"' in json.dumps(e.get("doc")))["doc"]["content"][0]
+    head, band1, band2, _ = table["content"]
+    assert table["attrs"] == {"borderColor": "#9e9e9e"}
+    assert head["content"][0]["attrs"] == {"colwidth": [144], "background": "#4472c4", "color": "#ffffff"}
+    assert marks_of(head["content"], "Run") == [{"type": "bold"}]  # firstRow is bold in the style
+    assert band1["content"][1]["attrs"]["background"] != band2["content"][1]["attrs"]["background"]  # banded rows

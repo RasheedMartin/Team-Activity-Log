@@ -158,4 +158,51 @@ Step 1 of the slides plan. Step 2 is a "designed slide" block (a positioned canv
   Pointer events cover touch. Drags are drafted locally and saved on release.
 - **Getting in and out.** *Designed slide* in the add bar (Title and text, Title slide, Two columns, Blank). *Design this slide* on a slide break turns that section into a slide: its heading becomes the title, its text sits beside its first picture, and any further pictures stay as image blocks. *Convert to post text* turns a slide back into a break, a text block, and its pictures, in reading order.
 - **Fixed on the way:** a text block's toolbar collapsed as soon as the block lost focus, which shifted the page under the pointer, so clicking a button below a text block (Slide break, Designed slide) could miss. It now collapses after the click completes.
-- **Still to do (step 4):** themes for automatic slides, export to .pptx, drawn charts, and "Customize this slide" directly from Present.
+- **Step 4** is below.
+
+## Slides step 4: fidelity from real decks, themes, export, charts, customize (Oct 2026)
+
+Tested against four real decks (112 slides: Google Slides exports, an IBM course template, and a designed deck). The mock and backend parsers produce identical output on all of them (checked locally; the decks aren't committed).
+
+- **Fidelity fixes found in real decks:**
+  - **Table column widths.** A table is sized by its grid columns, as PowerPoint does; Google Slides writes a stale frame size, so the frame is advisory and tables may overflow it.
+  - **Table styles** from `tableStyles.xml`: wholeTbl, band1H/band2H, firstRow, lastRow, and firstCol regions supply the fill, text color, bold, and border color, and a cell's own fill wins.
+  - **Fonts.** Each run keeps its own typeface (`textStyle.fontFamily`), with `+mj-lt`/`+mn-lt` resolved to the theme fonts.
+  - **Transparency.** `<a:alpha>` becomes `#rrggbbaa` on fills and outlines.
+  - **Colors:** `tint`/`shade` are supported.
+  - **Text sizes.** Plain text boxes and tables use the deck's default size (`defaultTextStyle`); the master's text styles apply only to placeholders.
+- **Web fonts.** A slide loads metric-compatible stand-ins from Google Fonts for fonts viewers rarely have (Calibri→Carlito, Cambria→Caladea, Arial→Arimo, Times→Tinos, Courier→Cousine, Georgia→Gelasio), and Google families as themselves, so text wraps as it did in PowerPoint (`lib/slideFonts.ts`). One request per family, retried plain when a family lacks bold or italics.
+- **Themes** (`posts.presentation`, `collections.presentation`, migration 0004):
+  - **What it is:** `{theme, deck}`, where a theme is a name, `#rrggbb` colors (background, heading, text, accent), and fonts. It applies to automatic slides only; designed slides keep their design.
+  - **Which one applies:** a notebook's theme covers all its posts; otherwise each post uses its own.
+  - **Imports:** an import sets the theme, and `deck` keeps the deck's own look, taken from the first content slide that has both a heading and body text, so "From the deck" can be chosen again.
+  - **Presets:** Classic, Paper, Lab, Midnight, Forest, Mono.
+  - **Choosing:** the picker in Present saves to the notebook, or to the post when the presenter can edit it; otherwise the choice applies while presenting.
+  - **Not a content edit:** changing the theme creates no revision and doesn't reindex.
+- **Export** (`lib/exportPptx.ts`, PptxGenJS loaded on demand from Present's Download button). It exports what Present shows:
+  - designed slides element by element, with formatted, editable text;
+  - tables with column widths and fills;
+  - pictures with their annotations baked in;
+  - charts as native, editable PowerPoint charts;
+  - automatic slides laid out as in Present, in their theme;
+  - presenter notes.
+
+  The deck takes its designed slides' most common size, else 16:9.
+- **Charts.** A `chart` element (`chartType`: column, bar, line, area, pie, doughnut, scatter; optional deck `colors`) is drawn from the table in its doc, with series in the header row and categories in the first column, so editing the table redraws it and search indexes its numbers. Marks follow the data-viz rules:
+  - bars ≤ 24 pt with 4 pt rounded data-ends and a 2 pt gap;
+  - 2 pt lines and r4 markers with a surface ring;
+  - a hairline solid grid, and an axis that always covers the data;
+  - text colors for labels, and a legend at 2+ series;
+  - hover tooltips (a crosshair for line and area);
+  - the table available to screen readers.
+
+  The default palette is the validated categorical palette (dark steps on dark slides); a deck's own series colors are kept.
+- **Customize this slide** (Present). Each automatic slide records the blocks it came from (`blockIds`). The composer turns them into a designed slide on arrival (`?design=…`, used once). A slide cut from a longer text block (`partial`) explains that it needs a slide break first; the button stays focusable so everyone can learn why.
+- **Present on phones:** "Go to…", the title, and the Notes window hide below `sm`, so every control, including Exit, fits.
+
+## Reviewing an import (owner feedback, Oct 2026)
+
+- Drafts carry their import source (`DraftSummary.source`).
+- **The import's page** (`/import?job=…`, which keeps working after commit) lists its drafts in slide order.
+- **Every imported draft** shows a trail: "From deck.pptx · slide 3 of 12 · N drafts to review", Prev/Next among that import's remaining drafts, and Back to import. A published imported post has an Open import link for its author.
+- **Selection.** `DraftList` (Activity → Drafts, and the import page) has Select all and per-row checkboxes, with Publish N and Discard N (with undo). Drafts that can't publish stay selected with the publish checklist's reason ("Add a title").

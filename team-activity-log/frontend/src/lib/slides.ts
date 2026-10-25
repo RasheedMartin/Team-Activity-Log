@@ -8,7 +8,18 @@ import { docText, type PMNode } from "./prosemirror";
 
 export type Slide =
   | { kind: "title"; postId: ID; title: string; summary?: string; workDate: string; authorId: ID; tagIds: ID[]; notes?: string }
-  | { kind: "content"; postId: ID; heading?: string; text: PMNode[]; image?: ImageView; notes?: string }
+  | {
+      kind: "content";
+      postId: ID;
+      heading?: string;
+      text: PMNode[];
+      image?: ImageView;
+      notes?: string;
+      /** The post blocks this slide shows ("Customize this slide" turns them into a designed slide). */
+      blockIds: ID[];
+      /** Part of a text block split across slides: it can't be designed on its own. */
+      partial?: boolean;
+    }
   | { kind: "designed"; postId: ID; design: SlideDesign; images: Map<ID, ImageView>; notes?: string };
 
 const designed = (postId: ID, b: Extract<Block, { type: "slide" }>, images: Map<ID, ImageView>): Slide => ({ kind: "designed", postId, design: b.design, images, notes: b.notes });
@@ -50,16 +61,20 @@ function liftHeading(nodes: PMNode[]): { heading?: string; rest: PMNode[] } {
 function contentSlides(postId: ID, blocks: Block[], images: Map<ID, ImageView>, notes?: string): Slide[] {
   const slides: Slide[] = [];
   let pendingText: PMNode[] = [];
+  let pendingIds: ID[] = [];
   const flushText = () => {
     if (isBlank(pendingText)) {
       pendingText = [];
+      pendingIds = [];
       return;
     }
-    for (const c of chunk(pendingText)) {
+    const chunks = chunk(pendingText);
+    for (const c of chunks) {
       const { heading, rest } = liftHeading(c);
-      slides.push({ kind: "content", postId, heading, text: rest });
+      slides.push({ kind: "content", postId, heading, text: rest, blockIds: pendingIds, partial: chunks.length > 1 || undefined });
     }
     pendingText = [];
+    pendingIds = [];
   };
   for (let i = 0; i < blocks.length; i++) {
     const b = blocks[i];
@@ -69,23 +84,28 @@ function contentSlides(postId: ID, blocks: Block[], images: Map<ID, ImageView>, 
       // Adjacent text becomes the caption when it's short: the text right before the image
       // (if nothing else claimed it), else the text right after.
       let caption: PMNode[] = [];
+      let ids: ID[] = [b.id];
       const before = pendingText;
       if (!isBlank(before) && docText({ type: "doc", content: before }).length <= CAPTION_BUDGET) {
         caption = before;
+        ids = [...pendingIds, b.id];
         pendingText = [];
+        pendingIds = [];
       } else {
         flushText();
         const next = blocks[i + 1];
         const after = next ? topNodes(next) : [];
         if (next && next.type === "text" && !isBlank(after) && docText(next.doc).length <= CAPTION_BUDGET) {
           caption = after;
+          ids = [b.id, next.id];
           i++;
         }
       }
       const { heading, rest } = liftHeading(caption);
-      slides.push({ kind: "content", postId, heading, text: rest, image });
+      slides.push({ kind: "content", postId, heading, text: rest, image, blockIds: ids });
     } else if (b.type === "text" || b.type === "table") {
       pendingText.push(...topNodes(b));
+      pendingIds.push(b.id);
     } else if (b.type === "slide") {
       flushText();
       slides.push(designed(postId, b, images));
@@ -120,8 +140,10 @@ export function deriveSlides(post: Post, images: ImageView[]): Slide[] {
     if (imageBlocks.length <= 1) {
       const chunks = chunk(text, imageBlocks.length ? CAPTION_BUDGET * 2 : TEXT_BUDGET * 1.5);
       const first = liftHeading(chunks[0] ?? []);
-      out.push({ kind: "content", postId: post.id, heading: first.heading, text: first.rest, image: imageBlocks[0] ? imgs.get(imageBlocks[0].imageInstanceId) : undefined, notes: s.notes });
-      chunks.slice(1).forEach((c) => out.push({ kind: "content", postId: post.id, text: c }));
+      const ids = s.blocks.map((b) => b.id);
+      const partial = chunks.length > 1 || undefined;
+      out.push({ kind: "content", postId: post.id, heading: first.heading, text: first.rest, image: imageBlocks[0] ? imgs.get(imageBlocks[0].imageInstanceId) : undefined, notes: s.notes, blockIds: ids, partial });
+      chunks.slice(1).forEach((c) => out.push({ kind: "content", postId: post.id, text: c, blockIds: ids, partial }));
     } else {
       out.push(...contentSlides(post.id, s.blocks, imgs, s.notes));
     }

@@ -30,7 +30,7 @@ test("keep the design: slides render as laid out, are searchable, and present", 
   const design = slides.nth(3);
   await expect(design.getByText("Grouped box")).toBeVisible();
   await expect(design.getByText("Step B")).toBeVisible(); // SmartArt, as drawn
-  await expect(design.locator('[data-slide-element="shape"]')).toHaveCount(5); // template bar, group box, arrow, 2 SmartArt boxes
+  await expect(design.locator('[data-slide-element="shape"]')).toHaveCount(6); // template bar, group box, arrow, see-through ellipse, 2 SmartArt boxes
   await expect(design.locator('[data-slide-element="image"] img')).toHaveCount(1); // the master's logo
   await expect(slides.nth(0).locator('[data-slide-element="image"]')).toHaveCount(0); // title layout hides template art
   // Mixed sizes kept at their ratio: a 12 pt run in a 24 pt box.
@@ -39,6 +39,13 @@ test("keep the design: slides render as laid out, are searchable, and present", 
   const small = await para.getByText("small", { exact: true }).evaluate((e) => parseFloat(getComputedStyle(e).fontSize));
   expect(small / big).toBeCloseTo(0.5, 1);
   await expect(design.locator('[data-slide-element="shape"] line')).toHaveCount(1); // the arrow connector
+  // A PowerPoint chart is drawn as a chart, from its data, in the deck's color for Run A.
+  const chart = slides.nth(2).locator('[data-slide-element="chart"]');
+  await expect(chart.getByRole("img", { name: /Gain by channel: column chart of Run A, Run B/ })).toBeVisible();
+  await expect(chart.locator("path[fill='#2e75b6']")).toHaveCount(2);
+  await expect(chart.locator("svg path")).toHaveCount(4);
+  await chart.locator("path[fill='#2e75b6']").first().hover();
+  await expect(chart.getByText("Run A: 1.02")).toBeVisible();
   await page.screenshot({ path: "test-results/designed-slides-laptop.png", fullPage: true });
 
   // Slide text is post text: search finds it.

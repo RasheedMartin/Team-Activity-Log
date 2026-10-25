@@ -51,6 +51,14 @@ export interface ParsedSlide {
   design?: Record<string, unknown> & { elements: (Record<string, unknown> & { kind: string })[] };
   designImages: ParsedImage[];
   rich: boolean; // layout carries meaning (pictures, shapes, columns): keep it designed in "auto"
+  look: SlideLook; // the slide's theme: background, heading, text, accent, fonts
+}
+export type SlideLook = Partial<Record<"background" | "heading" | "text" | "accent" | "headingFont" | "bodyFont", string>>;
+
+/** The deck's look for presenting: the first content slide with both a heading and body text
+ *  (title slides are often styled differently), else the first slide. */
+export function deckLook(slides: ParsedSlide[]): SlideLook {
+  return { ...(slides.find((s) => s.look.heading && s.look.text)?.look ?? slides[0]?.look ?? {}) };
 }
 export interface ParsedDeck {
   slides: ParsedSlide[];
@@ -145,7 +153,8 @@ function hlsToRgb(h: number, l: number, s: number): [number, number, number] {
 const channels = (hex: string) => [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255) as [number, number, number];
 
 /** "#rrggbb" from a fill element's srgbClr/schemeClr/sysClr child, with lumMod/lumOff applied. */
-function color(fill: Element | undefined, theme: Theme): string | undefined {
+/** "#rrggbb" with lumMod/lumOff/tint/shade applied; with `alpha`, a transparent color is "#rrggbbaa". */
+function color(fill: Element | undefined, theme: Theme, alpha = false): string | undefined {
   for (const c of fill ? Array.from(fill.children) : []) {
     let base: string;
     if (c.tagName === "a:srgbClr") base = c.getAttribute("val") ?? "";
@@ -157,13 +166,20 @@ function color(fill: Element | undefined, theme: Theme): string | undefined {
     if (!HEX.test(base)) return undefined;
     const [h, l0, s] = rgbToHls(...channels(base));
     let light = l0;
+    let opacity = 1;
     for (const mod of Array.from(c.children)) {
       const raw = mod.getAttribute("val") ?? "";
       if (!/^\d+$/.test(raw)) continue;
-      if (mod.tagName === "a:lumMod") light *= +raw / 100_000;
-      else if (mod.tagName === "a:lumOff") light += +raw / 100_000;
+      const val = +raw / 100_000;
+      if (mod.tagName === "a:lumMod") light *= val;
+      else if (mod.tagName === "a:lumOff") light += val;
+      else if (mod.tagName === "a:tint") light = light * val + (1 - val); // toward white
+      else if (mod.tagName === "a:shade") light *= val; // toward black
+      else if (mod.tagName === "a:alpha") opacity = val;
     }
-    return "#" + hlsToRgb(h, Math.min(1, Math.max(0, light)), s).map((x) => Math.round(x * 255).toString(16).padStart(2, "0")).join("");
+    const hex2 = (x: number) => Math.round(x * 255).toString(16).padStart(2, "0");
+    const out = "#" + hlsToRgb(h, Math.min(1, Math.max(0, light)), s).map(hex2).join("");
+    return alpha && opacity < 0.995 ? out + hex2(opacity) : out;
   }
   return undefined;
 }
@@ -184,9 +200,14 @@ interface Ctx {
   headings?: boolean; // large text / subtitles become headings (flowing text only; default true)
   baseSize?: number; // a designed text box's size: runs that differ keep theirs
   fontScale?: number; // normAutofit shrink
+  fonts?: { heading?: string; body?: string }; // theme fonts ("+mj-lt"/"+mn-lt")
+  baseFont?: string; // a designed text box's font: runs in another typeface keep theirs
+  tableStyles?: Record<string, Element>; // designed slides: PowerPoint table styles
+  design?: boolean; // designed slide: keep table geometry and styling
 }
 const NO_CTX: Ctx = { theme: {}, links: {} };
 const SAFE_HREF = /^(https?:\/\/|mailto:)/i;
+const FONT_NAME = /^[\w .-]{1,64}$/;
 const ALIGN: Record<string, string> = { ctr: "center", r: "right", just: "justify" };
 const HEADING_SIZE = 2800; // hundredths of a point: 28 pt and up reads as a heading
 
@@ -211,6 +232,9 @@ function runs(p: Element, ctx: Ctx = NO_CTX): PMNode[] {
         if (fg && (ctx.keepColors || distinct(fg))) style.color = fg;
         const sz = pr.getAttribute("sz") ?? "";
         if (ctx.baseSize && /^\d+$/.test(sz) && Math.abs(+sz / 100 - ctx.baseSize) >= 0.5) style.fontSize = `${Math.round((+sz / 100) * (ctx.fontScale ?? 1) * 10) / 10}px`; // 1 px = 1 pt on a slide
+        let face = ctx.design ? (children(pr, "a:latin")[0]?.getAttribute("typeface") ?? "") : "";
+        face = face === "+mj-lt" ? (ctx.fonts?.heading ?? "") : face === "+mn-lt" ? (ctx.fonts?.body ?? "") : face;
+        if (face && face !== ctx.baseFont && FONT_NAME.test(face)) style.fontFamily = face;
         if (Object.keys(style).length) marks.push({ type: "textStyle", attrs: style });
         const hl = color(children(pr, "a:highlight")[0], ctx.theme);
         if (hl) marks.push({ type: "highlight", attrs: { color: hl } });
@@ -277,25 +301,89 @@ function textBody(body: Element, bulleted: boolean, ctx: Ctx = NO_CTX, subtitle 
   return out;
 }
 
+type Look = { fill?: string; color?: string; bold?: boolean };
+
+/** A PowerPoint table style's regions (wholeTbl, firstRow, band1H, …) and its border color. */
+function tableStyleRegions(style: Element | undefined, theme: Theme): [Record<string, Look>, string | undefined] {
+  const regions: Record<string, Look> = {};
+  let border: string | undefined;
+  for (const reg of style ? Array.from(style.children) : []) {
+    const out: Look = {};
+    const tc = children(reg, "a:tcStyle")[0];
+    const solid = tc ? children(children(tc, "a:fill")[0] ?? tc, "a:solidFill")[0] : undefined;
+    const fill = tc && children(tc, "a:fill")[0] && solid ? color(solid, theme) : undefined;
+    if (fill) out.fill = fill;
+    const tx = children(reg, "a:tcTxStyle")[0];
+    if (tx) {
+      const c = color(tx, theme);
+      if (c) out.color = c;
+      if (tx.getAttribute("b") === "on") out.bold = true;
+    }
+    const bdr = tc ? children(tc, "a:tcBdr")[0] : undefined;
+    if (border === undefined && bdr) border = els(bdr, "a:ln").map((ln) => color(children(ln, "a:solidFill")[0], theme)).find(Boolean);
+    regions[reg.localName] = out;
+  }
+  return [regions, border];
+}
+
+/** Add a mark to every text node that doesn't already have one of its type. */
+function withMark(nodes: PMNode[], mark: { type: string }): PMNode[] {
+  return nodes.map((n) =>
+    n.type === "text" && !(n.marks ?? []).some((m) => m.type === mark.type) ? { ...n, marks: [...(n.marks ?? []), mark] } : n.content ? { ...n, content: withMark(n.content, mark) } : n,
+  );
+}
+
 function table(tbl: Element, ctx: Ctx = NO_CTX): PMNode {
   const pr = children(tbl, "a:tblPr")[0];
-  const header = !pr || pr.getAttribute("firstRow") === "1";
+  const flag = (k: string) => pr?.getAttribute(k) === "1";
+  const header = !pr || flag("firstRow");
+  const widths = ctx.design ? els(tbl, "a:gridCol").filter((g) => digits(g.getAttribute("w"))).map((g) => pt(+g.getAttribute("w")!)) : [];
+  const styleId = pr ? (children(pr, "a:tableStyleId")[0]?.textContent ?? "").trim() : "";
+  const [regions, border]: [Record<string, Look>, string | undefined] = ctx.design ? tableStyleRegions(styleId ? ctx.tableStyles?.[styleId] : undefined, ctx.theme) : [{}, undefined];
+  const trs = els(tbl, "a:tr");
   return {
     type: "table",
-    content: els(tbl, "a:tr").map((tr, r) => ({
-      type: "tableRow",
-      content: children(tr, "a:tc")
-        .filter((tc) => tc.getAttribute("hMerge") !== "1" && tc.getAttribute("vMerge") !== "1") // covered by a neighbor's span
-        .map((tc) => {
-          const paras = els(tc, "a:p").map((p) => block("paragraph", runs(p, ctx), align(p))).filter((x) => x.content!.length);
-          const attrs: Record<string, number> = {};
-          for (const [k, a] of [["colspan", "gridSpan"], ["rowspan", "rowSpan"]] as const) {
-            const v = tc.getAttribute(a) ?? "1";
-            if (/^\d+$/.test(v) && +v > 1) attrs[k] = +v;
-          }
-          return { type: header && r === 0 ? "tableHeader" : "tableCell", ...(Object.keys(attrs).length ? { attrs } : {}), content: paras.length ? paras : [{ type: "paragraph" }] };
-        }),
-    })),
+    ...(border ? { attrs: { borderColor: border } } : {}),
+    content: trs.map((tr, r) => {
+      let col = 0;
+      const cells: PMNode[] = [];
+      for (const tc of children(tr, "a:tc")) {
+        const spanAttr = tc.getAttribute("gridSpan") ?? "1";
+        const span = /^\d+$/.test(spanAttr) ? +spanAttr : 1;
+        if (tc.getAttribute("hMerge") === "1" || tc.getAttribute("vMerge") === "1") {
+          col += 1;
+          continue; // covered by a neighbor's span
+        }
+        let paras = els(tc, "a:p").map((p) => block("paragraph", runs(p, ctx), align(p))).filter((x) => x.content!.length);
+        if (!paras.length) paras = [{ type: "paragraph" }];
+        const attrs: Record<string, unknown> = {};
+        for (const [k, a] of [["colspan", "gridSpan"], ["rowspan", "rowSpan"]] as const) {
+          const v = tc.getAttribute(a) ?? "1";
+          if (/^\d+$/.test(v) && +v > 1) attrs[k] = +v;
+        }
+        if (ctx.design) {
+          const w = widths.slice(col, col + span);
+          if (w.length) attrs.colwidth = w.map((x) => Math.round(x));
+          // Style regions, most specific last; then the cell's own fill.
+          const names = ["wholeTbl"];
+          if (flag("bandRow") && !(header && r === 0)) names.push((r - (header ? 1 : 0)) % 2 === 0 ? "band1H" : "band2H");
+          if (flag("firstCol") && col === 0) names.push("firstCol");
+          if (flag("lastRow") && r === trs.length - 1) names.push("lastRow");
+          if (header && r === 0) names.push("firstRow");
+          const look: Look = Object.assign({}, ...names.map((n) => regions[n] ?? {}));
+          const tcpr = children(tc, "a:tcPr")[0];
+          const own = tcpr ? color(children(tcpr, "a:solidFill")[0], ctx.theme) : undefined;
+          if (tcpr && children(tcpr, "a:noFill")[0]) delete look.fill;
+          else if (own) look.fill = own;
+          if (look.fill) attrs.background = look.fill;
+          if (look.color) attrs.color = look.color;
+          if (look.bold) paras = withMark(paras, { type: "bold" });
+        }
+        cells.push({ type: header && r === 0 ? "tableHeader" : "tableCell", ...(Object.keys(attrs).length ? { attrs } : {}), content: paras });
+        col += span;
+      }
+      return { type: "tableRow", content: cells };
+    }),
   };
 }
 
@@ -332,6 +420,32 @@ function chartTable(doc: Document): PMNode[] {
   ];
   const caption: PMNode[] = title ? [{ type: "paragraph", content: [{ type: "text", text: title, marks: [{ type: "bold" }] }] }] : [];
   return [...caption, { type: "table", content: rows }];
+}
+
+const CHART_TYPES: Record<string, string> = {
+  barChart: "column", bar3DChart: "column", lineChart: "line", line3DChart: "line", areaChart: "area", area3DChart: "area",
+  pieChart: "pie", pie3DChart: "pie", ofPieChart: "pie", doughnutChart: "doughnut", scatterChart: "scatter",
+}; // prettier-ignore
+
+/** A chart's type (column, bar, line, area, pie, doughnut, scatter) and its series colors (null
+ *  where the deck leaves it to the theme). */
+function chartStyle(doc: Document, theme: Theme): [string, (string | null)[]] {
+  const plot = first(doc, "c:plotArea");
+  let kind = "column";
+  for (const el of plot ? Array.from(plot.children) : []) {
+    if (CHART_TYPES[el.localName]) {
+      kind = CHART_TYPES[el.localName];
+      if (kind === "column" && children(el, "c:barDir")[0]?.getAttribute("val") === "bar") kind = "bar";
+      break;
+    }
+  }
+  const colors = els(doc, "c:ser")
+    .slice(0, MAX_CHART_SERIES)
+    .map((ser) => {
+      const pr = children(ser, "c:spPr")[0];
+      return (pr && (color(children(pr, "a:solidFill")[0], theme) ?? color(first(pr, "a:solidFill"), theme))) || null;
+    });
+  return [kind, colors.some(Boolean) ? colors : []];
 }
 
 /** SmartArt node text, in document order, as a bullet list. */
@@ -455,7 +569,7 @@ function fillOf(sp: Element, theme: Theme): [string | undefined, string | undefi
     const solid = kid(pr, "solidFill");
     const grad = kid(pr, "gradFill");
     const ref = kid(style, "fillRef");
-    if (solid) fill = color(solid, theme);
+    if (solid) fill = color(solid, theme, true);
     else if (grad) fill = color(els(grad, "a:gs")[0], theme);
     else if (ref && (ref.getAttribute("idx") ?? "0") !== "0") fill = color(ref, theme);
   }
@@ -464,7 +578,7 @@ function fillOf(sp: Element, theme: Theme): [string | undefined, string | undefi
   if (!ln || !kid(ln, "noFill")) {
     const solid = kid(ln, "solidFill");
     const ref = kid(style, "lnRef");
-    if (ln && solid) line = color(solid, theme);
+    if (ln && solid) line = color(solid, theme, true);
     else if (ref && (ref.getAttribute("idx") ?? "0") !== "0") {
       line = color(ref, theme);
       width = width || 0.75;
@@ -500,6 +614,13 @@ function boxStyle(chain: Element[], txstyle: Element | undefined, theme: Theme):
   return [size, col, anchor];
 }
 
+/** The deck's default text size (presentation.xml defaultTextStyle), else PowerPoint's 18 pt. */
+function defaultSize(pres: Document): number {
+  const dts = first(pres, "p:defaultTextStyle");
+  const dr = dts ? children(children(dts, "a:lvl1pPr")[0] ?? dts, "a:defRPr")[0] : undefined;
+  return dts && children(dts, "a:lvl1pPr")[0] && dr && digits(dr.getAttribute("sz")) ? +dr.getAttribute("sz")! / 100 : 18;
+}
+
 function dominantSize(body: Element): number | undefined {
   const sizes = new Map<string, number>();
   for (const r of els(body, "a:rPr")) {
@@ -518,6 +639,7 @@ class Designer {
   images: ParsedImage[] = [];
   elements: DesignElement[] = [];
   rich = false; // the slide itself has pictures, shapes, groups, charts, or several text boxes
+  look: SlideLook = {};
   private textBoxes = 0;
   private n = 0;
   private layout?: string;
@@ -531,6 +653,9 @@ class Designer {
   private w: number;
   private h: number;
   private ctx: Ctx;
+  private fonts: { heading?: string; body?: string } = {};
+  private defaultSize = 18;
+  private tableStyles: Record<string, Element> = {};
 
   constructor(zip: JSZip, part: string, w: number, h: number, ctx: Ctx) {
     this.zip = zip;
@@ -606,6 +731,10 @@ class Designer {
   }
 
   async build() {
+    this.fonts = await themeFonts(this.zip, this.part);
+    this.defaultSize = defaultSize((await this.doc("ppt/presentation.xml"))!);
+    const styles = await this.doc("ppt/tableStyles.xml");
+    this.tableStyles = Object.fromEntries((styles ? els(styles, "a:tblStyle") : []).map((st) => [st.getAttribute("styleId") ?? "", st]));
     this.layout = await relOf(this.zip, this.part, "slideLayout");
     this.master = await relOf(this.zip, this.layout, "slideMaster");
     this.masterRoot = await this.doc(this.master);
@@ -618,6 +747,12 @@ class Designer {
     if (showMaster && layoutRoot) await this.walk(first(layoutRoot, "p:spTree"), this.layout, new Xf(), true);
     await this.walk(first(sld, "p:spTree"), this.part, new Xf(), false);
     this.rich = this.rich || this.textBoxes >= 2;
+    // The slide's look, for presenting its text-only neighbors the same way (post themes).
+    const title = this.elements.find((e) => e.role === "title");
+    const body = this.elements.find((e) => e.kind !== "image" && e.doc && !e.role && !e.decorative);
+    const accent = this.ctx.theme.accent1;
+    const look: SlideLook = { background, heading: title?.color as string | undefined, text: body?.color as string | undefined, accent: accent ? `#${accent.toLowerCase()}` : undefined, headingFont: this.fonts.heading, bodyFont: this.fonts.body };
+    this.look = Object.fromEntries(Object.entries(look).filter(([, v]) => v)) as SlideLook;
     return { size: { w: pt(this.w), h: pt(this.h) }, elements: this.elements, ...(background ? { background } : {}) } as Record<string, unknown>;
   }
 
@@ -685,12 +820,14 @@ class Designer {
     if (!g) return;
     const body = kid(sp, "txBody");
     const styleName = ph ? (STYLE_FOR[typ ?? ""] ?? "otherStyle") : "otherStyle";
-    const txstyle = this.masterRoot ? first(this.masterRoot, `p:${styleName}`) : undefined;
+    // Master text styles apply to placeholders; a plain text box takes the deck's default size.
+    const txstyle = this.masterRoot && ph ? first(this.masterRoot, `p:${styleName}`) : undefined;
     const [size, col, anchor] = boxStyle(chain, txstyle, this.ctx.theme);
     const fit = kid(kid(body, "bodyPr"), "normAutofit");
     const scale = fit && digits(fit.getAttribute("fontScale")) ? +fit.getAttribute("fontScale")! / 100_000 : 1;
-    const base = (body ? dominantSize(body) : undefined) ?? size ?? (typ === "title" || typ === "ctrTitle" ? 40 : 18);
-    const ctx: Ctx = { theme: this.ctx.theme, links: await this.links(part), keepColors: true, headings: false, baseSize: base, fontScale: scale };
+    const base = (body ? dominantSize(body) : undefined) ?? size ?? (typ === "title" || typ === "ctrTitle" ? 40 : this.defaultSize);
+    const roleFont = (typ === "title" || typ === "ctrTitle" ? this.fonts.heading : this.fonts.body) ?? this.fonts.body;
+    const ctx: Ctx = { theme: this.ctx.theme, links: await this.links(part), keepColors: true, headings: false, baseSize: base, fontScale: scale, fonts: this.fonts, baseFont: roleFont, design: true };
     const nodes = body ? textBody(body, typ === "body" || typ === "obj", ctx) : [];
     const pg = kid(kid(sp, "spPr"), "prstGeom");
     const prst = pg ? (pg.getAttribute("prst") ?? "rect") : sp.localName === "cxnSp" ? "line" : "rect";
@@ -737,16 +874,22 @@ class Designer {
     const relMap = new Map((await this.rels(part)).map((r) => [r.id, r]));
     const tbl = first(el, "a:tbl");
     let nodes: PMNode[] = [];
-    let size = 18;
+    let size = this.defaultSize;
     const chartRef = first(el, "c:chart");
     const ids = first(el, "dgm:relIds");
     if (tbl) {
-      nodes = [table(tbl, { theme: this.ctx.theme, links: await this.links(part), keepColors: true, headings: false })];
-      size = dominantSize(tbl) ?? 18;
+      nodes = [table(tbl, { theme: this.ctx.theme, links: await this.links(part), keepColors: true, headings: false, fonts: this.fonts, baseFont: this.fonts.body, tableStyles: this.tableStyles, design: true })];
+      size = dominantSize(tbl) ?? this.defaultSize;
     } else if (chartRef) {
       const cd = await this.doc(relMap.get(chartRef.getAttribute("r:id") ?? "")?.target);
       nodes = cd ? chartTable(cd) : [];
-      size = 12;
+      if (cd && nodes.length) {
+        // Drawn from its data table (the doc), so editing the numbers redraws it.
+        const [kind, colors] = chartStyle(cd, this.ctx.theme);
+        this.rich = true;
+        this.elements.push({ id: this.id(), kind: "chart", ...this.boxOf(box), chartType: kind, doc: { type: "doc", content: nodes }, fontSize: 12, color: "#000000", ...(colors.length ? { colors } : {}) });
+        return;
+      }
     } else if (ids) {
       if (await this.smartArt(ids, part, box)) {
         this.rich = true;
@@ -918,7 +1061,7 @@ async function parseSlide(zip: JSZip, part: string, n: number, size: [number, nu
   if (Object.keys(fonts).length) design.fonts = fonts;
 
   const textAll = `${title}\n${docText({ type: "doc", content })}`.trim();
-  return { n, title, isSectionHeader, content, images, notes, text: textAll, date: guessDate(textAll), warnings, parts, design, designImages: designer.images, rich: designer.rich };
+  return { n, title, isSectionHeader, content, images, notes, text: textAll, date: guessDate(textAll), warnings, parts, design, designImages: designer.images, rich: designer.rich, look: designer.look };
 }
 
 /** Parse a .pptx. Throws a readable Error if it isn't one. `onProgress` gets 0..1 per slide. */

@@ -3,7 +3,8 @@
 // e2e/fixtures/Formatting_2024.pptx: theme colors, positioned shapes, numbered/nested lists,
 // links, highlight, alignment, a styled table, a chart with data, and SmartArt — plus, for
 // designed slides, a master with a background, logo, color bar and title style, a group, an arrow
-// connector, mixed font sizes, and SmartArt with its drawing cache.
+// connector, mixed font sizes, SmartArt with its drawing cache, a styled table with column widths,
+// a run in another typeface, a see-through shape, and a deck default text size.
 // Usage: node scripts/make-test-deck.mjs
 import JSZip from "jszip";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -138,14 +139,19 @@ const fmtSlides = [
         `</p:grpSp>`,
       `<p:cxnSp><p:nvCxnSpPr><p:cNvPr id="5" name="Arrow"/><p:cNvCxnSpPr/><p:nvPr/></p:nvCxnSpPr><p:spPr>${xf(5.5, 3, 2, 0, ' flipV="1"')}<a:prstGeom prst="straightConnector1"><a:avLst/></a:prstGeom><a:ln w="25400">${solid('<a:srgbClr val="333333"/>')}<a:tailEnd type="triangle"/></a:ln></p:spPr></p:cxnSp>`,
       sp(6, { txBox: true, pos: `<p:spPr>${xf(8, 2, 4, 1)}</p:spPr>`, paras: [p2("", r2("Big", ' sz="2400"'), r2(" small", ' sz="1200"'), r2(" again", ' sz="2400"'))] }),
+      sp(8, { txBox: true, pos: `<p:spPr>${xf(8, 3.2, 4, 0.6)}</p:spPr>`, paras: [p2("", run("Plain then "), r2("code", "", '<a:latin typeface="Courier New"/>'))] }),
+      `<p:sp><p:nvSpPr><p:cNvPr id="9" name="Glass"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>${xf(9, 4.2, 2, 1.2)}<a:prstGeom prst="ellipse"><a:avLst/></a:prstGeom>${solid('<a:srgbClr val="4472C4"><a:alpha val="40000"/></a:srgbClr>')}</p:spPr></p:sp>`,
+      `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="10" name="Styled table"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x="${8 * EMU}" y="${5.6 * EMU}"/><a:ext cx="${EMU}" cy="${EMU}"/></p:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table"><a:tbl><a:tblPr firstRow="1" bandRow="1"><a:tableStyleId>{TEST-STYLE}</a:tableStyleId></a:tblPr><a:tblGrid><a:gridCol w="${2 * EMU}"/><a:gridCol w="${EMU}"/></a:tblGrid>` +
+        [["Run", "Gain"], ["A", "1.02"], ["B", "0.98"], ["C", "1.01"]].map((r) => `<a:tr h="${EMU / 3}">${r.map((c) => `<a:tc><a:txBody><a:bodyPr/>${para(run(c))}</a:txBody><a:tcPr/></a:tc>`).join("")}</a:tr>`).join("") +
+        `</a:tbl></a:graphicData></a:graphic></p:graphicFrame>`,
       `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="7" name="SmartArt"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x="${EMU}" y="${5 * EMU}"/><a:ext cx="${6 * EMU}" cy="${EMU}"/></p:xfrm><a:graphic><a:graphicData uri="${DGM}"><dgm:relIds xmlns:dgm="${DGM}" r:dm="rIdDm" r:lo="x" r:qs="x" r:cs="x"/></a:graphicData></a:graphic></p:graphicFrame>`,
     ],
   },
 ];
 
-const series = (name, vals) =>
-  `<c:ser><c:tx><c:strRef><c:strCache><c:pt idx="0"><c:v>${name}</c:v></c:pt></c:strCache></c:strRef></c:tx><c:cat><c:strRef><c:strCache><c:pt idx="0"><c:v>Ch 12</c:v></c:pt><c:pt idx="1"><c:v>Ch 13</c:v></c:pt></c:strCache></c:strRef></c:cat><c:val><c:numRef><c:numCache>${vals.map((v, i) => `<c:pt idx="${i}"><c:v>${v}</c:v></c:pt>`).join("")}</c:numCache></c:numRef></c:val></c:ser>`;
-const chartXml = `<?xml version="1.0" encoding="UTF-8"?><c:chartSpace xmlns:c="${C}" ${NS}><c:chart><c:title><c:tx><c:rich><a:p><a:r><a:t>Gain by channel</a:t></a:r></a:p></c:rich></c:tx></c:title><c:plotArea><c:barChart>${series("Run A", ["1.02", "0.98"])}${series("Run B", ["1.01", "0.97"])}</c:barChart></c:plotArea></c:chart></c:chartSpace>`;
+const series = (name, vals, color) =>
+  `<c:ser><c:tx><c:strRef><c:strCache><c:pt idx="0"><c:v>${name}</c:v></c:pt></c:strCache></c:strRef></c:tx>${color ? `<c:spPr><a:solidFill><a:srgbClr val="${color}"/></a:solidFill></c:spPr>` : ""}<c:cat><c:strRef><c:strCache><c:pt idx="0"><c:v>Ch 12</c:v></c:pt><c:pt idx="1"><c:v>Ch 13</c:v></c:pt></c:strCache></c:strRef></c:cat><c:val><c:numRef><c:numCache>${vals.map((v, i) => `<c:pt idx="${i}"><c:v>${v}</c:v></c:pt>`).join("")}</c:numCache></c:numRef></c:val></c:ser>`;
+const chartXml = `<?xml version="1.0" encoding="UTF-8"?><c:chartSpace xmlns:c="${C}" ${NS}><c:chart><c:title><c:tx><c:rich><a:p><a:r><a:t>Gain by channel</a:t></a:r></a:p></c:rich></c:tx></c:title><c:plotArea><c:barChart>${series("Run A", ["1.02", "0.98"], "2E75B6")}${series("Run B", ["1.01", "0.97"])}</c:barChart></c:plotArea></c:chart></c:chartSpace>`;
 const dgmPt = (id, t, type) => `<dgm:pt modelId="${id}"${type ? ` type="${type}"` : ""}>${t ? `<dgm:t><a:bodyPr/><a:p><a:r><a:t>${t}</a:t></a:r></a:p></dgm:t>` : ""}</dgm:pt>`;
 const dataXml = `<?xml version="1.0" encoding="UTF-8"?><dgm:dataModel xmlns:dgm="${DGM}" ${NS}><dgm:ptLst>${dgmPt(0, "", "doc")}${dgmPt(1, "Plan")}${dgmPt(2, "Build")}${dgmPt(3, "ignored", "parTrans")}${dgmPt(4, "Test")}</dgm:ptLst></dgm:dataModel>`;
 const themeXml = `<?xml version="1.0" encoding="UTF-8"?><a:theme ${NS} name="Test"><a:themeElements><a:clrScheme name="Test"><a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="44546A"/></a:dk2><a:lt2><a:srgbClr val="E7E6E6"/></a:lt2><a:accent1><a:srgbClr val="4472C4"/></a:accent1><a:accent2><a:srgbClr val="ED7D31"/></a:accent2></a:clrScheme><a:fontScheme name="Test"><a:majorFont><a:latin typeface="Georgia"/></a:majorFont><a:minorFont><a:latin typeface="Verdana"/></a:minorFont></a:fontScheme></a:themeElements></a:theme>`;
@@ -165,9 +171,13 @@ const relsXml = (rs) => `<?xml version="1.0" encoding="UTF-8"?><Relationships xm
 const fz = new JSZip();
 fz.file("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="png" ContentType="image/png"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/></Types>`);
 fz.file("_rels/.rels", relsXml([`<Relationship Id="rId1" Type="${REL}/officeDocument" Target="ppt/presentation.xml"/>`]));
-fz.file("ppt/presentation.xml", `<?xml version="1.0" encoding="UTF-8"?><p:presentation ${NS}><p:sldIdLst>${fmtSlides.map((_, i) => `<p:sldId id="${256 + i}" r:id="rIdS${i + 1}"/>`).join("")}</p:sldIdLst><p:sldSz cx="12192000" cy="6858000"/></p:presentation>`);
+fz.file("ppt/presentation.xml", `<?xml version="1.0" encoding="UTF-8"?><p:presentation ${NS}><p:sldIdLst>${fmtSlides.map((_, i) => `<p:sldId id="${256 + i}" r:id="rIdS${i + 1}"/>`).join("")}</p:sldIdLst><p:sldSz cx="12192000" cy="6858000"/><p:defaultTextStyle><a:lvl1pPr><a:defRPr sz="1600"/></a:lvl1pPr></p:defaultTextStyle></p:presentation>`);
 fz.file("ppt/_rels/presentation.xml.rels", relsXml(fmtSlides.map((_, i) => `<Relationship Id="rIdS${i + 1}" Type="${REL}/slide" Target="slides/slide${i + 1}.xml"/>`)));
 fz.file("ppt/theme/theme1.xml", themeXml);
+fz.file(
+  "ppt/tableStyles.xml",
+  `<?xml version="1.0" encoding="UTF-8"?><a:tblStyleLst ${NS} def="{TEST-STYLE}"><a:tblStyle styleId="{TEST-STYLE}" styleName="Test"><a:wholeTbl><a:tcTxStyle><a:schemeClr val="dk1"/></a:tcTxStyle><a:tcStyle><a:tcBdr><a:insideH><a:ln w="12700">${solid('<a:srgbClr val="9E9E9E"/>')}</a:ln></a:insideH></a:tcBdr><a:fill>${solid('<a:schemeClr val="accent1"><a:tint val="20000"/></a:schemeClr>')}</a:fill></a:tcStyle></a:wholeTbl><a:band1H><a:tcStyle><a:fill>${solid('<a:schemeClr val="accent1"><a:tint val="40000"/></a:schemeClr>')}</a:fill></a:tcStyle></a:band1H><a:firstRow><a:tcTxStyle b="on"><a:schemeClr val="lt1"/></a:tcTxStyle><a:tcStyle><a:fill>${solid('<a:schemeClr val="accent1"/>')}</a:fill></a:tcStyle></a:firstRow></a:tblStyle></a:tblStyleLst>`,
+);
 fz.file("ppt/slideMasters/slideMaster1.xml", masterXml);
 fz.file("ppt/slideMasters/_rels/slideMaster1.xml.rels", relsXml([`<Relationship Id="rIdT" Type="${REL}/theme" Target="../theme/theme1.xml"/>`, `<Relationship Id="rIdLogo" Type="${REL}/image" Target="../media/image1.png"/>`]));
 fz.file("ppt/slideLayouts/slideLayout1.xml", layoutXml("title", "", ' showMasterSp="0"')); // title slides hide the master's art

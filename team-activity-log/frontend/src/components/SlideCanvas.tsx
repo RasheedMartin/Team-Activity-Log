@@ -1,9 +1,11 @@
 import { Box, type SxProps, type Theme } from "@mui/material";
-import { useCallback, useLayoutEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState, type CSSProperties, type ReactNode } from "react";
 import type { ID, ImageView, SlideDesign, SlideElement } from "../api/contract";
 import { AnnotationLayer } from "./AnnotationLayer";
 import { RichText } from "./RichText";
-import { boxTextSx, fontStack, hex, slideProseSx } from "./slideStyles";
+import { SlideChart } from "./SlideChart";
+import { designFonts, ensureWebFonts } from "../lib/slideFonts";
+import { boxTextSx, fontStack, hex, hexA, slideProseSx } from "./slideStyles";
 
 // A designed slide (contract.ts SlideDesign): elements placed on a fixed canvas in points, drawn
 // at the design size and scaled to whatever width it gets, so a slide looks the same in a post
@@ -26,8 +28,8 @@ function useWidth<T extends HTMLElement>() {
 }
 
 function ShapeSvg({ e }: { e: Extract<SlideElement, { kind: "shape" }> }) {
-  const stroke = hex(e.line);
-  const fill = hex(e.fill) ?? "none";
+  const stroke = hexA(e.line);
+  const fill = hexA(e.fill) ?? "none";
   const sw = stroke ? Math.max(0.5, e.lineWidth ?? 1) : 0;
   const { w, h } = e;
   const common = { fill, stroke: stroke ?? "none", strokeWidth: sw, vectorEffect: "non-scaling-stroke" as const };
@@ -67,7 +69,7 @@ function TextBox({ e, fonts }: { e: Extract<SlideElement, { kind: "text" | "shap
   );
 }
 
-function Element({ e, fonts, images, quality, editing }: { e: SlideElement; fonts: SlideDesign["fonts"]; images: Map<ID, ImageView>; quality: "medium" | "original"; editing: boolean }) {
+function Element({ e, fonts, images, quality, editing, background }: { e: SlideElement; fonts: SlideDesign["fonts"]; images: Map<ID, ImageView>; quality: "medium" | "original"; editing: boolean; background?: string }) {
   const transform = [e.rotation ? `rotate(${e.rotation}deg)` : "", e.kind === "shape" && e.flipH ? "scaleX(-1)" : "", e.kind === "shape" && e.flipV ? "scaleY(-1)" : ""].filter(Boolean).join(" ");
   const box: CSSProperties = { position: "absolute", left: e.x, top: e.y, width: e.w, height: e.h, transform: transform || undefined };
   if (e.kind === "image") {
@@ -82,8 +84,14 @@ function Element({ e, fonts, images, quality, editing }: { e: SlideElement; font
       </div>
     );
   }
-  const fill = e.kind === "text" ? hex(e.fill) : undefined;
-  const line = e.kind === "text" ? hex(e.line) : undefined;
+  if (e.kind === "chart")
+    return (
+      <div style={{ ...box, fontSize: e.fontSize ?? 12 }} data-slide-element="chart">
+        {!editing && <SlideChart e={e} background={background} />}
+      </div>
+    );
+  const fill = e.kind === "text" ? hexA(e.fill) : undefined;
+  const line = e.kind === "text" ? hexA(e.line) : undefined;
   return (
     <div style={{ ...box, background: fill, outline: line ? `1px solid ${line}` : undefined }} data-slide-element={e.kind}>
       {e.kind === "shape" && <ShapeSvg e={e} />}
@@ -113,6 +121,8 @@ interface Props {
 
 export function SlideCanvas({ design, images, fitHeight, quality = "medium", label = "Slide", sx, overlay, editingId, unclipped }: Props) {
   const { ref, width: avail } = useWidth<HTMLDivElement>();
+  const fontKey = designFonts(design).join("|");
+  useEffect(() => ensureWebFonts(fontKey ? fontKey.split("|") : []), [fontKey]);
   const { w, h } = design.size;
   const width = fitHeight ? Math.min(avail, (fitHeight * w) / h) : avail;
   const scale = width / w;
@@ -122,7 +132,7 @@ export function SlideCanvas({ design, images, fitHeight, quality = "medium", lab
         {width > 0 && (
           <Box sx={{ position: "absolute", top: 0, left: 0, width: w, height: h, transform: `scale(${scale})`, transformOrigin: "0 0", fontFamily: fontStack(design.fonts?.body) }}>
             {design.elements.map((e) => (
-              <Element key={e.id} e={e} fonts={design.fonts} images={images} quality={quality} editing={e.id === editingId} />
+              <Element key={e.id} e={e} fonts={design.fonts} images={images} quality={quality} editing={e.id === editingId} background={design.background} />
             ))}
             {overlay?.(scale)}
           </Box>

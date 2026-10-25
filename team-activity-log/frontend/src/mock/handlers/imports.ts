@@ -5,7 +5,7 @@ import { uuidv7 } from "../../lib/ids";
 import { doc, heading } from "../../lib/prosemirror";
 import { createAsset } from "../assets";
 import { db, type ImportJobRow } from "../db";
-import { parsePptx, type ParsedDeck, type ParsedSlide } from "../pptx";
+import { deckLook, parsePptx, type ParsedDeck, type ParsedSlide } from "../pptx";
 import { emit, fail, now, orgCtx, reindex, route, workspaceCtx } from "../server";
 
 // The import reads the real .pptx in the browser (src/mock/pptx.ts) so decks can be tried for
@@ -207,6 +207,8 @@ export const importHandlers = [
       if (j!.status === "done") return HttpResponse.json(view(j!)); // idempotent
       if (j!.status !== "review") fail(409, "not_in_review", "Nothing to commit yet");
       const deck = await deckFor(j!);
+      const look = deckLook(deck.slides);
+      const presentation = Object.keys(look).length ? { theme: { ...look, name: "From the deck" }, deck: { ...look, name: "From the deck" } } : undefined;
       const bySlide = new Map(deck.slides.map((x) => [x.n, x]));
       const fileSha = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", await j!.sourceBlob!.arrayBuffer())), (b) => b.toString(16).padStart(2, "0")).join("");
       const coll = db.t.collections.put({ id: uuidv7(), workspaceId: j!.workspaceId, name: j!.defaults.collectionName || j!.sourceFilename, kind: "deck_import", postIds: [], createdBy: ctx.user.id, updatedAt: now() });
@@ -239,6 +241,7 @@ export const importHandlers = [
           createdAt: t,
           updatedAt: t,
           counts: { comments: 0, reactions: 0, images: blockImageIds(blocks, "content").length },
+          presentation,
           reactions: {},
           collectionIds: [coll.id],
           source: { kind: "import", importJobId: j!.id, fileName: j!.sourceFilename, fileSha256: fileSha, slide: item.slideNumbers[0], slideCount: j!.slideCount },

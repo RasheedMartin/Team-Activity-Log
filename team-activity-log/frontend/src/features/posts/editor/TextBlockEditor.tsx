@@ -15,13 +15,12 @@ import {
 } from "@mui/icons-material";
 import { Box, Divider, IconButton, Stack, Tooltip, Typography } from "@mui/material";
 import Placeholder from "@tiptap/extension-placeholder";
-import { TableKit } from "@tiptap/extension-table";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useId, useRef, useSyncExternalStore, type ReactNode } from "react";
 import { proseSx } from "../../../theme/prose";
 import { AlignButton, ColorMenu } from "./FormatControls";
-import { formattingExtensions } from "./formatting";
+import { formattingExtensions, tableExtensions } from "./formatting";
 
 // One TipTap editor per text/table block. Content is ProseMirror JSON in and out (§C1).
 
@@ -146,7 +145,7 @@ export function TextBlockEditor({ doc, onChange, onPasteImages, onBlur, placehol
       StarterKit.configure({ heading: { levels: [2, 3, 4] }, link: { openOnClick: false, autolink: true, protocols: ["http", "https", "mailto"] } }),
       ...formattingExtensions,
       Placeholder.configure({ placeholder: placeholder ?? "Write…" }),
-      ...(table ? [TableKit.configure({ table: { resizable: false } })] : []),
+      ...(table ? tableExtensions : []),
     ],
     content: (doc as object) ?? undefined,
     editable: !readOnly,

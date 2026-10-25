@@ -21,6 +21,7 @@ import {
   Divider,
   Drawer,
   IconButton,
+  Link,
   List,
   ListItemButton,
   ListItemText,
@@ -317,6 +318,11 @@ function PostView({ post, images }: { post: Post; images: ImageView[] }) {
               <Stack direction="row" spacing={0.5} alignItems="center" sx={{ color: "text.secondary", ml: 1 }}>
                 <FileUploadOutlined sx={{ fontSize: 15 }} />
                 <Typography variant="caption">From “{post.source.fileName}” · slide {post.source.slide} of {post.source.slideCount}</Typography>
+                {post.authorId === me.user.id && (
+                  <Link component={RouterLink} to={`${base}/import?job=${post.source.importJobId}`} variant="caption" sx={{ ml: 0.5 }}>
+                    Open import
+                  </Link>
+                )}
               </Stack>
             )}
           </Stack>
