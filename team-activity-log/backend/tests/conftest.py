@@ -41,6 +41,7 @@ async def app():
         EMAIL_FROM="Team Activity Log <noreply@example.test>",
         TAL_ENV_FILE="/nonexistent",
         RATE_LIMIT="false",
+        TRIAL_DAYS="0",  # plan tests start on Free; trials have their own tests
     )
     from tal import config, db
 

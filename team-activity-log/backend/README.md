@@ -164,8 +164,30 @@ touches your dev data.
   `GOOGLE_CLIENT_ID`/`SECRET` are set. A Google account with the same verified email as an existing
   account is linked to it, not duplicated.
 
+## Free trial and billing (Stripe)
+
+New organizations get **Team free for 14 days** (`TRIAL_DAYS`; no card), then fall back to Free.
+Nothing is deleted; Free limits only block adding more. Paying is Stripe Checkout and Stripe's
+billing portal, priced per member (seats follow the member count automatically).
+
+Billing is off until these are set; the plan card says so. To turn it on (test mode first):
+
+1. In Stripe (test mode), create two products, **Team** and **Business**, each with a monthly and a
+   yearly recurring price **per unit** (Team $10/month or $96/year; Business $20/month or $192/year).
+   Copy the four price ids (`price_…`) into `STRIPE_PRICE_TEAM_MONTH`, `…_TEAM_YEAR`,
+   `…_BUSINESS_MONTH`, `…_BUSINESS_YEAR` (any you leave out just aren't offered).
+2. Developers → API keys: copy the secret key into `STRIPE_SECRET_KEY`.
+3. Developers → Webhooks → Add endpoint: `<PUBLIC_APP_URL>/v1/billing/webhook`, with events
+   `checkout.session.completed` and `customer.subscription.created`, `.updated`, `.deleted`.
+   Copy its signing secret into `STRIPE_WEBHOOK_SECRET`. (Locally: `stripe listen --forward-to
+   localhost:8000/v1/billing/webhook` prints a `whsec_…` to use.)
+4. Settings → Billing → Customer portal: turn it on (lets admins change plan, card, and cancel).
+5. Deploy, then Organization admin → Organization → Upgrade. Test card: 4242 4242 4242 4242.
+
+`tal plan ORG [PLAN]` still shows or overrides a plan by hand (support, comps).
+
 ## Not yet
 
 - OCR for uploaded images (`ocrState: "none"` until an OCR worker is added).
 - Postgres row-level security as a second tenancy guard (tenancy is enforced in every query today).
-- Billing (plan limits are enforced; payment isn't wired up yet; see `docs/PRICING.md`).
+- Guests, SSO/SCIM, and audit log (marked coming soon on the pricing page).

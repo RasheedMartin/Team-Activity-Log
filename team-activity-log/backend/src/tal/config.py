@@ -66,6 +66,25 @@ class Settings(BaseSettings):
     # ---- Plans (docs/PRICING.md; limits in tal/plans.py) ----
     new_org_plan: Literal["free", "team", "business", "enterprise"] = Field(default="free", description="Plan for newly created organizations (billing upgrades them later).")
 
+    trial_days: int = Field(default=14, ge=0, le=90, description="New organizations get the Team plan free for this many days (0 = no trial). No card needed.")
+
+    # ---- Billing: Stripe (docs/PRICING.md). Off until these are set. ----
+    stripe_secret_key: str | None = Field(default=None, description="sk_test_… or sk_live_…")
+    stripe_webhook_secret: str | None = Field(default=None, description="whsec_… from the webhook endpoint for /v1/billing/webhook")
+    stripe_price_team_month: str | None = None
+    stripe_price_team_year: str | None = None
+    stripe_price_business_month: str | None = None
+    stripe_price_business_year: str | None = None
+
+    @property
+    def billing_enabled(self) -> bool:
+        return bool(self.stripe_secret_key and self.stripe_webhook_secret and (self.stripe_price_team_month or self.stripe_price_team_year))
+
+    def stripe_prices(self) -> dict[tuple[str, str], str]:
+        """(plan, interval) -> Stripe price id, for the prices that are configured."""
+        pairs = {("team", "month"): self.stripe_price_team_month, ("team", "year"): self.stripe_price_team_year, ("business", "month"): self.stripe_price_business_month, ("business", "year"): self.stripe_price_business_year}
+        return {k: v for k, v in pairs.items() if v}
+
     # ---- Email: queued in Postgres, delivered by the mailer ----
     email_provider: Literal["log", "resend", "postmark"] = Field(default="log", description="log = don't send (development); messages stay visible on /dev.")
     email_api_key: str | None = None

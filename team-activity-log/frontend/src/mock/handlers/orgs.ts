@@ -323,7 +323,10 @@ export const orgHandlers = [
       const storageBytes = db.t.assets.filter((a) => a.orgId === ctx.org.id).reduce((n, a) => n + a.bytes, 0);
       return HttpResponse.json({
         plan: "team",
+        paidPlan: "team",
         name: "Team",
+        trial: null,
+        billing: { enabled: false, status: "active", subscribed: false, canManage: false, options: [] }, // the mock has no Stripe
         limits: { members: null, workspaces: null, privateWorkspaces: true, storageBytes: 10 * 1024 ** 3 * Math.max(1, members), importsPerMonth: null },
         usage: {
           members,

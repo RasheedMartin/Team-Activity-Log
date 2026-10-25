@@ -41,12 +41,22 @@ PLANS: dict[str, Plan] = {
 }
 
 
+def in_trial(org: m.Organization) -> bool:
+    """A Free org inside its Team trial (new orgs get one; no card needed)."""
+    return org.plan == "free" and org.trial_ends_at is not None and org.trial_ends_at > now()
+
+
+def plan_id(org: m.Organization) -> str:
+    """The plan in effect: what they pay for, or Team while a trial runs."""
+    return "team" if in_trial(org) else org.plan if org.plan in PLANS else "free"
+
+
 def plan_of(org: m.Organization) -> Plan:
-    return PLANS.get(org.plan, PLANS["free"])
+    return PLANS[plan_id(org)]
 
 
 def _limit(code: str, message: str, used: int, limit: int, plan: Plan) -> None:
-    fail(403, "plan_limit", message, {"limit": code, "used": used, "max": limit, "plan": plan.name})
+    fail(403, "plan_limit", f"{message} An admin can upgrade in Organization admin → Organization.", {"limit": code, "used": used, "max": limit, "plan": plan.name})
 
 
 # ---------------------------------------------------------------- usage
@@ -139,10 +149,26 @@ async def check_can_import(db: AsyncSession, org: m.Organization) -> None:
 
 
 async def plan_view(db: AsyncSession, org: m.Organization) -> dict:
+    from .config import get_settings
+
     p = plan_of(org)
+    s = get_settings()
+    trial = None
+    if org.trial_ends_at and org.plan == "free":
+        left = (org.trial_ends_at - now()).total_seconds()
+        trial = {"endsAt": org.trial_ends_at.isoformat().replace("+00:00", "Z"), "daysLeft": max(0, int(-(-left // 86400))), "active": left > 0}
     return {
-        "plan": org.plan,
+        "plan": plan_id(org),
+        "paidPlan": org.plan,
         "name": p.name,
+        "trial": trial,
+        "billing": {
+            "enabled": s.billing_enabled,
+            "status": org.billing_status,
+            "subscribed": bool(org.billing_subscription_id),
+            "canManage": s.billing_enabled and bool(org.billing_customer_id),
+            "options": sorted(f"{k[0]}:{k[1]}" for k in s.stripe_prices()),
+        },
         "limits": {
             "members": p.members,
             "workspaces": p.workspaces,
@@ -160,4 +186,4 @@ async def plan_view(db: AsyncSession, org: m.Organization) -> dict:
     }
 
 
-__all__ = ["PLANS", "Plan", "plan_of", "dt"]
+__all__ = ["PLANS", "Plan", "in_trial", "plan_id", "plan_of", "dt"]

@@ -47,6 +47,13 @@ async def get_db() -> AsyncIterator[AsyncSession]:
             await session.rollback()
             raise
         pending = session.info.pop("reindex", None)
+        after = session.info.pop("after_commit", [])
+    # Work that must only happen once the change is saved (e.g. telling Stripe the seat count).
+    for job in after:
+        try:
+            await job()
+        except Exception:  # noqa: BLE001 - best effort; the job logs and a later sync corrects it
+            logging.getLogger("tal.after_commit").warning("after-commit job failed", exc_info=True)
     if pending:
         from .search.indexer import index_posts  # avoid an import cycle
 

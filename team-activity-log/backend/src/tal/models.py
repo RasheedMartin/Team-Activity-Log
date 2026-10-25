@@ -117,6 +117,7 @@ class Organization(Base):
     plan: Mapped[str] = mapped_column(String(20), server_default="free")
     billing_status: Mapped[str] = mapped_column(String(20), server_default="active")
     billing_customer_id: Mapped[str | None] = mapped_column(String(100))
+    billing_subscription_id: Mapped[str | None] = mapped_column(String(100))
     trial_ends_at: Mapped[dt.datetime | None] = ts()
     storage_quota_bytes: Mapped[int | None] = mapped_column(BigInteger)
     settings: Mapped[dict] = mapped_column(JSONB, server_default="{}")

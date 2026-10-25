@@ -620,8 +620,13 @@ export interface ImportJob {
 // ---- Plans (docs/PRICING.md; enforced by the server) ----
 
 export interface PlanInfo {
+  /** The plan in effect (Team while a trial runs). */
   plan: "free" | "team" | "business" | "enterprise";
+  /** What they pay for. */
+  paidPlan: "free" | "team" | "business" | "enterprise";
   name: string;
+  trial: { endsAt: ISODateTime; daysLeft: number; active: boolean } | null;
+  billing: { enabled: boolean; status: "active" | "trialing" | "past_due" | "canceled"; subscribed: boolean; canManage: boolean; options: string[] };
   /** null = unlimited */
   limits: { members: number | null; workspaces: number | null; privateWorkspaces: boolean; storageBytes: number | null; importsPerMonth: number | null };
   usage: { members: number; pendingInvites: number; workspaces: number; storageBytes: number; importsThisMonth: number };
