@@ -364,7 +364,7 @@ export function SlideEditor({ design, images, label, onChange, onUploadImage, on
 
       {/* Below the slide, so selecting something never moves the slide under the pointer. */}
       <Box className="slide-frame" sx={{ borderRadius: 1 }}>
-        <SlideCanvas design={shown} images={images} label={label} overlay={overlay} editingId={editing} unclipped />
+        <SlideCanvas design={shown} images={images} label={label} overlay={overlay} editingId={editing} />
       </Box>
       {sel && (
         <Stack direction="row" alignItems="center" useFlexGap spacing={0.25} role="toolbar" aria-label="Selected element" sx={{ flexWrap: "wrap", mt: 0.75, px: 0.5, py: 0.25, border: 1, borderColor: "divider", borderRadius: 1, bgcolor: "background.paper" }}>

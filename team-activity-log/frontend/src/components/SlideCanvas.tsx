@@ -115,11 +115,9 @@ interface Props {
   overlay?: (scale: number) => ReactNode;
   /** The element whose text the editor is showing instead. */
   editingId?: string | null;
-  /** Show what sticks out past the slide's edges (editing: so it can still be grabbed). */
-  unclipped?: boolean;
 }
 
-export function SlideCanvas({ design, images, fitHeight, quality = "medium", label = "Slide", sx, overlay, editingId, unclipped }: Props) {
+export function SlideCanvas({ design, images, fitHeight, quality = "medium", label = "Slide", sx, overlay, editingId }: Props) {
   const { ref, width: avail } = useWidth<HTMLDivElement>();
   const fontKey = designFonts(design).join("|");
   useEffect(() => ensureWebFonts(fontKey ? fontKey.split("|") : []), [fontKey]);
@@ -128,14 +126,20 @@ export function SlideCanvas({ design, images, fitHeight, quality = "medium", lab
   const scale = width / w;
   return (
     <Box ref={ref} role="group" aria-label={label} data-slide-design sx={[{ width: "100%" }, ...(Array.isArray(sx) ? sx : [sx])]}>
-      <Box sx={{ width: width || "100%", aspectRatio: `${w} / ${h}`, mx: "auto", position: "relative", overflow: unclipped ? "visible" : "hidden", bgcolor: hex(design.background) ?? "#ffffff", color: "#000", borderRadius: 1, boxShadow: "0 0 0 1px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.12)" }}>
-        {width > 0 && (
-          <Box sx={{ position: "absolute", top: 0, left: 0, width: w, height: h, transform: `scale(${scale})`, transformOrigin: "0 0", fontFamily: fontStack(design.fonts?.body) }}>
-            {design.elements.map((e) => (
-              <Element key={e.id} e={e} fonts={design.fonts} images={images} quality={quality} editing={e.id === editingId} background={design.background} />
-            ))}
-            {overlay?.(scale)}
-          </Box>
+      <Box sx={{ width: width || "100%", aspectRatio: `${w} / ${h}`, mx: "auto", position: "relative" }}>
+        {/* What's past the slide's edges is cut off, in the editor too, exactly as it presents. */}
+        <Box sx={{ position: "absolute", inset: 0, overflow: "hidden", bgcolor: hex(design.background) ?? "#ffffff", color: "#000", borderRadius: 1, boxShadow: "0 0 0 1px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.12)" }}>
+          {width > 0 && (
+            <Box sx={{ position: "absolute", top: 0, left: 0, width: w, height: h, transform: `scale(${scale})`, transformOrigin: "0 0", fontFamily: fontStack(design.fonts?.body) }}>
+              {design.elements.map((e) => (
+                <Element key={e.id} e={e} fonts={design.fonts} images={images} quality={quality} editing={e.id === editingId} background={design.background} />
+              ))}
+            </Box>
+          )}
+        </Box>
+        {/* The editor's selection layer isn't clipped, so a shape mostly off the slide can still be grabbed. */}
+        {width > 0 && overlay && (
+          <Box sx={{ position: "absolute", top: 0, left: 0, width: w, height: h, transform: `scale(${scale})`, transformOrigin: "0 0", fontFamily: fontStack(design.fonts?.body) }}>{overlay(scale)}</Box>
         )}
       </Box>
     </Box>
