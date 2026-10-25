@@ -9,6 +9,7 @@ import {
 } from "@tanstack/react-query";
 import { api, ApiError, del, get, patch, post, put } from "./client";
 import type {
+  ImportSummary,
   ImportPost,
   Presentation,
   Collection,
@@ -757,6 +758,9 @@ export const useImportJob = (orgId: ID, id: ID | undefined) =>
     enabled: !!id,
     refetchInterval: (q) => (q.state.data && ["uploading", "parsing", "committing"].includes(q.state.data.status) ? 400 : false),
   });
+/** Your recent imports in this workspace, newest first. */
+export const useMyImports = (orgId: ID, wsId: ID) =>
+  useQuery({ queryKey: ["org", orgId, "ws", wsId, "posts", "imports"] as const, queryFn: ({ signal }) => get<ImportSummary[]>(`${W(orgId, wsId)}/imports`, signal) });
 /** Every post an import created (drafts and published), in slide order. */
 export const useImportPosts = (orgId: ID, id: ID | undefined) =>
   useQuery({ queryKey: [...qk.importJob(orgId, id ?? ""), "posts"] as const, queryFn: ({ signal }) => get<ImportPost[]>(`${O(orgId)}/imports/${id}/posts`, signal), enabled: !!id });

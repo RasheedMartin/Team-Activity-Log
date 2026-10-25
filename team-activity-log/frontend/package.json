@@ -40,8 +40,6 @@
     "@tiptap/starter-kit": "^3.20.0",
     "@tiptap/suggestion": "^3.32.0",
     "dexie": "^4.4.7",
-    "jspdf": "^2.5.2",
-    "jspdf-autotable": "^3.8.4",
     "jszip": "^3.10.1",
     "minisearch": "^7.2.0",
     "msw": "^2.15.0",

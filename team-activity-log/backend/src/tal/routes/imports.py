@@ -14,7 +14,7 @@ import logging
 import uuid
 
 from fastapi import APIRouter, Body, Depends, Request, Response
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import models as m
@@ -160,6 +160,40 @@ async def _fail_job(job_id: uuid.UUID, message: str) -> None:
         if j:
             j.status, j.error = "failed", message
             await db.commit()
+
+
+@router.get("/orgs/{org}/workspaces/{ws}/imports")
+async def my_imports(org: str, ws: str, u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
+    """Your recent imports here, newest first, with how far each got: to come back to one you
+    haven't finished (still in review, or with drafts left)."""
+    ctx = await ws_ctx(db, u, org, ws, "member")
+    jobs = (
+        await db.execute(
+            select(m.ImportJobRow)
+            .where(m.ImportJobRow.workspace_id == ctx.ws.id, m.ImportJobRow.user_id == u.id, m.ImportJobRow.status != "failed")
+            .order_by(m.ImportJobRow.created_at.desc())
+            .limit(30)
+        )
+    ).scalars().all()  # fmt: skip
+    counts: dict[tuple[str, str], int] = {}
+    if jobs:
+        key = m.Post.source["importJobId"].astext
+        rows = await db.execute(
+            select(key, m.Post.status, func.count()).where(m.Post.org_id == ctx.org.id, m.Post.deleted_at.is_(None), key.in_([str(j.id) for j in jobs])).group_by(key, m.Post.status)
+        )
+        counts = {(k, st): n for k, st, n in rows}
+    return [
+        {
+            "id": str(j.id),
+            "sourceFilename": j.source_filename,
+            "status": j.status,
+            "slideCount": j.slide_count,
+            "createdAt": iso(j.created_at),
+            "drafts": counts.get((str(j.id), "draft"), 0),
+            "published": counts.get((str(j.id), "published"), 0),
+        }
+        for j in jobs
+    ]
 
 
 @router.post("/orgs/{org}/workspaces/{ws}/imports", status_code=201)

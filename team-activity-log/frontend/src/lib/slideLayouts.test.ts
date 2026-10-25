@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Block, ImageView } from "../api/contract";
 import { blockDocs, blockImageIds } from "./blocks";
-import { designToBlocks, fitImage, newDesign, sectionToDesign } from "./slideLayouts";
+import { bringOn, designToBlocks, fitImage, keepOn, newDesign, offSlide, sectionToDesign } from "./slideLayouts";
 import { doc, docText, heading, paragraph } from "./prosemirror";
 
 const img = (id: string, width: number, height: number) => ({ id, asset: { width, height } }) as unknown as ImageView;
@@ -79,5 +79,21 @@ describe("designed slide helpers", () => {
     expect(blockDocs(blocks).map(docText)).toEqual(["Visible"]);
     expect(blockImageIds(blocks)).toEqual(["x", "y"]);
     expect(blockImageIds(blocks, "content")).toEqual(["y"]);
+  });
+});
+
+describe("keeping slide elements reachable", () => {
+  it("a moved element keeps a 32 pt strip on the slide (all of it when smaller)", () => {
+    expect(keepOn(2000, 100, 960)).toBe(928); // pushed far right: 32 pt still showing
+    expect(keepOn(-500, 100, 960)).toBe(-68); // far left: 32 pt still showing
+    expect(keepOn(400, 100, 960)).toBe(400); // inside: unchanged
+    expect(keepOn(950, 10, 960)).toBe(950); // a 10 pt element stays whole
+    expect(keepOn(-5, 10, 960)).toBe(0);
+  });
+  it("finds elements nobody can see and brings them just inside", () => {
+    const e = { id: "x", kind: "shape" as const, shape: "ellipse" as const, x: 1200, y: -300, w: 100, h: 80 };
+    expect(offSlide(e, 960, 540)).toBe(true);
+    expect(bringOn(e, 960, 540)).toEqual({ x: 860, y: 0 });
+    expect(offSlide({ ...e, x: 900, y: 0 }, 960, 540)).toBe(false); // partly visible is fine
   });
 });

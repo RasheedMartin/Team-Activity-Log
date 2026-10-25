@@ -80,6 +80,7 @@ export interface MetaRow {
 export interface ImportJobRow extends ImportJob {
   userId: ID;
   orgId: ID;
+  createdAt?: string; // older mock rows lack it: their uuidv7 id carries the time
   /** The uploaded deck, in "temp storage" until commit (§W5.4: originals aren't retained). */
   sourceBlob?: Blob;
 }

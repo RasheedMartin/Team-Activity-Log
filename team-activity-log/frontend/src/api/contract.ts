@@ -293,6 +293,17 @@ export interface DraftSummary {
   source?: Pick<PostSource, "importJobId" | "fileName" | "slide" | "slideCount">;
 }
 
+/** One of your recent imports and how far it got ("Your imports" on the import page). */
+export interface ImportSummary {
+  id: ID;
+  sourceFilename: string;
+  status: ImportJob["status"];
+  slideCount: number;
+  createdAt: ISODateTime;
+  drafts: number;
+  published: number;
+}
+
 /** A post an import created, drafts and published alike (the import page's two lists). */
 export interface ImportPost extends DraftSummary {
   status: "draft" | "published";

@@ -100,3 +100,17 @@ export function designToBlocks(slide: Extract<Block, { type: "slide" }>): Block[
     ...order.flatMap((e) => (e.kind === "image" ? [{ id: id(), type: "image" as const, imageInstanceId: e.imageInstanceId }] : [])),
   ];
 }
+
+// ---- keeping elements reachable ----
+
+export const KEEP = 32; // points of an element that always stay on the slide while moving it
+
+/** Keep at least KEEP points of a box (or all of it, if smaller) on the slide. */
+export const keepOn = (v: number, size: number, slide: number) => {
+  const keep = Math.min(KEEP, Math.max(size, 1));
+  return Math.min(slide - keep, Math.max(keep - size, v));
+};
+/** Entirely outside the slide: invisible, so it needs rescuing. */
+export const offSlide = (e: SlideElement, W: number, H: number) => e.x >= W || e.y >= H || e.x + e.w <= 0 || e.y + e.h <= 0;
+/** Just inside the nearest edge (or the top-left corner, for one bigger than the slide). */
+export const bringOn = (e: SlideElement, W: number, H: number) => ({ x: Math.max(0, Math.min(W - e.w, e.x)), y: Math.max(0, Math.min(H - e.h, e.y)) });

@@ -58,6 +58,12 @@ test("build a designed slide, edit it in place, publish, find it, convert it bac
   await editor.getByRole("button", { name: "Fill" }).click();
   await page.getByRole("button", { name: "Color #ed7d31" }).click();
   await expect(editor.locator("ellipse[fill='#ed7d31']")).toHaveCount(1);
+  // Dragged far past the edge, it stays partly on the slide (never lost in no man's land).
+  const frame = (await editor.locator("[data-slide-design] > div").first().boundingBox())!;
+  await dragBy(page, ellipse, 700, 0); // well past the right edge, still inside the window
+  const off = (await ellipse.boundingBox())!;
+  expect(off.x).toBeLessThan(frame.x + frame.width - 10);
+  await expect(page.getByText(/outside the slide/)).toHaveCount(0);
   await page.keyboard.press("Delete");
   await expect(ellipse).toHaveCount(0);
   await page.screenshot({ path: "test-results/slide-editor.png", fullPage: true });

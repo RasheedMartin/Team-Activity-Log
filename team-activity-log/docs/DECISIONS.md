@@ -206,3 +206,11 @@ Tested against four real decks (112 slides: Google Slides exports, an IBM course
 - **The import's page** (`/import?job=…`, which keeps working after commit) lists its drafts in slide order.
 - **Every imported draft** shows a trail: "From deck.pptx · slide 3 of 12 · N drafts to review", Prev/Next among that import's remaining drafts, and Back to import. A published imported post has an Open import link for its author.
 - **Selection.** `DraftList` (Activity → Drafts, and the import page) has Select all and per-row checkboxes, with Publish N and Discard N (with undo). Drafts that can't publish stay selected with the publish checklist's reason ("Add a title").
+- **Getting back to an unfinished import** (owner feedback). The Import slides page lists "Your imports" (`GET /workspaces/{ws}/imports`, newest 30, not failed or deleted), unfinished ones first: "Ready to review: nothing created yet", or "3 of 8 published · 5 left to review". One click reopens it. The composer's back arrow, Publish, and Discard return to the import.
+- **No report file.** A table of slide statuses wasn't what people expected from "Download report", so it was removed. "Present or download" opens the import's slides in Present, which has Download as PowerPoint.
+
+## Slide editor: no lost shapes, shortcuts that work (owner feedback)
+
+- **Clipping.** Contents past the slide's edge are clipped in the editor too, as on the saved slide. Only the selection outline and handles extend past the edge.
+- **No lost shapes.** Moving or nudging keeps at least 32 pt of an element (or all of it, if smaller) on the slide. Elements already entirely off it, as some decks have, get a "Bring onto slide" fix under the slide.
+- **Shortcuts.** Delete, arrows, Enter and Escape act on the selection wherever focus is, since a press on the slide doesn't reliably keep focus. They're ignored while typing or inside a menu or dialog. A press outside a slide clears its selection, so only one slide answers. Menus and pickers don't hand focus back to their button.

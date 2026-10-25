@@ -1,4 +1,4 @@
-import { CallMergeRounded, CallSplitRounded, CheckCircleRounded, DownloadRounded, ErrorOutlineRounded, SearchRounded, UploadFileOutlined, WarningAmberRounded } from "@mui/icons-material";
+import { CallMergeRounded, CallSplitRounded, CheckCircleRounded, ErrorOutlineRounded, SlideshowRounded, SearchRounded, UploadFileOutlined, WarningAmberRounded } from "@mui/icons-material";
 import {
   Alert,
   Box,
@@ -39,14 +39,14 @@ import {
 } from "@mui/material";
 import { useEffect, useRef, useState } from "react";
 import { Link as RouterLink, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import type { ImportItem, ImportJob, ImportMode, SlideDesignMode } from "../../api/contract";
-import { useImportAction, useImportJob, useImportPosts, useStartImport } from "../../api/hooks";
+import type { ImportItem, ImportJob, ImportMode, ImportSummary, SlideDesignMode } from "../../api/contract";
+import { useImportAction, useImportJob, useImportPosts, useMyImports, useStartImport } from "../../api/hooks";
 import { DraftList } from "../activity/DraftList";
 import { can, useWs, wsPath } from "../../app/session";
 import { useNotify } from "../../components/notify";
 import { TagPicker } from "../../components/Pickers";
 import { EmptyState, PageHeader } from "../../components/ui";
-import { todayISO } from "../../lib/dates";
+import { timeAgo, todayISO } from "../../lib/dates";
 import { toSearchParams } from "../../lib/filterSpec";
 import { errorMessage } from "../../lib/format";
 import { uuidv7 } from "../../lib/ids";
@@ -340,14 +340,6 @@ function DoneStep({ job, onNew }: { job: ImportJob; onNew: () => void }) {
   const mine = (posts.data ?? []).filter((p) => p.status === "draft");
   const out = (posts.data ?? []).filter((p) => p.status === "published");
   const [tab, setTab] = useState<"review" | "published">("review");
-  const downloadReport = async () => {
-    try {
-      const { downloadImportReport } = await import("../../lib/importReport");
-      downloadImportReport(job, posts.data ?? [], MODES.find((m) => m.id === job.mode)?.title ?? job.mode);
-    } catch (e) {
-      notify(`Couldn't make the report: ${errorMessage(e)}`);
-    }
-  };
   const collectionUrl = job.collectionId ? `${wsPath(org, ws, "/search")}?${toSearchParams({ all: [{ field: "collection", op: "in", value: [job.collectionId] }], sort: "oldest" })}` : wsPath(org, ws);
   return (
     <Stack spacing={2} alignItems="flex-start">
@@ -359,7 +351,13 @@ function DoneStep({ job, onNew }: { job: ImportJob; onNew: () => void }) {
           {published ? "Published" : "Publish all"}
         </Button>
         {(published || out.length > 0) && <Button component={RouterLink} to={collectionUrl} startIcon={<SearchRounded />}>Search these slides</Button>}
-        <Button startIcon={<DownloadRounded />} onClick={() => void downloadReport()}>Download report (PDF)</Button>
+        {job.collectionId && (
+          <Tooltip describeChild title="All of this import's slides in Present, where you can also download them as a PowerPoint file">
+            <Button component={RouterLink} to={`${wsPath(org, ws, "/present")}?collection=${job.collectionId}`} startIcon={<SlideshowRounded />}>
+              Present or download
+            </Button>
+          </Tooltip>
+        )}
         <Button onClick={onNew}>Import more slides</Button>
         <Button color="error" onClick={() => setConfirm(true)}>Delete this import</Button>
       </Stack>
@@ -405,6 +403,49 @@ function DoneStep({ job, onNew }: { job: ImportJob; onNew: () => void }) {
   );
 }
 
+/** Where each recent import got to, unfinished ones first: one click goes back into it. */
+function YourImports({ onOpen }: { onOpen: (id: string) => void }) {
+  const { org, ws } = useWs();
+  const list = useMyImports(org.id, ws.id).data ?? [];
+  if (!list.length) return null;
+  const state = (i: ImportSummary): { label: string; open: boolean } =>
+    i.status === "review"
+      ? { label: "Ready to review: nothing created yet", open: true }
+      : i.status !== "done"
+        ? { label: "Processing", open: true }
+        : i.drafts > 0
+          ? { label: `${i.published} of ${i.published + i.drafts} published · ${i.drafts} left to review`, open: true }
+          : { label: i.published ? `All ${i.published} published` : "Everything discarded", open: false };
+  const sorted = [...list].sort((a, b) => Number(state(b).open) - Number(state(a).open));
+  return (
+    <Box>
+      <Typography variant="h4" sx={{ mb: 1 }}>Your imports</Typography>
+      <Paper variant="outlined">
+        <List disablePadding aria-label="Your imports">
+          {sorted.map((i, k) => {
+            const st = state(i);
+            return (
+              <ListItem key={i.id} disablePadding divider={k < sorted.length - 1}>
+                <ListItemButton onClick={() => onOpen(i.id)}>
+                  <ListItemText
+                    primary={i.sourceFilename}
+                    secondary={
+                      <Box component="span" sx={{ display: "flex", flexWrap: "wrap", columnGap: 1.5 }}>
+                        <Box component="span" sx={{ color: st.open ? "warning.main" : "text.secondary", fontWeight: st.open ? 600 : 400 }}>{st.label}</Box>
+                        <span>{i.slideCount ? `${i.slideCount} slides · ` : ""}{timeAgo(i.createdAt)}</span>
+                      </Box>
+                    }
+                  />
+                </ListItemButton>
+              </ListItem>
+            );
+          })}
+        </List>
+      </Paper>
+    </Box>
+  );
+}
+
 /** §W5.3 import wizard. The job ID lives in the URL so the wizard resumes after a reload. */
 export default function ImportPage() {
   const { org, role } = useWs();
@@ -424,7 +465,12 @@ export default function ImportPage() {
           </Step>
         ))}
       </Stepper>
-      {step === 0 && <StartStep onStarted={(j) => setParams({ job: j.id })} />}
+      {step === 0 && (
+        <Stack spacing={4}>
+          <StartStep onStarted={(j) => setParams({ job: j.id })} />
+          <YourImports onOpen={(id) => setParams({ job: id })} />
+        </Stack>
+      )}
       {step === 1 && (
         <Paper variant="outlined" sx={{ p: 3 }}>
           {job.data?.status === "failed" ? (

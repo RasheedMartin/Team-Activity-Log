@@ -22,12 +22,12 @@ import {
 import { Box, Button, Divider, IconButton, ListItemIcon, ListItemText, Menu, MenuItem, Popover, Stack, Tooltip, Typography } from "@mui/material";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import type { ID, ImageView, SlideDesign, SlideElement, SlideShape } from "../../../api/contract";
 import { SlideCanvas } from "../../../components/SlideCanvas";
 import { boxTextSx, slideProseSx } from "../../../components/slideStyles";
 import { hasTable } from "../../../lib/prosemirror";
-import { imageElement, newElement } from "../../../lib/slideLayouts";
+import { bringOn, imageElement, keepOn, newElement, offSlide } from "../../../lib/slideLayouts";
 import { HIGHLIGHTS, TEXT_COLORS, formattingExtensions, slideTextExtensions, tableExtensions } from "./formatting";
 import { EditorToolbar } from "./TextBlockEditor";
 
@@ -87,9 +87,19 @@ function ColorButton({ label, icon, value, onPick, allowNone }: { label: string;
           </Box>
         </IconButton>
       </Tooltip>
-      <Popover open={!!anchor} anchorEl={anchor} onClose={() => setAnchor(null)} anchorOrigin={{ vertical: "bottom", horizontal: "left" }} slotProps={{ paper: { sx: { p: 1.5, maxWidth: "calc(100vw - 32px)" } } }}>
+      <Popover open={!!anchor} anchorEl={anchor} onClose={() => setAnchor(null)} disableRestoreFocus anchorOrigin={{ vertical: "bottom", horizontal: "left" }} slotProps={{ paper: { sx: { p: 1.5, maxWidth: "calc(100vw - 32px)" } } }}>
         <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.75 }}>{label}</Typography>
-        <Swatches value={value} allowNone={allowNone} onPick={(c) => (onPick(c), setAnchor(null))} />
+        <Swatches
+          value={value}
+          allowNone={allowNone}
+          onPick={(c) => {
+            onPick(c);
+            // Back to the slide, so keyboard shortcuts keep working on the selection.
+            const editor = anchor?.closest<HTMLElement>("[data-slide-editor]");
+            setAnchor(null);
+            requestAnimationFrame(() => editor?.focus({ preventScroll: true }));
+          }}
+        />
       </Popover>
     </>
   );
@@ -150,6 +160,7 @@ export function SlideEditor({ design, images, label, onChange, onUploadImage, on
   const shown = draft ?? design;
   const { w: W, h: H } = design.size;
   const sel = shown.elements.find((e) => e.id === selected);
+  const lost = design.elements.filter((e) => offSlide(e, W, H));
 
   const setElements = (elements: El[]) => onChange({ ...design, elements });
   const update = (id: string, patch: Partial<El>) => setElements(design.elements.map((e) => (e.id === id ? ({ ...e, ...patch } as El) : e)));
@@ -157,6 +168,7 @@ export function SlideEditor({ design, images, label, onChange, onUploadImage, on
     setElements([...design.elements, e]);
     setSelected(e.id);
     setEditing(edit ? e.id : null);
+    if (!edit) requestAnimationFrame(() => root.current?.focus({ preventScroll: true }));
   };
   const remove = (id: string) => {
     setElements(design.elements.filter((e) => e.id !== id));
@@ -175,7 +187,9 @@ export function SlideEditor({ design, images, label, onChange, onUploadImage, on
   const begin = (ev: PointerEvent, e: El, scale: number, handle?: Handle) => {
     ev.stopPropagation();
     ev.preventDefault();
-    root.current?.focus({ preventScroll: true });
+    // Keyboard shortcuts (Delete, arrows) need the editor focused; the browser's own handling of
+    // the press runs after this, so focus again once it's done.
+    requestAnimationFrame(() => root.current?.focus({ preventScroll: true }));
     if (editing && editing !== e.id) setEditing(null);
     setSelected(e.id);
     (ev.currentTarget as Element).setPointerCapture(ev.pointerId);
@@ -191,8 +205,8 @@ export function SlideEditor({ design, images, label, onChange, onUploadImage, on
     const b = { ...g.box };
     const e = design.elements.find((x) => x.id === g.id)!;
     if (!g.handle) {
-      b.x = snap(g.box.x + dx, [0, W / 2 - b.w / 2, W - b.w]);
-      b.y = snap(g.box.y + dy, [0, H / 2 - b.h / 2, H - b.h]);
+      b.x = keepOn(snap(g.box.x + dx, [0, W / 2 - b.w / 2, W - b.w]), b.w, W);
+      b.y = keepOn(snap(g.box.y + dy, [0, H / 2 - b.h / 2, H - b.h]), b.h, H);
     } else {
       const hd = g.handle;
       if (hd.includes("e")) b.w = g.box.w + dx;
@@ -226,6 +240,7 @@ export function SlideEditor({ design, images, label, onChange, onUploadImage, on
     setDraft({ ...design, elements: design.elements.map((x) => (x.id === g.id ? ({ ...x, x: r(b.x), y: r(b.y), w: r(b.w), h: r(b.h) } as El) : x)) });
   };
   const end = () => {
+    root.current?.focus({ preventScroll: true });
     const g = gesture.current;
     gesture.current = null;
     if (g?.moved && draft) onChange(draft);
@@ -233,13 +248,13 @@ export function SlideEditor({ design, images, label, onChange, onUploadImage, on
   };
 
   // ---- keyboard (when the slide, not its text, has focus) ----
-  const onKey = (ev: KeyboardEvent) => {
+  const onKey = (ev: globalThis.KeyboardEvent) => {
     if (!sel) return;
     const step = ev.shiftKey ? 10 : 1;
     const nudge: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
     if (nudge[ev.key]) {
       ev.preventDefault();
-      update(sel.id, { x: sel.x + nudge[ev.key][0], y: sel.y + nudge[ev.key][1] });
+      update(sel.id, { x: keepOn(sel.x + nudge[ev.key][0], sel.w, W), y: keepOn(sel.y + nudge[ev.key][1], sel.h, H) });
     } else if (ev.key === "Delete" || ev.key === "Backspace") {
       ev.preventDefault();
       remove(sel.id);
@@ -248,6 +263,30 @@ export function SlideEditor({ design, images, label, onChange, onUploadImage, on
       setEditing(sel.id);
     } else if (ev.key === "Escape") setSelected(null);
   };
+
+  // Shortcuts act on the selection wherever focus is (a press on the slide doesn't reliably leave
+  // focus here), except while typing somewhere. A press outside this slide clears its selection,
+  // so only one slide on the page answers.
+  const onKeyRef = useRef(onKey);
+  useEffect(() => {
+    onKeyRef.current = onKey;
+  });
+  useEffect(() => {
+    if (!selected || editing) return;
+    // Not while typing, and not for keys meant for a menu, picker, or dialog.
+    const elsewhere = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName) || !!t.closest(".MuiPopover-root, .MuiDialog-root, [role=menu]"));
+    const onKeyDown = (ev: globalThis.KeyboardEvent) => !elsewhere(ev.target) && onKeyRef.current(ev);
+    const onDown = (ev: globalThis.PointerEvent) => {
+      const t = ev.target as HTMLElement;
+      if (!root.current?.contains(t) && !t.closest(".MuiPopover-root, .MuiMenu-root, .MuiDialog-root")) setSelected(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    document.addEventListener("pointerdown", onDown, true);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", onDown, true);
+    };
+  }, [selected, editing]);
 
   const pickImage = async (file?: File) => {
     if (!file) return;
@@ -332,7 +371,7 @@ export function SlideEditor({ design, images, label, onChange, onUploadImage, on
   const textLike = sel && sel.kind !== "image" ? sel : undefined;
   const isLine = sel?.kind === "shape" && (sel.shape === "line" || sel.shape === "arrow");
   return (
-    <Box ref={root} tabIndex={0} onKeyDown={onKey} aria-label={`${label}: designed slide editor`} sx={{ outline: "none", "&:focus-visible .slide-frame": { boxShadow: (t) => `0 0 0 2px ${t.palette.primary.main}` } }}>
+    <Box ref={root} tabIndex={0} data-slide-editor aria-label={`${label}: designed slide editor`} sx={{ outline: "none", "&:focus-visible .slide-frame": { boxShadow: (t) => `0 0 0 2px ${t.palette.primary.main}` } }}>
       <Stack direction="row" alignItems="center" useFlexGap spacing={0.5} role="toolbar" aria-label="Slide" sx={{ flexWrap: "wrap", mb: 0.75 }}>
         <Button size="small" startIcon={<TextFieldsRounded />} onClick={() => add(newElement("text"), true)}>Text</Button>
         <Button size="small" startIcon={<CategoryOutlined />} onClick={(e) => setShapeMenu(e.currentTarget)} aria-haspopup="menu">Shape</Button>
@@ -348,7 +387,9 @@ export function SlideEditor({ design, images, label, onChange, onUploadImage, on
           </IconButton>
         </Tooltip>
       </Stack>
-      <Menu anchorEl={shapeMenu} open={!!shapeMenu} onClose={() => setShapeMenu(null)}>
+      {/* Menus here don't hand focus back to their button: the slide takes it, so Delete and the
+          arrow keys work on what was just added or picked. */}
+      <Menu anchorEl={shapeMenu} open={!!shapeMenu} onClose={() => setShapeMenu(null)} disableRestoreFocus>
         {SHAPES.map((s) => (
           <MenuItem key={s.id} onClick={() => (add(newElement(s.id)), setShapeMenu(null))}>
             <ListItemIcon>{s.icon}</ListItemIcon>
@@ -356,7 +397,7 @@ export function SlideEditor({ design, images, label, onChange, onUploadImage, on
           </MenuItem>
         ))}
       </Menu>
-      <Menu anchorEl={more} open={!!more} onClose={() => setMore(null)}>
+      <Menu anchorEl={more} open={!!more} onClose={() => setMore(null)} disableRestoreFocus>
         <MenuItem onClick={() => (setMore(null), onConvertToText())}>
           <ListItemText primary="Convert to post text" secondary="Keep the words and pictures, drop the layout" />
         </MenuItem>
@@ -408,6 +449,16 @@ export function SlideEditor({ design, images, label, onChange, onUploadImage, on
         </Stack>
       )}
 
+      {lost.length > 0 && (
+        <Stack direction="row" alignItems="center" spacing={1} useFlexGap sx={{ flexWrap: "wrap", mt: 0.75, px: 1, py: 0.5, borderRadius: 1, bgcolor: "action.hover" }} role="status">
+          <Typography variant="body2" sx={{ flex: 1, minWidth: 160 }}>
+            {lost.length === 1 ? "1 item is" : `${lost.length} items are`} outside the slide, so nobody can see {lost.length === 1 ? "it" : "them"}.
+          </Typography>
+          <Button size="small" onClick={() => setElements(design.elements.map((e) => (offSlide(e, W, H) ? ({ ...e, ...bringOn(e, W, H) } as El) : e)))}>
+            Bring onto slide
+          </Button>
+        </Stack>
+      )}
       <Typography variant="caption" color="text.disabled" sx={{ display: "block", mt: 0.5 }}>
         {sel ? (sel.kind === "image" ? "Drag to move · corners keep the proportions · Delete removes" : "Double-click to edit text · drag to move · arrow keys nudge") : "Click anything on the slide to change it"}
       </Typography>

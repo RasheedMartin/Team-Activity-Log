@@ -1,5 +1,5 @@
 import { http, HttpResponse } from "msw";
-import type { Block, ImportItem, ImportJob, ImportMode, ImportPost, SlideDesign, SlideDesignMode } from "../../api/contract";
+import type { Block, ImportItem, ImportJob, ImportMode, ImportPost, ImportSummary, SlideDesign, SlideDesignMode } from "../../api/contract";
 import { blockImageIds } from "../../lib/blocks";
 import { uuidv7 } from "../../lib/ids";
 import { doc, heading } from "../../lib/prosemirror";
@@ -160,6 +160,7 @@ export const importHandlers = [
         slideCount: 0,
         defaults: body.defaults,
         items: [],
+        createdAt: now(),
       });
       return HttpResponse.json(view(job), { status: 201 });
     }),
@@ -185,6 +186,22 @@ export const importHandlers = [
       if (!j || j.orgId !== ctx.org.id || j.userId !== ctx.user.id) fail(404, "not_found", "Import not found");
       return HttpResponse.json(view(j!));
     }, { flaky: false }),
+  ),
+  http.get(
+    "/v1/orgs/:org/workspaces/:ws/imports",
+    route(({ cookies, params }) => {
+      const ctx = workspaceCtx(cookies, params.org as string, params.ws as string, "member");
+      const list: ImportSummary[] = db.t.importJobs
+        .filter((j) => j.workspaceId === ctx.ws.id && j.userId === ctx.user.id && j.status !== "failed")
+        .map((j) => ({ ...j, createdAt: j.createdAt ?? new Date(parseInt(j.id.replace(/-/g, "").slice(0, 12), 16)).toISOString() }))
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        .slice(0, 30)
+        .map((j) => {
+          const posts = db.t.posts.filter((p) => p.source?.importJobId === j.id && !p.deletedAt);
+          return { id: j.id, sourceFilename: j.sourceFilename, status: j.status, slideCount: j.slideCount, createdAt: j.createdAt, drafts: posts.filter((p) => p.status === "draft").length, published: posts.filter((p) => p.status === "published").length };
+        });
+      return HttpResponse.json(list);
+    }),
   ),
   http.get(
     "/v1/orgs/:org/imports/:id/posts",

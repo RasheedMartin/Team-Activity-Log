@@ -45,11 +45,8 @@ test("review imported drafts one by one, and always find the way back", async ({
   await expect(page.getByRole("list", { name: "Published from this import" }).getByText("Cooldown overview")).toBeVisible();
   await page.getByRole("tab", { name: "To review (7)" }).click();
 
-  // The report is a PDF.
-  const [report] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Download report (PDF)" }).click()]);
-  expect(report.suggestedFilename()).toBe("Lab_Notes_2021 import report.pdf");
-  expect(readFileSync(await report.path()).subarray(0, 5).toString()).toBe("%PDF-");
-  await report.saveAs("test-results/import-report.pdf");
+  // All of the import's slides open in Present (where they can be downloaded as .pptx).
+  await expect(page.getByRole("link", { name: "Present or download" })).toHaveAttribute("href", /\/present\?collection=/);
 
   // Select all → publish.
   await page.getByRole("checkbox", { name: "Select all drafts" }).check();
@@ -91,4 +88,23 @@ test("the import review fits a phone", async ({ page }) => {
   await expect(page.getByRole("navigation", { name: "Import" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.screenshot({ path: "test-results/import-trail-phone.png" });
+});
+
+test("an unfinished import is easy to get back to", async ({ page }) => {
+  await openScenario(page, "small");
+  // Uploaded and parsed, but left at review without creating anything.
+  await page.getByRole("complementary").getByRole("link", { name: "Import slides" }).click();
+  await page.getByLabel("PowerPoint file").setInputFiles({ name: "Left_halfway.pptx", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", buffer: FIXTURE });
+  await page.getByRole("button", { name: "Start import" }).click();
+  await expect(page.getByRole("button", { name: /^Create \d+ drafts$/ })).toBeVisible({ timeout: 20_000 });
+  // And one committed with drafts still to review.
+  await page.goto(page.url().replace(/\?.*$/, ""));
+  await importPerSlide(page);
+  await page.goto(page.url().replace(/\?.*$/, ""));
+
+  const yours = page.getByRole("list", { name: "Your imports" });
+  await expect(yours.getByRole("listitem")).toHaveCount(2);
+  await expect(yours.getByRole("listitem").filter({ hasText: "Lab_Notes_2021.pptx" })).toContainText("0 of 8 published · 8 left to review");
+  await yours.getByRole("listitem").filter({ hasText: "Left_halfway.pptx" }).getByText(/Ready to review/).click();
+  await expect(page.getByRole("button", { name: /^Create \d+ drafts$/ })).toBeVisible(); // back in review, where it was left
 });
