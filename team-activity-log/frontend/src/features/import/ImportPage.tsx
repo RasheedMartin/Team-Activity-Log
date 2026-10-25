@@ -112,7 +112,7 @@ function StartStep({ onStarted, scope, onScope }: { onStarted: (job: ImportJob) 
   const [params] = useSearchParams();
   const [intoId, setInto] = useState<string | null>(params.get("into"));
   const lib = useLibrary(org.id, ws.id, { kind: into === "deck" ? "collection" : "notebook", sort: "name", limit: 200 });
-  const intoOptions = (lib.data?.pages.flatMap((pg) => pg.items) ?? []).filter((it) => it.ownerId === me.user.id || it.sharedWithMe || it.id === intoId);
+  const intoOptions = (lib.data?.pages.flatMap((pg) => pg.items) ?? []).filter((it) => it.myRole === "owner" || it.myRole === "editor" || it.ownerId === me.user.id || it.id === intoId);
   const pick = (f?: File | null) => {
     if (!f) return;
     setFile(f);
@@ -199,8 +199,11 @@ function StartStep({ onStarted, scope, onScope }: { onStarted: (job: ImportJob) 
             <Typography variant="body2" sx={{ fontWeight: 600 }}>Add to</Typography>
             <RadioGroup value={intoId ? "existing" : "new"} onChange={(e) => (e.target.value === "new" ? setInto(null) : setInto(intoOptions[0]?.id ?? ""))}>
               <FormControlLabel value="new" control={<Radio size="small" />} label={`A new ${into}`} />
-              <FormControlLabel value="existing" control={<Radio size="small" />} disabled={!intoOptions.length} label={`An existing ${into}${intoOptions.length ? "" : ` (you have none yet)`}`} />
+              <FormControlLabel value="existing" control={<Radio size="small" />} disabled={!intoOptions.length} label={`An existing ${into}`} />
             </RadioGroup>
+            <Typography variant="caption" color="text.secondary" component="div">
+              {intoOptions.length ? `Lists ${into}s you created or can edit.` : `You can add to ${into}s you created or were made an editor of; there aren't any yet.`}
+            </Typography>
             {intoId !== null ? (
               <TextField select size="small" label={into === "deck" ? "Deck" : "Notebook"} value={intoId} onChange={(e) => setInto(e.target.value)} sx={{ minWidth: 280, mt: 0.5 }}>
                 {intoOptions.map((o) => <MenuItem key={o.id} value={o.id}>{o.name}</MenuItem>)}

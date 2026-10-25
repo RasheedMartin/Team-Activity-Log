@@ -618,6 +618,8 @@ export interface LibraryItem {
   filterSpec?: FilterSpec;
   /** Someone else's collection or notebook that was shared with the caller. */
   sharedWithMe?: boolean;
+  /** The caller's role on a collection or notebook (owner if they made it). */
+  myRole?: CollectionRole;
 }
 export interface LibraryPage {
   items: LibraryItem[];

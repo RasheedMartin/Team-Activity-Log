@@ -69,6 +69,7 @@ async def library_items(db: AsyncSession, ctx: WsCtx) -> list[dict]:
             "ownerId": str(c.created_by),
             "shared": c.visibility == "workspace",
             "sharedWithMe": c.created_by != ctx.user.id and c.id in grants,
+            "myRole": "owner" if c.created_by == ctx.user.id else grants.get(c.id, "viewer"),
             "pinned": (kind_of(c), c.id) in pinned,
             "updatedAt": iso(c.updated_at) or EPOCH,
             "postCount": counts.get(c.id, 0),
