@@ -1,6 +1,7 @@
 """Roles on a collection or notebook (owner request): everyone in the workspace can view; editors
 can write pages, add, reorder, and rename; owners can also share and delete. The creator is an
-owner; workspace admins act as owners; workspace viewers never edit."""
+owner. Everyone else, workspace admins included, is a viewer until an owner says otherwise
+(owner request); workspace viewers never edit."""
 
 from __future__ import annotations
 
@@ -15,7 +16,7 @@ ROLES = ("viewer", "editor", "owner")
 
 
 async def role_in(db: AsyncSession, ctx: WsCtx, c: m.CollectionRow) -> str:
-    if ctx.is_admin or c.created_by == ctx.user.id:
+    if c.created_by == ctx.user.id:
         return "owner"
     if ctx.role == "viewer":
         return "viewer"

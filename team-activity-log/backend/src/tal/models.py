@@ -302,7 +302,7 @@ class CollectionRow(Base):
 
 class CollectionMember(Base):
     """Who may change a collection or notebook beyond viewing (everyone in the workspace can view).
-    Its creator is always an owner and has no row; workspace admins act as owners."""
+    Its creator is always an owner and has no row; everyone else is a viewer unless listed here."""
 
     __tablename__ = "collection_members"
     collection_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("collections.id", ondelete="CASCADE"), primary_key=True)

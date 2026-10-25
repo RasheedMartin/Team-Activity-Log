@@ -1,4 +1,4 @@
-import { AddRounded, CallMergeRounded, CallSplitRounded, CollectionsBookmarkOutlined, DeleteOutlineRounded, ManageSearchRounded, MoreVertRounded, SlideshowRounded, UploadFileOutlined, WarningAmberRounded } from "@mui/icons-material";
+import { AddRounded, CallMergeRounded, PersonAddAltRounded, CallSplitRounded, CollectionsBookmarkOutlined, DeleteOutlineRounded, ManageSearchRounded, MoreVertRounded, SlideshowRounded, UploadFileOutlined, WarningAmberRounded } from "@mui/icons-material";
 import { Box, Button, ButtonBase, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, ListItemIcon, Menu, MenuItem, Skeleton, Stack, Tab, Tabs, Tooltip, Typography } from "@mui/material";
 import { useMemo, useState } from "react";
 import { Link as RouterLink, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -16,6 +16,7 @@ import { useRangeSelect } from "../../lib/useRangeSelect";
 import { docText } from "../../lib/prosemirror";
 import { AddPostsDialog } from "./AddPosts";
 import { FavoriteButton } from "./FavoriteButton";
+import { ShareDialog } from "./ShareDialog";
 import { collectionParams } from "./libraryLinks";
 
 /** A small picture of a post: its first designed slide, else its first picture, else its opening text. */
@@ -63,6 +64,9 @@ export default function CollectionPage() {
   const navigate = useNavigate();
   const [menu, setMenu] = useState<HTMLElement | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const canEdit = c.data?.myRole !== "viewer"; // roles: everyone views; editors change it; owners share
+  const isOwner = c.data?.myRole === "owner" || c.data?.myRole === undefined;
   const combine = useCombineDrafts(org.id);
   const splitDraft = useSplitDraft(org.id);
   // Import notes per post ("Animations not preserved", …), minus ones a designed slide makes moot
@@ -154,7 +158,7 @@ export default function CollectionPage() {
             </Button>
           )}
           {/* An imported deck holds its slides: review is publish or discard (owner request). */}
-          {!deck && (
+          {!deck && canEdit && (
             <Button startIcon={<AddRounded />} onClick={() => setAdding(true)}>
               Add posts
             </Button>
@@ -164,7 +168,13 @@ export default function CollectionPage() {
             Search within
           </Button>
           <FavoriteButton kind="collection" id={coll.id} name={coll.name} />
-          {deck && importJobId && (
+          {isOwner && !deck && (
+            <>
+              <Button startIcon={<PersonAddAltRounded />} onClick={() => setSharing(true)} aria-label="Share collection">Share</Button>
+              {sharing && <ShareDialog c={coll} open onClose={() => setSharing(false)} />}
+            </>
+          )}
+          {deck && importJobId && isOwner && (
             <>
               <IconButton aria-label="More deck actions" onClick={(e) => setMenu(e.currentTarget)}><MoreVertRounded /></IconButton>
               <Menu anchorEl={menu} open={!!menu} onClose={() => setMenu(null)}>
@@ -229,7 +239,7 @@ export default function CollectionPage() {
                     Split back
                   </Button>
                 ) : null}
-                {!deck && <Button size="small" disabled={busy || update.isPending} onClick={remove}>Remove from collection</Button>}
+                {!deck && canEdit && <Button size="small" disabled={busy || update.isPending} onClick={remove}>Remove from collection</Button>}
                 <Button size="small" color="error" disabled={busy} onClick={() => void discard()}>{onlyDrafts ? "Discard" : "Delete"}</Button>
               </>
             )}

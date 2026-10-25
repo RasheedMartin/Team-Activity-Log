@@ -10,6 +10,8 @@ import {
   EditOutlined,
   LinkRounded,
   LockOutlined,
+  PersonAddAltRounded,
+  VisibilityOutlined,
   MenuBookOutlined,
   PrintOutlined,
   SlideshowRounded,
@@ -55,6 +57,7 @@ import { formatDay, formatRange } from "../../lib/dates";
 import { AnnotatedImage } from "../posts/editor/ImageBlock";
 import { AddPostsDialog } from "./AddPosts";
 import { FavoriteButton } from "./FavoriteButton";
+import { ShareDialog } from "./ShareDialog";
 
 /** One notebook entry, rendered like a document section. */
 function Entry({ detail, people, tags, origin, pageBreak }: { detail: PostDetail; people: Map<ID, User>; tags: Map<ID, Tag>; origin: Origin; pageBreak?: boolean }) {
@@ -172,6 +175,10 @@ export default function NotebookPage() {
   const postAction = usePostAction(org.id);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleteMine, setDeleteMine] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  // Roles (owner request): everyone views; editors write and arrange; owners also share and delete.
+  const canEdit = nb?.myRole !== "viewer";
+  const isOwner = nb?.myRole === "owner" || nb?.myRole === undefined;
   const { data: peopleList = [] } = usePeople(org.id);
   const { data: tagData } = useTags(org.id);
   const people = useMemo(() => new Map(peopleList.map((p) => [p.id, p])), [peopleList]);
@@ -365,24 +372,42 @@ export default function NotebookPage() {
             <ToggleButton value="reader">One entry</ToggleButton>
             <ToggleButton value="continuous">Continuous</ToggleButton>
           </ToggleButtonGroup>
-          <Button size="small" variant="contained" startIcon={<EditNoteRounded />} disabled={createPage.isPending} onClick={writePage}>Write a page</Button>
+          {canEdit ? (
+            <Button size="small" variant="contained" startIcon={<EditNoteRounded />} disabled={createPage.isPending} onClick={writePage}>Write a page</Button>
+          ) : (
+            <Tooltip title="Ask an owner to make you an editor to write or add pages">
+              <Chip size="small" icon={<VisibilityOutlined />} label="View only" />
+            </Tooltip>
+          )}
           <Button size="small" startIcon={<SlideshowRounded />} onClick={() => navigate(`${wsPath(org, ws, "/present")}?collection=${nb.id}`)} disabled={!entries.length}>Present</Button>
           <Button size="small" startIcon={<PrintOutlined />} onClick={() => setParam({ view: "continuous", print: "1" })} disabled={!entries.length}>Print / PDF</Button>
-          <Button size="small" startIcon={<AddRounded />} onClick={() => setAdding(true)}>Add posts</Button>
-          <AddPostsDialog open={adding} onClose={() => setAdding(false)} collectionId={nb.id} name={nb.name} postIds={nb.postIds} />
-          <Tooltip describeChild title={editing ? "Done reordering" : "Reorder or remove entries in the contents list"}>
-            <Button size="small" startIcon={<EditOutlined />} variant={editing ? "contained" : "text"} onClick={() => setEditing(!editing)}>{editing ? "Done" : "Edit"}</Button>
-          </Tooltip>
+          {canEdit && (
+            <>
+              <Button size="small" startIcon={<AddRounded />} onClick={() => setAdding(true)}>Add posts</Button>
+              <AddPostsDialog open={adding} onClose={() => setAdding(false)} collectionId={nb.id} name={nb.name} postIds={nb.postIds} />
+              <Tooltip describeChild title={editing ? "Done reordering" : "Reorder or remove entries in the contents list"}>
+                <Button size="small" startIcon={<EditOutlined />} variant={editing ? "contained" : "text"} onClick={() => setEditing(!editing)}>{editing ? "Done" : "Edit"}</Button>
+              </Tooltip>
+            </>
+          )}
+          {isOwner && (
+            <>
+              <Button size="small" startIcon={<PersonAddAltRounded />} onClick={() => setSharing(true)} aria-label="Share notebook">Share</Button>
+              {sharing && <ShareDialog c={nb} open onClose={() => setSharing(false)} />}
+            </>
+          )}
           <Tooltip title="Copy a link to this notebook">
             <IconButton size="small" aria-label="Copy link" onClick={() => void navigator.clipboard.writeText(`${window.location.origin}${location.pathname}`).then(() => notify("Link copied. Anyone in this workspace can open it."), () => notify("Couldn't copy the link"))}>
               <LinkRounded fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Delete notebook">
-            <IconButton size="small" aria-label="Delete notebook" onClick={() => (setDeleteMine(false), setConfirmDelete(true))}>
-              <DeleteOutlineRounded fontSize="small" />
-            </IconButton>
-          </Tooltip>
+          {isOwner && (
+            <Tooltip title="Delete notebook">
+              <IconButton size="small" aria-label="Delete notebook" onClick={() => (setDeleteMine(false), setConfirmDelete(true))}>
+                <DeleteOutlineRounded fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
           <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)} maxWidth="xs">
             <DialogTitle>Delete “{nb.name}”?</DialogTitle>
             <DialogContent>
@@ -403,6 +428,7 @@ export default function NotebookPage() {
         <InputBase
           fullWidth
           value={name}
+          readOnly={!canEdit}
           onChange={(e) => setName(e.target.value)}
           onBlur={() => name.trim() && name !== nb.name && update.mutate({ id: nb.id, name: name.trim() }, { onError: (e) => (setName(nb.name), notify(e.message)) })}
           onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
@@ -417,9 +443,9 @@ export default function NotebookPage() {
         {!entries.length ? (
           <EmptyState
             title="This notebook is empty"
-            body="Write its first page, or add posts that already exist (yours or anyone's in this workspace)."
+            body={canEdit ? "Write its first page, or add posts that already exist (yours or anyone's in this workspace)." : "Nothing published in it yet."}
             action={
-              <Stack direction="row" spacing={1} justifyContent="center">
+              canEdit && <Stack direction="row" spacing={1} justifyContent="center">
                 <Button variant="contained" startIcon={<EditNoteRounded />} onClick={writePage}>Write a page</Button>
                 <Button startIcon={<AddRounded />} onClick={() => setAdding(true)}>Add posts</Button>
               </Stack>

@@ -879,3 +879,12 @@ export function useSplitDraft(orgId: ID) {
     },
   });
 }
+
+/** Owners set who else can edit or own a collection or notebook (everyone can view). */
+export function useSetCollectionMembers(orgId: ID, wsId: ID) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, members }: { id: ID; members: { userId: ID; role: import("./contract").CollectionRole }[] }) => put<Collection>(`${W(orgId, wsId)}/collections/${id}/members`, { members }),
+    onSuccess: (c) => qc.setQueryData([...qk.collections(orgId, wsId), c.id], c),
+  });
+}

@@ -1,8 +1,9 @@
 import { http, HttpResponse } from "msw";
-import type { Collection, ID, LibraryItem, LibraryKind, LibraryPage, PinRef, Presentation, SavedView } from "../../api/contract";
+import type { Collection, CollectionRole, ID, LibraryItem, LibraryKind, LibraryPage, PinRef, Presentation, SavedView } from "../../api/contract";
 import { uuidv7 } from "../../lib/ids";
 import { db } from "../db";
-import { engine, fail, now, reindex, roleAtLeast, route, workspaceCtx } from "../server";
+import { engine, fail, now, reindex, roleAtLeast, route, workspaceCtx, type OrgCtx } from "../server";
+import { membersOf, requireRole, roleIn, setMembers } from "./collectionAccess";
 
 // Saved views, collections, and notebooks — built for scale (owner request): a paged, searchable
 // library; per-user pins for the rail; single-item reads. In Postgres: saved_views, collections,
@@ -27,6 +28,9 @@ const seesPost = (id: ID, me?: ID) => {
   return !!p && !p.deletedAt && (!me || ((p.status === "published" || p.authorId === me) && (p.visibility === "visible" || p.authorId === me)));
 };
 const live = (c: Collection, me?: ID): Collection => ({ ...c, postIds: c.postIds.filter((id) => seesPost(id, me)) });
+
+/** A collection as the caller sees it: their visible posts, its members, and their role. */
+const view = (c: Collection, ctx: Pick<OrgCtx, "user" | "role">): Collection => ({ ...live(c, ctx.user.id), members: membersOf(c), myRole: roleIn(ctx, c) });
 
 const collectionItem = (c: Collection, me: ID): LibraryItem => ({ kind: kindOf(c), id: c.id, name: c.name, ownerId: c.createdBy, shared: true, pinned: isPinned(me, c.workspaceId, kindOf(c), c.id), updatedAt: c.updatedAt ?? "1970-01-01T00:00:00Z", postCount: live(c, me).postIds.length, collectionKind: c.kind });
 const withPinned = (v: SavedView, me: ID): SavedView => ({ ...v, pinned: isPinned(me, v.workspaceId, "view", v.id) });
@@ -166,8 +170,8 @@ export const libraryHandlers = [
       const ctx = workspaceCtx(cookies, params.org as string, params.ws as string);
       const c = db.t.collections.get(params.id as string);
       if (!c || c.workspaceId !== ctx.ws.id) fail(404, "not_found", "Collection not found");
-      const seen = live(c!, ctx.user.id);
-      if (!seen.postIds.length && c!.createdBy !== ctx.user.id) fail(404, "not_found", "Collection not found"); // nothing published yet
+      const seen = view(c!, ctx);
+      if (!seen.postIds.length && seen.myRole === "viewer") fail(404, "not_found", "Collection not found"); // nothing published yet
       return HttpResponse.json(seen);
     }),
   ),
@@ -199,7 +203,7 @@ export const libraryHandlers = [
       }
       const c = db.t.collections.put({ id: uuidv7(), workspaceId: ctx.ws.id, name: body.name.trim(), kind: body.kind ?? "manual", postIds: body.postIds ?? [], createdBy: ctx.user.id, updatedAt: now(), sourceTagId: body.sourceTagId });
       syncPostCollections(c, []);
-      return HttpResponse.json(live(c, ctx.user.id), { status: 201 });
+      return HttpResponse.json(view(c, ctx), { status: 201 });
     }),
   ),
   http.patch(
@@ -211,16 +215,16 @@ export const libraryHandlers = [
       const { name, pinned, presentation } = (await request.json()) as { name?: string; pinned?: boolean; presentation?: Presentation | null };
       if (pinned !== undefined) togglePin(ctx.user.id, ctx.ws.id, { kind: kindOf(c!), id: c!.id }, pinned);
       if (name !== undefined) {
-        if (!roleAtLeast(ctx.role, "member")) fail(403, "forbidden", "Viewers can't rename collections");
+        requireRole(ctx, c!, "editor");
         if (!name.trim()) fail(422, "invalid", "Name can't be empty");
         if (c!.kind === "notebook") assertUniqueNotebookName(ctx.ws.id, name, c!.id);
         db.t.collections.update(c!.id, { name: name.trim(), updatedAt: now() });
       }
       if (presentation !== undefined) {
-        if (!roleAtLeast(ctx.role, "member")) fail(403, "forbidden", "Viewers can't change how this presents");
+        requireRole(ctx, c!, "editor");
         db.t.collections.update(c!.id, { presentation: presentation ?? undefined, updatedAt: now() });
       }
-      return HttpResponse.json(live(db.t.collections.get(c!.id)!, ctx.user.id));
+      return HttpResponse.json(view(db.t.collections.get(c!.id)!, ctx));
     }),
   ),
   http.put(
@@ -229,13 +233,14 @@ export const libraryHandlers = [
       const ctx = workspaceCtx(cookies, params.org as string, params.ws as string, "member");
       const c = db.t.collections.get(params.id as string);
       if (!c || c.workspaceId !== ctx.ws.id) fail(404, "not_found", "Collection not found");
+      requireRole(ctx, c!, "editor");
       const { postIds: arranged } = (await request.json()) as { postIds: string[] };
       const before = c!.postIds;
       // Keep members this person can't see (others' drafts, deleted posts) after the ones they arranged.
       const postIds = [...arranged, ...before.filter((id) => !seesPost(id, ctx.user.id) && !arranged.includes(id))];
       const next = db.t.collections.update(c!.id, { postIds, updatedAt: now() })!;
       syncPostCollections(next, before);
-      return HttpResponse.json(live(next, ctx.user.id));
+      return HttpResponse.json(view(next, ctx));
     }),
   ),
   http.delete(
@@ -244,7 +249,7 @@ export const libraryHandlers = [
       const ctx = workspaceCtx(cookies, params.org as string, params.ws as string, "member");
       const c = db.t.collections.get(params.id as string);
       if (!c || c.workspaceId !== ctx.ws.id) fail(404, "not_found", "Collection not found");
-      if (c!.createdBy !== ctx.user.id && !roleAtLeast(ctx.role, "admin")) fail(403, "forbidden", "Only its creator or an admin can delete this");
+      requireRole(ctx, c!, "owner");
       // Removes the grouping; with deleteMyPosts the caller's own posts go to the recycle bin too.
       const deletedPostIds: string[] = [];
       if (new URL(request.url).searchParams.get("deleteMyPosts") === "true") {
@@ -261,6 +266,19 @@ export const libraryHandlers = [
       syncPostCollections({ ...c!, postIds: [] }, c!.postIds);
       db.t.collections.delete(c!.id);
       return HttpResponse.json({ deletedPostIds });
+    }),
+  ),
+  http.put(
+    "/v1/orgs/:org/workspaces/:ws/collections/:id/members",
+    route(async ({ cookies, params, request }) => {
+      const ctx = workspaceCtx(cookies, params.org as string, params.ws as string, "member");
+      const c = db.t.collections.get(params.id as string);
+      if (!c || c.workspaceId !== ctx.ws.id) fail(404, "not_found", "Collection not found");
+      requireRole(ctx, c!, "owner");
+      const { members = [] } = (await request.json()) as { members?: { userId: ID; role: CollectionRole }[] };
+      if (members.some((x) => !["viewer", "editor", "owner"].includes(x.role))) fail(422, "invalid", "Each member needs a person and a role (viewer, editor, owner)");
+      setMembers(c!, members);
+      return HttpResponse.json(view(c!, ctx));
     }),
   ),
 ];

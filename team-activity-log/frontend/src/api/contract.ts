@@ -577,7 +577,13 @@ export interface Collection {
   /** Notebooks made from a tag remember it, so there is one per tag even after a rename. */
   sourceTagId?: ID;
   presentation?: Presentation;
+  /** Everyone in the workspace can view. Editors change contents; owners also share and delete.
+   *  The creator is always first, as owner. */
+  members?: { userId: ID; role: CollectionRole }[];
+  /** The caller's role: owner if they created it, else what an owner granted (viewer by default). */
+  myRole?: CollectionRole;
 }
+export type CollectionRole = "viewer" | "editor" | "owner";
 
 // ---- Library (scale): everything a person can save, searchable and paged ----
 

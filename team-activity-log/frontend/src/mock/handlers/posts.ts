@@ -4,6 +4,7 @@ import { todayISO } from "../../lib/dates";
 import { uuidv7 } from "../../lib/ids";
 import { blockImageIds, hasContent as blocksHaveContent } from "../../lib/blocks";
 import { createAsset } from "../assets";
+import { requireRole } from "./collectionAccess";
 import { db, type PostRow } from "../db";
 import {
   assetView,
@@ -154,6 +155,7 @@ export const postHandlers = [
         // "Write a page" in a notebook: the new post goes at its end (mirrors routes/posts.py).
         const c = db.t.collections.get(body.collectionId);
         if (!c || c.workspaceId !== ctx.ws.id) fail(404, "not_found", "Notebook not found");
+        requireRole(ctx, c!, "editor");
         db.t.collections.update(c!.id, { postIds: [...c!.postIds, p.id], updatedAt: t });
       }
       return HttpResponse.json(detail(p), { status: 201 });
