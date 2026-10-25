@@ -179,7 +179,7 @@ test("notebook contents land exactly on the entry (reader and continuous)", asyn
     await toc.nth(i).click();
     await expect(page.locator("[data-nb-section] h2")).toHaveText(title);
     await expect(page.getByText(`Entry ${i + 1} of ${n}`).first()).toBeVisible();
-    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    expect(await page.evaluate(() => window.scrollY)).toBe(0); // the reader starts each entry at the top
   }
   await page.keyboard.press("ArrowRight");
   await expect(page.getByText(`Entry 3 of ${n}`).first()).toBeVisible();
@@ -192,7 +192,8 @@ test("notebook contents land exactly on the entry (reader and continuous)", asyn
     await toc.nth(i).click();
     const id = (await page.locator("[data-nb-section]").nth(i).getAttribute("data-nb-section"))!;
     await expect(page.locator(`#nb-${id}:not([data-nb-loading])`)).toBeVisible(); // it loaded
-    await expect.poll(() => page.evaluate((x) => Math.abs(Math.round(document.getElementById(`nb-${x}`)!.getBoundingClientRect().top) - 16), id)).toBeLessThan(4);
+    // Lands just below the sticky notebook bar.
+    await expect.poll(() => page.evaluate((x) => Math.abs(Math.round(document.getElementById(`nb-${x}`)!.getBoundingClientRect().top) - 16 - parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--nb-bar") || "0")), id)).toBeLessThan(4);
   }
 });
 

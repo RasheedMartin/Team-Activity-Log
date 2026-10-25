@@ -52,7 +52,7 @@ function Entry({ detail, people, tags, origin, pageBreak }: { detail: PostDetail
   const p = detail.post;
   const imgs = new Map(detail.images.map((x) => [x.id, x]));
   return (
-    <Box id={`nb-${p.id}`} data-nb-section={p.id} component="article" sx={{ scrollMarginTop: 16, "@media print": { breakBefore: pageBreak ? "page" : "auto" } }}>
+    <Box id={`nb-${p.id}`} data-nb-section={p.id} component="article" sx={{ scrollMarginTop: "calc(var(--nb-bar, 0px) + 16px)", "@media print": { breakBefore: pageBreak ? "page" : "auto" } }}>
       <Typography variant="overline" color="primary">{formatDay(p.workDate)}</Typography>
       <Typography component="h2" variant="h2" sx={{ mb: 0.75 }}>
         <Box component={RouterLink} to={wsPath(org, ws, `/p/${p.id}`)} state={origin} sx={{ color: "inherit", textDecoration: "none", "&:hover": { textDecoration: "underline" } }}>
@@ -129,7 +129,7 @@ function LazyEntry({ id, orgId, ...rest }: { id: ID; orgId: ID; people: Map<ID, 
   const [q] = usePostDetails(orgId, near ? [id] : []);
   if (q?.data) return <Entry detail={q.data} {...rest} />;
   return (
-    <Box ref={ref} id={`nb-${id}`} data-nb-section={id} data-nb-loading sx={{ scrollMarginTop: 16 }}>
+    <Box ref={ref} id={`nb-${id}`} data-nb-section={id} data-nb-loading sx={{ scrollMarginTop: "calc(var(--nb-bar, 0px) + 16px)" }}>
       <Skeleton variant="rounded" height={320} />
     </Box>
   );
@@ -168,6 +168,21 @@ export default function NotebookPage() {
   const byId = new Map(details.filter((d) => d.data).map((d) => [d.data!.post.id, d.data!]));
   const loadedAll = continuous && printing && ids.every((x) => byId.has(x));
   const anchor = useAnchor();
+  const bar = useRef<HTMLDivElement>(null);
+  const [stuck, setStuck] = useState(false);
+  useEffect(() => {
+    const el = bar.current;
+    if (!el) return;
+    const sizes = new ResizeObserver(() => document.documentElement.style.setProperty("--nb-bar", `${el.offsetHeight}px`));
+    sizes.observe(el);
+    const onScroll = () => setStuck(el.getBoundingClientRect().top <= 1 && window.scrollY > 0);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      sizes.disconnect();
+      window.removeEventListener("scroll", onScroll);
+      document.documentElement.style.removeProperty("--nb-bar");
+    };
+  }, [nb?.id]);
   const origin: Origin = { from: location.pathname + location.search, label: nb?.name ?? "notebook" };
 
   const setParam = (patch: Record<string, string | null>, replace = false) => {
@@ -280,9 +295,22 @@ export default function NotebookPage() {
       </Box>
 
       <Box sx={{ maxWidth: 860, width: "100%", mx: "auto", px: { xs: 1.5, sm: 4 }, py: 3 }}>
-        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5, flexWrap: "wrap", rowGap: 1 }} data-print-hide>
+        {/* Sticky (owner request): the controls stay in reach while scrolling a long notebook.
+            Its height feeds --nb-bar so jumps land just below it. */}
+        <Stack
+          ref={bar}
+          direction="row"
+          spacing={1}
+          alignItems="center"
+          data-print-hide
+          sx={{ mb: 0.5, flexWrap: "wrap", rowGap: 1, position: "sticky", top: "env(safe-area-inset-top, 0px)", zIndex: 5, bgcolor: "background.default", mx: { xs: -1.5, sm: -4 }, px: { xs: 1.5, sm: 4 }, py: 1, borderBottom: 1, borderColor: stuck ? "divider" : "transparent", transition: "border-color 150ms" }}
+        >
           <MenuBookOutlined sx={{ color: "text.secondary" }} />
-          <Typography variant="overline" color="text.secondary">Notebook</Typography>
+          {stuck ? (
+            <Typography variant="body2" sx={{ fontWeight: 600, maxWidth: { xs: 140, sm: 260 } }} noWrap>{nb.name}</Typography>
+          ) : (
+            <Typography variant="overline" color="text.secondary">Notebook</Typography>
+          )}
           <FavoriteButton kind="notebook" id={nb.id} name={nb.name} size="small" />
           <Box sx={{ flex: 1 }} />
           <ToggleButtonGroup size="small" exclusive value={continuous ? "continuous" : "reader"} onChange={(_, v) => v && setParam({ view: v === "continuous" ? "continuous" : null })} aria-label="Notebook layout" sx={{ "& .MuiToggleButton-root": { textTransform: "none", py: 0.25 } }}>
