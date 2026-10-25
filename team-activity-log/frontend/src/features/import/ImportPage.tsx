@@ -32,7 +32,7 @@ import {
   Typography,
 } from "@mui/material";
 import { useEffect, useRef, useState } from "react";
-import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Link as RouterLink, Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { deckHref } from "../collections/libraryLinks";
 import type { ImportItem, ImportJob, ImportMode, ImportSummary, SlideDesignMode } from "../../api/contract";
 import { useImportAction, useImportJob, useMyImports, useStartImport } from "../../api/hooks";
@@ -40,7 +40,7 @@ import { can, useWs, wsPath } from "../../app/session";
 import { useNotify } from "../../components/notify";
 import { TagPicker } from "../../components/Pickers";
 import { EmptyState, PageHeader } from "../../components/ui";
-import { timeAgo, todayISO } from "../../lib/dates";
+import { formatDay, timeAgo, todayISO } from "../../lib/dates";
 import { errorMessage } from "../../lib/format";
 import { uuidv7 } from "../../lib/ids";
 
@@ -162,6 +162,35 @@ function StartStep({ onStarted }: { onStarted: (job: ImportJob) => void }) {
   );
 }
 
+/** One source of truth per deck (owner request): this exact file was imported here before. */
+function DuplicateNotice({ job }: { job: ImportJob }) {
+  const { org, ws } = useWs();
+  const [dismissed, setDismissed] = useState(false);
+  const d = job.duplicateOf;
+  if (!d || dismissed) return null;
+  const who = d.by === "you" ? "You" : d.by;
+  const when = formatDay(d.at.slice(0, 10));
+  const text = d.collectionId
+    ? `${who} already imported this deck on ${when}.`
+    : d.private
+      ? `${who} already imported this deck on ${when} and kept it to themselves. Ask them to share it.`
+      : `${who} imported this deck on ${when} and is still reviewing it. Ask them to publish or share it.`;
+  return (
+    <Alert
+      severity="info"
+      sx={{ width: "100%" }}
+      action={
+        <Stack direction="row" spacing={1}>
+          {d.collectionId && <Button size="small" variant="contained" component={RouterLink} to={deckHref(wsPath(org, ws), d.collectionId)}>Open the deck</Button>}
+          <Button size="small" color="inherit" onClick={() => setDismissed(true)}>Import a copy anyway</Button>
+        </Stack>
+      }
+    >
+      {text}
+    </Alert>
+  );
+}
+
 function ReviewStep({ job }: { job: ImportJob }) {
   const { org } = useWs();
   const act = useImportAction(org.id, job.id);
@@ -180,6 +209,8 @@ function ReviewStep({ job }: { job: ImportJob }) {
   const setItem = (id: string, patch: Partial<ImportItem>) => change(items.map((i) => (i.id === id ? { ...i, ...patch } : i)));
   const included = items.filter((i) => i.included);
   const warnings = items.reduce((n, i) => n + i.warnings.length, 0);
+  // Owner request: imported decks are the workspace's source of truth, so shared by default.
+  const [shareDeck, setShareDeck] = useState(true);
   const guessed = items.filter((i) => i.dateSource !== "user").length;
   const selected = items.filter((i) => sel.has(i.id));
   const allSel = sel.size === items.length && items.length > 0;
@@ -215,6 +246,7 @@ function ReviewStep({ job }: { job: ImportJob }) {
 
   return (
     <Stack spacing={2}>
+      <DuplicateNotice job={job} />
       <Stack direction="row" spacing={2} alignItems="center" sx={{ flexWrap: "wrap", rowGap: 1 }}>
         <Typography sx={{ fontWeight: 600 }}>
           {included.length} {included.length === 1 ? "post" : "posts"} from {job.slideCount} slides
@@ -310,13 +342,17 @@ function ReviewStep({ job }: { job: ImportJob }) {
           disabled={!included.length || act.isPending}
           onClick={() => {
             clearTimeout(saveTimer.current);
-            act.mutateAsync({ action: "items", items }).then(() => act.mutate({ action: "commit" }, { onSuccess: (j) => notify(`Created ${j?.report?.created ?? included.length} drafts from “${job.sourceFilename}”. Review them here.`), onError: (e) => notify(errorMessage(e)) }));
+            act.mutateAsync({ action: "items", items }).then(() => act.mutate({ action: "commit", visibility: shareDeck ? "workspace" : "people" }, { onSuccess: (j) => notify(`Created ${j?.report?.created ?? included.length} drafts from “${job.sourceFilename}”. Review them here.`), onError: (e) => notify(errorMessage(e)) }));
           }}
         >
           Create {included.length} {included.length === 1 ? "draft" : "drafts"}
         </Button>
         <Typography variant="body2" color="text.secondary">Everything is created as drafts in “{job.defaults.collectionName}”. Nothing is published yet.</Typography>
       </Stack>
+      <FormControlLabel
+        control={<Checkbox checked={shareDeck} onChange={(e) => setShareDeck(e.target.checked)} />}
+        label={shareDeck ? "Share this deck with the workspace (people find it instead of importing it again)" : "Keep this deck to myself (you can share it later)"}
+      />
     </Stack>
   );
 }
@@ -416,6 +452,7 @@ export default function ImportPage() {
             </Stack>
           ) : (
             <Stack spacing={1.5}>
+              {job.data && <DuplicateNotice job={job.data} />}
               <Typography sx={{ fontWeight: 600 }}>{job.data?.sourceFilename ?? "Uploading…"}</Typography>
               <LinearProgress variant={job.data ? "determinate" : "indeterminate"} value={(job.data?.progress ?? 0) * 100} />
               <Typography variant="body2" color="text.secondary">

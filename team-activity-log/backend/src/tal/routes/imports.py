@@ -256,10 +256,45 @@ async def upload(org: str, job_id: str, request: Request, u: m.User = Depends(re
     return import_job_view(j)
 
 
+async def _duplicate_of(db: AsyncSession, u: m.User, j: m.ImportJobRow) -> dict | None:
+    """Owner request: one source of truth per deck. The same file (by content hash) already imported
+    in this workspace: who, when, and whether you can open its deck (it may be private to them, or
+    still all their drafts, in which case you learn whom to ask instead of importing it again)."""
+    if not j.source_sha256 or j.status not in ("parsing", "review"):
+        return None
+    prior = (
+        await db.execute(
+            select(m.ImportJobRow)
+            .where(m.ImportJobRow.workspace_id == j.workspace_id, m.ImportJobRow.source_sha256 == j.source_sha256, m.ImportJobRow.status == "done", m.ImportJobRow.id != j.id, m.ImportJobRow.collection_id.is_not(None))
+            .order_by(m.ImportJobRow.created_at)
+        )
+    ).scalars().first()
+    coll = await db.get(m.CollectionRow, prior.collection_id) if prior else None
+    if not prior or not coll:
+        return None
+    by = await db.get(m.User, prior.user_id)
+    mine = prior.user_id == u.id
+    published = await db.scalar(select(func.count()).select_from(m.CollectionPost).join(m.Post, m.Post.id == m.CollectionPost.post_id).where(m.CollectionPost.collection_id == coll.id, m.Post.status == "published", m.Post.deleted_at.is_(None)))
+    shared_with_me = await db.get(m.CollectionMember, (coll.id, u.id)) is not None
+    can_open = mine or ((coll.visibility == "workspace" or shared_with_me) and bool(published))
+    return {
+        "jobId": str(prior.id),
+        "by": "you" if mine else (by.name if by else "someone"),
+        "at": iso(prior.created_at),
+        "collectionId": str(coll.id) if can_open else None,
+        "private": not mine and coll.visibility == "people" and not shared_with_me,
+        "reviewing": not mine and not published,
+    }
+
+
 @router.get("/orgs/{org}/imports/{job_id}")
 async def get_job(org: str, job_id: str, u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
     ctx = await org_ctx(db, u, org)
-    return import_job_view(await _job(ctx, job_id, own=True))
+    j = await _job(ctx, job_id, own=True)
+    view = import_job_view(j)
+    if dup := await _duplicate_of(db, u, j):
+        view["duplicateOf"] = dup
+    return view
 
 
 @router.get("/orgs/{org}/imports/{job_id}/posts")
@@ -349,7 +384,9 @@ async def blocks_for(db: AsyncSession, ctx: OrgCtx, post_id: uuid.UUID, slides: 
 
 
 @router.post("/orgs/{org}/imports/{job_id}/commit")
-async def commit(org: str, job_id: str, u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
+async def commit(org: str, job_id: str, body: dict = Body(default={}), u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
+    """Create the drafts and their deck. The deck is visible to the workspace (one source of truth
+    others can find) unless body.visibility is "people": kept to yourself, shareable later."""
     ctx = await org_ctx(db, u, org, "member")
     j = (await db.execute(select(m.ImportJobRow).where(m.ImportJobRow.id == parse_uuid(job_id)).with_for_update())).scalar_one_or_none() if parse_uuid(job_id) else None
     if not j or j.org_id != ctx.org.id or (j.user_id != u.id and not ctx.is_admin):
@@ -363,7 +400,7 @@ async def commit(org: str, job_id: str, u: m.User = Depends(require_user), db: A
     by_slide = {x.n: x for x in deck.slides}
     look = deck_look(deck.slides)
     t = now()
-    coll = m.CollectionRow(id=uuid7(), org_id=ctx.org.id, workspace_id=j.workspace_id, name=j.defaults.get("collectionName") or j.source_filename, kind="deck_import", created_by=u.id, created_at=t, updated_at=t)
+    coll = m.CollectionRow(id=uuid7(), org_id=ctx.org.id, workspace_id=j.workspace_id, name=j.defaults.get("collectionName") or j.source_filename, kind="deck_import", created_by=u.id, created_at=t, updated_at=t, visibility="people" if (body or {}).get("visibility") == "people" else "workspace")
     db.add(coll)
     await db.flush()
     items, created = [], 0

@@ -173,7 +173,8 @@ export const importHandlers = [
       if (!j || j.orgId !== ctx.org.id) fail(404, "not_found", "Import not found");
       // Held in temp storage only until commit; not retained (§W5.4).
       const blob = await request.blob();
-      db.t.importJobs.update(j!.id, { status: "parsing", progress: 0.05, sourceBlob: blob, sourceBytes: blob.size });
+      const sourceSha256 = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", await blob.arrayBuffer())), (b) => b.toString(16).padStart(2, "0")).join("");
+      db.t.importJobs.update(j!.id, { status: "parsing", progress: 0.05, sourceBlob: blob, sourceBytes: blob.size, sourceSha256 });
       void parseJob(j!.id);
       return HttpResponse.json(view(db.t.importJobs.get(j!.id)!));
     }),
@@ -184,7 +185,20 @@ export const importHandlers = [
       const ctx = orgCtx(cookies, params.org as string);
       const j = db.t.importJobs.get(params.id as string);
       if (!j || j.orgId !== ctx.org.id || j.userId !== ctx.user.id) fail(404, "not_found", "Import not found");
-      return HttpResponse.json(view(j!));
+      // The same file imported before in this workspace (mirrors routes/imports.py _duplicate_of).
+      const prior = j!.sourceSha256 && (j!.status === "parsing" || j!.status === "review")
+        ? db.t.importJobs.filter((x) => x.workspaceId === j!.workspaceId && x.sourceSha256 === j!.sourceSha256 && x.status === "done" && x.id !== j!.id && !!x.collectionId).sort((a, b) => a.id.localeCompare(b.id))[0]
+        : undefined;
+      const coll = prior?.collectionId ? db.t.collections.get(prior.collectionId) : undefined;
+      if (!prior || !coll) return HttpResponse.json(view(j!));
+      const mine = prior.userId === ctx.user.id;
+      const published = coll.postIds.some((id) => { const p = db.t.posts.get(id); return p && !p.deletedAt && p.status === "published"; });
+      const sharedWithMe = (coll.members ?? []).some((x) => x.userId === ctx.user.id);
+      const canOpen = mine || ((coll.visibility !== "people" || sharedWithMe) && published);
+      return HttpResponse.json({
+        ...view(j!),
+        duplicateOf: { jobId: prior.id, by: mine ? "you" : (db.t.users.get(prior.userId)?.name ?? "someone"), at: prior.createdAt ?? now(), collectionId: canOpen ? coll.id : null, private: !mine && coll.visibility === "people" && !sharedWithMe, reviewing: !mine && !published },
+      });
     }, { flaky: false }),
   ),
   http.get(
@@ -238,7 +252,8 @@ export const importHandlers = [
   ),
   http.post(
     "/v1/orgs/:org/imports/:id/commit",
-    route(async ({ cookies, params }) => {
+    route(async ({ cookies, params, request }) => {
+      const visibility = ((await request.json().catch(() => ({}))) as { visibility?: string }).visibility === "people" ? "people" : "workspace";
       const ctx = orgCtx(cookies, params.org as string, "member");
       const j = db.t.importJobs.get(params.id as string);
       if (!j || j.orgId !== ctx.org.id) fail(404, "not_found", "Import not found");
@@ -249,7 +264,7 @@ export const importHandlers = [
       const presentation = Object.keys(look).length ? { theme: { ...look, name: "From the deck" }, deck: { ...look, name: "From the deck" } } : undefined;
       const bySlide = new Map(deck.slides.map((x) => [x.n, x]));
       const fileSha = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", await j!.sourceBlob!.arrayBuffer())), (b) => b.toString(16).padStart(2, "0")).join("");
-      const coll = db.t.collections.put({ id: uuidv7(), workspaceId: j!.workspaceId, name: j!.defaults.collectionName || j!.sourceFilename, kind: "deck_import", postIds: [], createdBy: ctx.user.id, updatedAt: now() });
+      const coll = db.t.collections.put({ id: uuidv7(), workspaceId: j!.workspaceId, name: j!.defaults.collectionName || j!.sourceFilename, kind: "deck_import", postIds: [], createdBy: ctx.user.id, updatedAt: now(), visibility });
       const postIds: string[] = [];
       const items: ImportItem[] = [];
       for (const item of j!.items) {

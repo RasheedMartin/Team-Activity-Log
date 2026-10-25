@@ -226,6 +226,7 @@ export default function NotebookPage() {
       anchor.hold(entryId); // entries around it load as it comes into view; stay on it meanwhile
       setParam({ entry: entryId }, true);
     } else {
+      if (entryId === current?.id) return; // already showing it: a repeat (or double) click shouldn't jump to the top
       setParam({ entry: entryId });
       window.scrollTo(0, 0);
     }

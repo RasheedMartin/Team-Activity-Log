@@ -225,3 +225,26 @@ test("combine drafts on the deck into one post, and split them back until it's p
   await page.getByRole("button", { name: "Undo" }).click();
   await expect(cards(page)).toHaveCount(8);
 });
+
+test("importing the same deck again points to the one already in the workspace", async ({ page }) => {
+  await openScenario(page, "small");
+  await importPerSlide(page);
+  await page.getByRole("complementary").getByRole("link", { name: "Import slides" }).click();
+  await page.getByLabel("PowerPoint file").setInputFiles({ name: "Lab_Notes_2021 (1).pptx", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", buffer: FIXTURE });
+  await page.getByRole("button", { name: "Start import" }).click();
+  const notice = page.getByRole("alert").filter({ hasText: /already imported this deck/ });
+  await expect(notice).toContainText("You already imported this deck");
+  await notice.getByRole("link", { name: "Open the deck" }).click();
+  await expect(page).toHaveURL(/\/collections\//);
+});
+
+test("a deck can be kept to yourself at import", async ({ page }) => {
+  await openScenario(page, "small");
+  await page.getByRole("complementary").getByRole("link", { name: "Import slides" }).click();
+  await page.getByLabel("PowerPoint file").setInputFiles({ name: "Mine_only.pptx", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", buffer: FIXTURE });
+  await page.getByRole("button", { name: "Start import" }).click();
+  await page.getByRole("checkbox", { name: /Share this deck with the workspace/ }).uncheck({ timeout: 20_000 });
+  await page.getByRole("button", { name: /^Create \d+ drafts$/ }).click();
+  await expect(page).toHaveURL(/\/collections\//);
+  await expect(page.getByRole("button", { name: "More deck actions" })).toBeVisible();
+});

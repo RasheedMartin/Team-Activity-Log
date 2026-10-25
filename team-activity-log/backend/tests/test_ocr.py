@@ -5,9 +5,9 @@ import io
 
 import pytest
 from PIL import Image, ImageDraw, ImageFont
-from test_plans_and_avatars import signup, upload  # noqa: I001 (sibling test module)
 
 from tal import ocr
+from test_plans_and_avatars import signup, upload  # noqa: I001 (sibling test module)
 
 needs_tesseract = pytest.mark.skipif(not ocr.tesseract_available(), reason="Tesseract isn't installed")
 

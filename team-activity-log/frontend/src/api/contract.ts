@@ -642,6 +642,17 @@ export interface ImportItem {
   included: boolean;
   postId?: ID;
 }
+/** The same file already imported in this workspace (one source of truth per deck). */
+export interface ImportDuplicate {
+  jobId: ID;
+  by: string; // "you" or a name
+  at: ISODateTime;
+  /** Its deck, when you can open it (not private to someone else, and something's published). */
+  collectionId?: ID | null;
+  private: boolean;
+  reviewing: boolean;
+}
+
 export interface ImportJob {
   id: ID;
   workspaceId: ID;
@@ -656,6 +667,7 @@ export interface ImportJob {
   collectionId?: ID;
   error?: string;
   report?: { created: number; skipped: number; warnings: number };
+  duplicateOf?: ImportDuplicate;
 }
 
 // ---- Plans (docs/PRICING.md; enforced by the server) ----

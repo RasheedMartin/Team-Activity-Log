@@ -82,3 +82,23 @@ async def test_write_a_page_in_a_notebook_and_delete_it_with_my_posts(client):
     r = await client.delete(f"/v1/orgs/{org}/workspaces/{ws}/collections/{nb['id']}", params={"deleteMyPosts": "true"})
     assert r.status_code == 200 and r.json() == {"deletedPostIds": [theirs["id"], page["id"]]}  # both are mine here
     assert (await client.get(f"/v1/orgs/{org}/posts/{page['id']}")).json()["post"]["deletedAt"]  # in the recycle bin
+
+
+async def test_reimporting_the_same_deck_points_to_the_existing_one(client):
+    from sqlalchemy import update
+
+    from tal import models as m
+    from tal.db import sessionmaker
+
+    me = await signup(client, "dup@example.test")
+    org, ws = me["orgs"][0]["org"]["id"], me["orgs"][0]["workspaces"][0]["id"]
+    first = (await client.post(f"/v1/orgs/{org}/workspaces/{ws}/imports", json={**BODY, "filename": "a.pptx"})).json()
+    again = (await client.post(f"/v1/orgs/{org}/workspaces/{ws}/imports", json={**BODY, "filename": "a copy.pptx"})).json()
+    deck = (await client.post(f"/v1/orgs/{org}/workspaces/{ws}/collections", json={"name": "a", "postIds": []})).json()
+    async with sessionmaker()() as s:
+        await s.execute(update(m.ImportJobRow).where(m.ImportJobRow.id == first["id"]).values(status="done", source_sha256="f" * 64, collection_id=deck["id"]))
+        await s.execute(update(m.ImportJobRow).where(m.ImportJobRow.id == again["id"]).values(status="review", source_sha256="f" * 64))
+        await s.commit()
+    dup = (await client.get(f"/v1/orgs/{org}/imports/{again['id']}")).json()["duplicateOf"]
+    assert dup["jobId"] == first["id"] and dup["by"] == "you" and dup["collectionId"] == deck["id"]
+    assert "duplicateOf" not in (await client.get(f"/v1/orgs/{org}/imports/{first['id']}")).json()

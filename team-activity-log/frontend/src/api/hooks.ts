@@ -779,14 +779,14 @@ export const useImportPosts = (orgId: ID, id: ID | undefined) =>
 export function useImportAction(orgId: ID, id: ID) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (v: { action: "items"; items: ImportItem[] } | { action: "mode"; mode: ImportMode } | { action: "commit" } | { action: "publishAll" } | { action: "delete" }): Promise<ImportJob | undefined> => {
+    mutationFn: async (v: { action: "items"; items: ImportItem[] } | { action: "mode"; mode: ImportMode } | { action: "commit"; visibility?: "workspace" | "people" } | { action: "publishAll" } | { action: "delete" }): Promise<ImportJob | undefined> => {
       switch (v.action) {
         case "items":
           return patch<ImportJob>(`${O(orgId)}/imports/${id}`, { items: v.items });
         case "mode":
           return patch<ImportJob>(`${O(orgId)}/imports/${id}`, { mode: v.mode });
         case "commit":
-          return post<ImportJob>(`${O(orgId)}/imports/${id}/commit`, {}, `commit-${id}`);
+          return post<ImportJob>(`${O(orgId)}/imports/${id}/commit`, v.visibility ? { visibility: v.visibility } : {}, `commit-${id}`);
         case "publishAll":
           return post<ImportJob>(`${O(orgId)}/imports/${id}/publish-all`);
         case "delete":
