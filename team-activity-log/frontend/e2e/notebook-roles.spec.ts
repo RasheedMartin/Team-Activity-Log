@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { openScenario } from "./helpers";
+import { openScenario, notebookAction } from "./helpers";
 
 // Owner request: others can only view a notebook unless its owner makes them an editor (or owner).
 
@@ -22,7 +22,7 @@ test("notebooks are view-only for others until the owner shares editing", async 
   await page.getByRole("button", { name: "New notebook" }).click();
   await page.getByRole("dialog").getByLabel("Name").fill("Shared lab book");
   await page.getByRole("dialog").getByRole("button", { name: "Create" }).click();
-  await page.getByRole("button", { name: "Add posts" }).first().click();
+  await notebookAction(page, "Add posts");
   await page.getByRole("dialog").getByRole("list", { name: "Posts to add" }).getByRole("button").first().click();
   await page.getByRole("dialog").getByRole("button", { name: "Add 1" }).click();
   await expect(page.getByText(/^1 entry/)).toBeVisible();
@@ -31,15 +31,17 @@ test("notebooks are view-only for others until the owner shares editing", async 
   // Someone else: view only.
   await signInAs(page, "Marcus Lindqvist");
   await go(page, nb);
-  await expect(page.getByText("View only")).toBeVisible();
+  await expect(page.getByText(/· view only/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Write a page" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Add posts" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Delete notebook" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Notebook actions" }).click();
+  await expect(page.getByRole("menuitem", { name: "Add posts" })).toHaveCount(0);
+  await expect(page.getByRole("menuitem", { name: "Delete notebook…" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
 
   // The owner makes them an editor.
   await signInAs(page, "Dana Okafor");
   await go(page, nb);
-  await page.getByRole("button", { name: "Share notebook" }).click();
+  await notebookAction(page, "Share…");
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Add a person").fill("Marcus");
   await page.getByRole("option", { name: /Marcus Lindqvist/ }).click();
@@ -51,9 +53,10 @@ test("notebooks are view-only for others until the owner shares editing", async 
   await signInAs(page, "Marcus Lindqvist");
   await go(page, nb);
   await expect(page.getByRole("button", { name: "Write a page" }).first()).toBeVisible();
-  await expect(page.getByRole("button", { name: "Add posts" }).first()).toBeVisible();
-  await expect(page.getByRole("button", { name: "Delete notebook" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Share notebook" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Notebook actions" }).click();
+  await expect(page.getByRole("menuitem", { name: "Add posts" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Delete notebook…" })).toHaveCount(0);
+  await expect(page.getByRole("menuitem", { name: "Share…" })).toHaveCount(0);
 });
 
 test("a notebook shared with specific people is hidden from everyone else and listed under Shared with me", async ({ page }) => {
@@ -66,7 +69,7 @@ test("a notebook shared with specific people is hidden from everyone else and li
   const nb = new URL(page.url()).pathname;
   const notebooks = nb.replace(/\/[^/]+$/, "");
 
-  await page.getByRole("button", { name: "Share notebook" }).click();
+  await notebookAction(page, "Share…");
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("radio", { name: /Only the people added here/ }).check();
   await dialog.getByLabel("Add a person").fill("Marcus");

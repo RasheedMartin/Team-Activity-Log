@@ -34,3 +34,9 @@ export async function openImport(page: Page) {
   await page.getByRole("navigation", { name: "Workspace" }).getByRole("link", { name: "Decks" }).click();
   await page.getByRole("main").getByRole("link", { name: "Import slides" }).click();
 }
+
+/** A notebook action under its ⋯ menu (Add posts, Reorder or remove, Share…, Delete notebook…). */
+export async function notebookAction(page: Page, item: string | RegExp) {
+  await page.getByRole("button", { name: "Notebook actions" }).click();
+  await page.getByRole("menuitem", { name: item }).click();
+}

@@ -1,4 +1,4 @@
-import { CallMergeRounded, CallSplitRounded, CheckCircleRounded, ErrorOutlineRounded, UploadFileOutlined, WarningAmberRounded } from "@mui/icons-material";
+import { ArrowBackRounded, CallMergeRounded, CallSplitRounded, CheckCircleRounded, ErrorOutlineRounded, UploadFileOutlined, WarningAmberRounded } from "@mui/icons-material";
 import {
   Alert,
   Box,
@@ -415,7 +415,7 @@ function YourImports({ onOpen }: { onOpen: (id: string) => void }) {
 
 /** §W5.3 import wizard. The job ID lives in the URL so the wizard resumes after a reload. */
 export default function ImportPage() {
-  const { org, role } = useWs();
+  const { org, ws, role } = useWs();
   const [params, setParams] = useSearchParams();
   const jobId = params.get("job") ?? undefined;
   const job = useImportJob(org.id, jobId);
@@ -424,6 +424,10 @@ export default function ImportPage() {
   if (!can(role, "member")) return <EmptyState title="Importing needs member access" />;
   return (
     <Box sx={{ maxWidth: 1100, width: "100%", mx: "auto", px: { xs: 1.5, sm: 3 }, py: 3 }}>
+      {/* Back to Decks (owner request); leaving mid-import is safe: Your imports brings it back. */}
+      <Button size="small" startIcon={<ArrowBackRounded />} component={RouterLink} to={wsPath(org, ws, "/collections")} sx={{ color: "text.secondary", ml: -0.5, mb: 1 }}>
+        Decks
+      </Button>
       <PageHeader title="Import slides" sub="Every slide becomes a searchable post. Nothing is published until you say so." />
       <Stepper activeStep={step} sx={{ mb: 3, maxWidth: 640 }}>
         {steps.map((s) => (

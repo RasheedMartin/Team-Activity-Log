@@ -1,4 +1,4 @@
-import { AddRounded, CallMergeRounded, PersonAddAltRounded, CallSplitRounded, CollectionsBookmarkOutlined, DeleteOutlineRounded, MoreVertRounded, SlideshowRounded, UploadFileOutlined, WarningAmberRounded } from "@mui/icons-material";
+import { AddRounded, ArrowBackRounded, CallMergeRounded, PersonAddAltRounded, CallSplitRounded, CollectionsBookmarkOutlined, DeleteOutlineRounded, MoreVertRounded, SlideshowRounded, UploadFileOutlined, WarningAmberRounded } from "@mui/icons-material";
 import { Box, Button, ButtonBase, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, ListItemIcon, Menu, MenuItem, Skeleton, Stack, Tab, Tabs, Tooltip, Typography } from "@mui/material";
 import { useMemo, useState } from "react";
 import { Link as RouterLink, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -128,10 +128,11 @@ export default function CollectionPage() {
     <Box sx={{ maxWidth: 1200, width: "100%", mx: "auto", px: { xs: 1.5, sm: 3 }, py: 3 }}>
       <Stack direction="row" alignItems="flex-start" spacing={1} useFlexGap sx={{ flexWrap: "wrap", mb: 2 }}>
         <Box sx={{ flex: 1, minWidth: 240 }}>
-          <Stack direction="row" spacing={0.75} alignItems="center" sx={{ color: "text.secondary", mb: 0.5 }}>
-            {deck ? <UploadFileOutlined sx={{ fontSize: 16 }} /> : <CollectionsBookmarkOutlined sx={{ fontSize: 16 }} />}
-            <Typography variant="caption">{deck ? "Imported slides" : "Collection"}</Typography>
-          </Stack>
+          {/* Back to the section (owner request: no trip to the sidebar). */}
+          <Button size="small" startIcon={<ArrowBackRounded />} component={RouterLink} to={`${base}/${deck ? "collections" : "notebooks"}`} sx={{ color: "text.secondary", ml: -0.5, mb: 0.5 }}>
+            {deck ? "Decks" : "Notebooks"}
+          </Button>
+          {deck && <Typography variant="caption" color="text.secondary" component="div">Imported slides</Typography>}
           <Typography variant="h1" sx={{ fontSize: "1.6rem", wordBreak: "break-word" }}>{coll.name}</Typography>
           <Typography variant="body2" color="text.secondary">
             {coll.postIds.length} post{coll.postIds.length === 1 ? "" : "s"}

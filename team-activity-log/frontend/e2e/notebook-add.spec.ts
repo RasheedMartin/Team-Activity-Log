@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { openScenario } from "./helpers";
+import { openScenario, notebookAction } from "./helpers";
 
 // Owner feedback: a post removed from a notebook had no way back in. Removing has Undo, the
 // notebook can add posts itself, and posts selected in search can join an existing notebook.
@@ -14,7 +14,7 @@ test("remove a notebook entry, undo it, and add posts back", async ({ page }) =>
   await expect(page.getByText("Entry 1 of 3").first()).toBeVisible();
 
   // Remove one entry, then Undo.
-  await page.getByRole("button", { name: "Edit" }).click();
+  await notebookAction(page, "Reorder or remove");
   const contents = page.getByRole("navigation", { name: "Contents" });
   const removeButtons = contents.getByRole("button", { name: /^Remove / });
   const title = ((await removeButtons.first().getAttribute("aria-label")) ?? "").replace(/^Remove /, "");
@@ -26,7 +26,7 @@ test("remove a notebook entry, undo it, and add posts back", async ({ page }) =>
   // Remove it again, then add it back with Add posts (it goes at the end).
   await removeButtons.first().click();
   await expect(page.getByText(/^\d+ entries/)).toHaveText(/^2 entries/);
-  await page.getByRole("button", { name: "Add posts" }).click();
+  await notebookAction(page, "Add posts");
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Search posts to add").fill(`"${title}"`);
   const list = dialog.getByRole("list", { name: "Posts to add" });
@@ -63,7 +63,7 @@ test("add posts quickly: select all shown, shift-click a range, clear", async ({
   await page.getByRole("button", { name: "Create notebook" }).click();
   await expect(page.getByText(/^1 entry/)).toBeVisible();
 
-  await page.getByRole("button", { name: "Add posts" }).click();
+  await notebookAction(page, "Add posts");
   const dialog = page.getByRole("dialog");
   const rows = dialog.getByRole("list", { name: "Posts to add" }).getByRole("button");
   await expect(rows.nth(5)).toBeVisible();

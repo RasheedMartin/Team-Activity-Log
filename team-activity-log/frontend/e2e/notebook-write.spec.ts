@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { openScenario } from "./helpers";
+import { openScenario, notebookAction } from "./helpers";
 
 // Owner request: a notebook you write in. Start one empty, write pages in it (each page is a post,
 // a private draft until published), pull in anyone's posts, and delete it with the option to
@@ -34,14 +34,14 @@ test("write a notebook: empty, write pages, pull in posts, delete with my pages,
   await expect(page.getByRole("navigation", { name: "Contents" })).toContainText("Draft");
 
   // Pull in someone else's post.
-  await page.getByRole("button", { name: "Add posts" }).click();
+  await notebookAction(page, "Add posts");
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("list", { name: "Posts to add" }).getByRole("button").filter({ hasNotText: /Day [12]/ }).first().click();
   await dialog.getByRole("button", { name: "Add 1" }).click();
   await expect(page.getByText(/^\d+ entr/)).toHaveText(/^3 entries/);
 
   // Delete, also deleting my two pages; Undo brings everything back.
-  await page.getByRole("button", { name: "Delete notebook" }).click();
+  await notebookAction(page, "Delete notebook…");
   await page.getByRole("checkbox", { name: "Also delete the 2 pages I wrote in it" }).check();
   await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
   await expect(page.getByText("Deleted notebook “Detector lab book” and 2 of your pages")).toBeVisible();
@@ -57,7 +57,7 @@ test("a notebook can follow a tag: published posts with it are added", async ({ 
   await page.getByRole("dialog").getByLabel("Name").fill("Cooldown log");
   await page.getByRole("dialog").getByRole("button", { name: "Create" }).click();
   await expect(page.getByText("This notebook is empty")).toBeVisible();
-  await page.getByRole("button", { name: "Follow a tag" }).click();
+  await notebookAction(page, "Follow a tag…");
   await page.getByRole("menuitem", { name: "cooldown", exact: true }).click();
   await expect(page.getByText("Following cooldown")).toBeVisible();
   await expect(page.getByText(/^\d+ entr/)).toHaveText(/^[1-9]\d* entr/); // the tag's published posts came in

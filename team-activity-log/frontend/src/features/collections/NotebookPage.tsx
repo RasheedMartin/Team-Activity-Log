@@ -1,5 +1,6 @@
 import {
   AddRounded,
+  ArrowBackRounded,
   ArrowDownwardRounded,
   ArrowUpwardRounded,
   ChevronLeftRounded,
@@ -12,8 +13,7 @@ import {
   LockOutlined,
   PersonAddAltRounded,
   SellOutlined,
-  VisibilityOutlined,
-  MenuBookOutlined,
+  MoreHorizRounded,
   PrintOutlined,
   SlideshowRounded,
 } from "@mui/icons-material";
@@ -36,6 +36,7 @@ import {
   MenuItem,
   ListItem,
   ListItemButton,
+  ListItemIcon,
   ListItemText,
   ListSubheader,
   Skeleton,
@@ -180,6 +181,7 @@ export default function NotebookPage() {
   const [deleteMine, setDeleteMine] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [followAnchor, setFollowAnchor] = useState<HTMLElement | null>(null);
+  const [more, setMore] = useState<HTMLElement | null>(null);
   // Roles (owner request): everyone views; editors write and arrange; owners also share and delete.
   const canEdit = nb?.myRole !== "viewer";
   const isOwner = nb?.myRole === "owner" || nb?.myRole === undefined;
@@ -187,6 +189,7 @@ export default function NotebookPage() {
   const { data: tagData } = useTags(org.id);
   const people = useMemo(() => new Map(peopleList.map((p) => [p.id, p])), [peopleList]);
   const tags = useMemo(() => new Map((tagData?.tags ?? []).map((t) => [t.id, t])), [tagData]);
+  const followed = nb?.followsTag && nb.sourceTagId ? tags.get(nb.sourceTagId) : undefined;
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState("");
   useEffect(() => setName(nb?.name ?? ""), [nb?.name]);
@@ -321,8 +324,9 @@ export default function NotebookPage() {
   );
 
   return (
-    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "280px minmax(0, 1fr)" }, width: "100%", "@media print": { display: "block" } }}>
-      <Box component="nav" aria-label="Contents" data-print-hide sx={{ display: { xs: "none", lg: "block" }, borderRight: 1, borderColor: "divider", position: "sticky", top: 0, alignSelf: "start", maxHeight: "100dvh", overflow: "auto", py: 2 }}>
+    // No contents column until there's a page to list (owner request).
+    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: entries.length ? "280px minmax(0, 1fr)" : "1fr" }, width: "100%", "@media print": { display: "block" } }}>
+      <Box component="nav" aria-label="Contents" data-print-hide sx={{ display: { xs: "none", lg: entries.length ? "block" : "none" }, borderRight: 1, borderColor: "divider", position: "sticky", top: 0, alignSelf: "start", maxHeight: "100dvh", overflow: "auto", py: 2 }}>
         <Typography variant="overline" color="text.secondary" sx={{ px: 2 }}>Contents</Typography>
         {[...byYear.entries()].map(([year, list]) => (
           <List key={year} dense disablePadding subheader={<ListSubheader sx={{ lineHeight: "26px", bgcolor: "background.default" }}>{year}</ListSubheader>}>
@@ -365,12 +369,11 @@ export default function NotebookPage() {
           data-print-hide
           sx={{ mb: 0.5, flexWrap: "wrap", rowGap: 1, position: "sticky", top: "env(safe-area-inset-top, 0px)", zIndex: 5, bgcolor: "background.default", mx: { xs: -1.5, sm: -4 }, px: { xs: 1.5, sm: 4 }, py: 1, borderBottom: 1, borderColor: stuck ? "divider" : "transparent", transition: "border-color 150ms" }}
         >
-          <MenuBookOutlined sx={{ color: "text.secondary" }} />
-          {stuck ? (
-            <Typography variant="body2" sx={{ fontWeight: 600, maxWidth: { xs: 140, sm: 260 } }} noWrap>{nb.name}</Typography>
-          ) : (
-            <Typography variant="overline" color="text.secondary">Notebook</Typography>
-          )}
+          {/* Back to the section (owner request: no trip to the sidebar). */}
+          <Button size="small" color="inherit" startIcon={<ArrowBackRounded />} component={RouterLink} to={wsPath(org, ws, "/notebooks")} sx={{ color: "text.secondary" }}>
+            Notebooks
+          </Button>
+          {stuck && <Typography variant="body2" sx={{ fontWeight: 600, maxWidth: { xs: 140, sm: 260 } }} noWrap>{nb.name}</Typography>}
           <FavoriteButton kind="notebook" id={nb.id} name={nb.name} size="small" />
           {nb.visibility === "people" && (
             <Tooltip title="Shared with specific people only; hidden from the rest of the workspace">
@@ -378,68 +381,41 @@ export default function NotebookPage() {
             </Tooltip>
           )}
           <Box sx={{ flex: 1 }} />
+          {/* Minimal (owner request): the three things you do most; everything else under ⋯. */}
           <ToggleButtonGroup size="small" exclusive value={continuous ? "continuous" : "reader"} onChange={(_, v) => v && setParam({ view: v === "continuous" ? "continuous" : null })} aria-label="Notebook layout" sx={{ "& .MuiToggleButton-root": { textTransform: "none", py: 0.25 } }}>
             <ToggleButton value="reader">One entry</ToggleButton>
             <ToggleButton value="continuous">Continuous</ToggleButton>
           </ToggleButtonGroup>
-          {canEdit ? (
-            <Button size="small" variant="contained" startIcon={<EditNoteRounded />} disabled={createPage.isPending} onClick={writePage}>Write a page</Button>
+          {editing ? (
+            <Button size="small" variant="contained" onClick={() => setEditing(false)}>Done reordering</Button>
           ) : (
-            <Tooltip title="Ask an owner to make you an editor to write or add pages">
-              <Chip size="small" icon={<VisibilityOutlined />} label="View only" />
-            </Tooltip>
+            canEdit && <Button size="small" variant="contained" startIcon={<EditNoteRounded />} disabled={createPage.isPending} onClick={writePage}>Write a page</Button>
           )}
           <Button size="small" startIcon={<SlideshowRounded />} onClick={() => navigate(`${wsPath(org, ws, "/present")}?collection=${nb.id}`)} disabled={!entries.length}>Present</Button>
-          <Button size="small" startIcon={<PrintOutlined />} onClick={() => setParam({ view: "continuous", print: "1" })} disabled={!entries.length}>Print / PDF</Button>
-          {canEdit && (
-            <>
-              <Button size="small" startIcon={<AddRounded />} onClick={() => setAdding(true)}>Add posts</Button>
-              <AddPostsDialog open={adding} onClose={() => setAdding(false)} collectionId={nb.id} name={nb.name} postIds={nb.postIds} />
-              <Tooltip describeChild title={editing ? "Done reordering" : "Reorder or remove entries in the contents list"}>
-                <Button size="small" startIcon={<EditOutlined />} variant={editing ? "contained" : "text"} onClick={() => setEditing(!editing)}>{editing ? "Done" : "Edit"}</Button>
-              </Tooltip>
-            </>
-          )}
-          {nb.followsTag && nb.sourceTagId && tags.get(nb.sourceTagId) ? (
-            <Tooltip title="New published posts with this tag are added automatically">
-              <Chip
-                size="small"
-                icon={<SellOutlined />}
-                label={`Following ${tags.get(nb.sourceTagId)!.name}`}
-                onDelete={canEdit ? () => update.mutate({ id: nb.id, followTagId: null }, { onSuccess: () => notify("Stopped following the tag; the notebook is manual now") }) : undefined}
-              />
-            </Tooltip>
-          ) : canEdit ? (
-            <>
-              <Button size="small" startIcon={<SellOutlined />} onClick={(e) => setFollowAnchor(e.currentTarget)}>Follow a tag</Button>
-              <Menu anchorEl={followAnchor} open={!!followAnchor} onClose={() => setFollowAnchor(null)} slotProps={{ paper: { sx: { maxHeight: 360 } } }}>
-                <MenuItem disabled sx={{ opacity: "1 !important" }}><Typography variant="caption" color="text.secondary">New published posts with the tag are added to the end.</Typography></MenuItem>
-                {[...tags.values()].sort((a, b) => a.name.localeCompare(b.name)).map((t) => (
-                  <MenuItem key={t.id} onClick={() => (setFollowAnchor(null), update.mutate({ id: nb.id, followTagId: t.id }, { onSuccess: () => notify(`Following ${t.name}: its published posts are in, and new ones will be added`), onError: (e) => notify(e.message) }))}>
-                    {t.name}
-                  </MenuItem>
-                ))}
-              </Menu>
-            </>
-          ) : null}
-          {isOwner && (
-            <>
-              <Button size="small" startIcon={<PersonAddAltRounded />} onClick={() => setSharing(true)} aria-label="Share notebook">Share</Button>
-              {sharing && <ShareDialog c={nb} open onClose={() => setSharing(false)} />}
-            </>
-          )}
-          <Tooltip title="Copy a link to this notebook">
-            <IconButton size="small" aria-label="Copy link" onClick={() => void navigator.clipboard.writeText(`${window.location.origin}${location.pathname}`).then(() => notify("Link copied. Anyone in this workspace can open it."), () => notify("Couldn't copy the link"))}>
-              <LinkRounded fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          {isOwner && (
-            <Tooltip title="Delete notebook">
-              <IconButton size="small" aria-label="Delete notebook" onClick={() => (setDeleteMine(false), setConfirmDelete(true))}>
-                <DeleteOutlineRounded fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          )}
+          <IconButton size="small" aria-label="Notebook actions" aria-haspopup="menu" onClick={(e) => setMore(e.currentTarget)}>
+            <MoreHorizRounded fontSize="small" />
+          </IconButton>
+          <Menu anchorEl={more} open={!!more} onClose={() => setMore(null)}>
+            {canEdit && <MenuItem onClick={() => (setMore(null), setAdding(true))}><ListItemIcon><AddRounded fontSize="small" /></ListItemIcon>Add posts</MenuItem>}
+            {canEdit && <MenuItem onClick={() => (setMore(null), setEditing(true))}><ListItemIcon><EditOutlined fontSize="small" /></ListItemIcon>Reorder or remove</MenuItem>}
+            {canEdit && !followed && <MenuItem onClick={(e) => (setFollowAnchor(e.currentTarget), setMore(null))}><ListItemIcon><SellOutlined fontSize="small" /></ListItemIcon>Follow a tag…</MenuItem>}
+            {canEdit && followed && <MenuItem onClick={() => (setMore(null), update.mutate({ id: nb.id, followTagId: null }, { onSuccess: () => notify("Stopped following the tag; the notebook is manual now") }))}><ListItemIcon><SellOutlined fontSize="small" /></ListItemIcon>Stop following {followed.name}</MenuItem>}
+            {isOwner && <MenuItem onClick={() => (setMore(null), setSharing(true))}><ListItemIcon><PersonAddAltRounded fontSize="small" /></ListItemIcon>Share…</MenuItem>}
+            <MenuItem onClick={() => (setMore(null), void navigator.clipboard.writeText(`${window.location.origin}${location.pathname}`).then(() => notify("Link copied. Anyone who can see this notebook can open it."), () => notify("Couldn't copy the link")))}><ListItemIcon><LinkRounded fontSize="small" /></ListItemIcon>Copy link</MenuItem>
+            <MenuItem disabled={!entries.length} onClick={() => (setMore(null), setParam({ view: "continuous", print: "1" }))}><ListItemIcon><PrintOutlined fontSize="small" /></ListItemIcon>Print / PDF</MenuItem>
+            {isOwner && <Divider />}
+            {isOwner && <MenuItem sx={{ color: "error.main" }} onClick={() => (setMore(null), setDeleteMine(false), setConfirmDelete(true))}><ListItemIcon><DeleteOutlineRounded fontSize="small" color="error" /></ListItemIcon>Delete notebook…</MenuItem>}
+          </Menu>
+          <Menu anchorEl={followAnchor} open={!!followAnchor} onClose={() => setFollowAnchor(null)} slotProps={{ paper: { sx: { maxHeight: 360 } } }}>
+            <MenuItem disabled sx={{ opacity: "1 !important" }}><Typography variant="caption" color="text.secondary">New published posts with the tag are added to the end.</Typography></MenuItem>
+            {[...tags.values()].sort((x, y) => x.name.localeCompare(y.name)).map((t) => (
+              <MenuItem key={t.id} onClick={() => (setFollowAnchor(null), update.mutate({ id: nb.id, followTagId: t.id }, { onSuccess: () => notify(`Following ${t.name}: its published posts are in, and new ones will be added`), onError: (e) => notify(e.message) }))}>
+                {t.name}
+              </MenuItem>
+            ))}
+          </Menu>
+          {canEdit && <AddPostsDialog open={adding} onClose={() => setAdding(false)} collectionId={nb.id} name={nb.name} postIds={nb.postIds} />}
+          {sharing && <ShareDialog c={nb} open onClose={() => setSharing(false)} />}
           <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)} maxWidth="xs">
             <DialogTitle>Delete “{nb.name}”?</DialogTitle>
             <DialogContent>
@@ -470,6 +446,15 @@ export default function NotebookPage() {
         <Typography color="text.secondary" sx={{ mb: 3 }}>
           {entries.length} {entries.length === 1 ? "entry" : "entries"}
           {range && ` · ${formatRange(range.from, range.to)}`}
+          {followed && (
+            <Tooltip title="New published posts with this tag are added automatically">
+              <Box component="span" sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, ml: 0.5, verticalAlign: "middle" }}>
+                · Following <TagChip tag={followed} />
+              </Box>
+            </Tooltip>
+          )}
+          {nb.visibility === "people" && " · shared with specific people"}
+          {!canEdit && " · view only"}
         </Typography>
 
         {!entries.length ? (

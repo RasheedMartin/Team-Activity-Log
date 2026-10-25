@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { openImport, openScenario } from "./helpers";
+import { openImport, openScenario, notebookAction } from "./helpers";
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -69,7 +69,7 @@ test("select posts → notebook → reorder → present", async ({ page }) => {
   await expect(page.getByText("Entry 2 of 3").first()).toBeVisible();
   await page.getByRole("button", { name: "Continuous" }).click();
   await expect(page.locator("[data-nb-section]")).toHaveCount(3);
-  await page.getByRole("button", { name: "Edit" }).click();
+  await notebookAction(page, "Reorder or remove");
   await page.getByRole("button", { name: `Move ${first} down`, exact: true }).click();
   await expect(page.locator("[data-nb-section] h2").nth(1)).toHaveText(first);
   await page.getByRole("button", { name: "Present" }).click();
