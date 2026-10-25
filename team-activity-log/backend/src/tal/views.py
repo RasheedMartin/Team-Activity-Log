@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import models as m
+from .ids import parse_uuid
 from .timeutil import iso, iso_date
 
 DEFAULT_PREFS = {"theme": "system", "density": "compact", "histogramDateField": "workDate", "shortcuts": True, "digest": "off", "reducedMotion": False}
@@ -189,10 +190,17 @@ async def post_views(db: AsyncSession, posts: Sequence[m.Post]) -> list[dict]:
 
 
 async def post_detail(db: AsyncSession, p: m.Post) -> dict:
+    from . import attachments as att
+
     [view] = await post_views(db, [p])
     ids = block_image_ids(p.blocks)
     imgs = await image_views(db, ids, p.org_id)
-    return {"post": view, "images": [imgs[i] for i in ids if i in imgs]}
+    out = {"post": view, "images": [imgs[i] for i in ids if i in imgs]}
+    file_ids = [x for x in (parse_uuid(i) for i in att.block_attachment_ids(p.blocks)) if x]
+    if file_ids:
+        rows = (await db.execute(select(m.Attachment).where(m.Attachment.id.in_(file_ids), m.Attachment.org_id == p.org_id))).scalars().all()
+        out["attachments"] = [att.view(a) for a in rows]
+    return out
 
 
 # ---------------------------------------------------------------- discussion

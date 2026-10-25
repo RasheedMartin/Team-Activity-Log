@@ -22,4 +22,4 @@ export function blockImageIds(blocks: Block[], which: "all" | "content" = "all")
 
 export const blocksText = (blocks: Block[]) => blockDocs(blocks).map(docText).filter(Boolean).join("\n");
 
-export const hasContent = (blocks: Block[]) => blockImageIds(blocks).length > 0 || blockDocs(blocks).some((d) => !isDocEmpty(d));
+export const hasContent = (blocks: Block[]) => blockImageIds(blocks).length > 0 || blocks.some((b) => b.type === "file") || blockDocs(blocks).some((d) => !isDocEmpty(d));

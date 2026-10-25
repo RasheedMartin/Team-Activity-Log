@@ -9,7 +9,7 @@ test("annotation text: type a label, then click it to edit or clear it", async (
   await openScenario(page, "small");
   await page.keyboard.press("c");
   await page.getByLabel("Title", { exact: true }).fill("Label test");
-  await page.locator("input[type=file][multiple]").setInputFiles([PNG]);
+  await page.locator("input[type=file][accept='image/*']").setInputFiles([PNG]);
   await expect(page.getByLabel("Annotate image")).toHaveCount(1, { timeout: 15_000 });
   await page.locator("img[alt='']").filter({ visible: true }).first().hover();
   await page.getByRole("button", { name: "Annotate image" }).first().click();

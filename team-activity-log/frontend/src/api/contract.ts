@@ -104,7 +104,20 @@ export type Block =
   | { id: ID; type: "image"; imageInstanceId: ID }
   | { id: ID; type: "table"; doc: unknown }
   | { id: ID; type: "slide_break"; notes?: string }
-  | { id: ID; type: "slide"; design: SlideDesign; notes?: string };
+  | { id: ID; type: "slide"; design: SlideDesign; notes?: string }
+  /** An attached file (owner request): original downloadable, text searchable. */
+  | { id: ID; type: "file"; attachmentId: ID };
+
+/** A file attached to a post. `url` downloads it (people who can see a post holding it). */
+export interface AttachmentView {
+  id: ID;
+  filename: string;
+  mime: string;
+  bytes: number;
+  /** Its text was extracted, so search finds what's inside. */
+  searchable: boolean;
+  url: string;
+}
 
 /**
  * A designed slide: elements placed on a fixed canvas (units are points; 960×540 is 16:9), the
@@ -311,6 +324,7 @@ export interface PostRevision {
 export interface PostDetail {
   post: Post;
   images: ImageView[];
+  attachments?: AttachmentView[];
 }
 
 export interface DraftSummary {

@@ -305,6 +305,23 @@ class CollectionRow(Base):
     )
 
 
+class Attachment(Base):
+    """A file attached to a post (owner request): kept in object storage, deduplicated per org by
+    content; `text` is what search reads (extracted from PDF, Word, Excel, CSV, plain text)."""
+
+    __tablename__ = "attachments"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    org_id: Mapped[uuid.UUID] = fk("organizations.id")
+    sha256: Mapped[str] = mapped_column(String(64))
+    filename: Mapped[str] = mapped_column(Text)
+    mime: Mapped[str] = mapped_column(String(200))
+    bytes: Mapped[int] = mapped_column(BigInteger)
+    text: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[uuid.UUID | None] = fk("users.id", "SET NULL", True)
+    created_at: Mapped[dt.datetime] = ts(False, True)
+    __table_args__ = (UniqueConstraint("org_id", "sha256"),)
+
+
 class CollectionMember(Base):
     """Who may change a collection or notebook beyond viewing (everyone in the workspace can view).
     Its creator is always an owner and has no row; everyone else is a viewer unless listed here."""

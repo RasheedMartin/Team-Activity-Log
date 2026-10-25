@@ -297,7 +297,7 @@ def presentation(value: Any, field: str = "presentation") -> dict | None:
     return out or None
 
 
-BLOCK_TYPES = {"text", "table", "image", "slide_break", "slide"}
+BLOCK_TYPES = {"text", "table", "image", "slide_break", "slide", "file"}
 CHART_TYPES = {"column", "bar", "line", "area", "pie", "doughnut", "scatter"}
 SLIDE_SHAPES = {"rect", "roundRect", "ellipse", "triangle", "line", "arrow"}
 SLIDE_VALIGN = {"top", "middle", "bottom"}
@@ -405,6 +405,10 @@ def blocks(value: Any, field: str = "blocks") -> list[dict]:
             iid = parse_uuid(b.get("imageInstanceId"))
             if iid:
                 out.append({"id": bid, "type": "image", "imageInstanceId": str(iid)})
+        elif b["type"] == "file":  # an attached file (tal.attachments)
+            aid = parse_uuid(b.get("attachmentId"))
+            if aid:
+                out.append({"id": bid, "type": "file", "attachmentId": str(aid)})
         else:
             notes = text(b.get("notes"), f"{field}.notes", 10_000, multiline=True)
             extra = {"design": slide_design(b.get("design"), f"{field}.design")} if b["type"] == "slide" else {}

@@ -7,7 +7,7 @@ import {
   useQueryClient,
   type QueryClient,
 } from "@tanstack/react-query";
-import { api, ApiError, del, get, patch, post, put } from "./client";
+import { api, API_BASE_URL, ApiError, del, get, patch, post, put } from "./client";
 import type {
   ImportSummary,
   ImportPost,
@@ -894,4 +894,14 @@ export function useSetCollectionMembers(orgId: ID, wsId: ID) {
       put<Collection>(`${W(orgId, wsId)}/collections/${id}/members`, { members, ...(visibility ? { visibility } : {}) }),
     onSuccess: (c) => qc.setQueryData([...qk.collections(orgId, wsId), c.id], c),
   });
+}
+
+// ---- attachments ----
+
+/** Attach a file to a post: the body is the file; the server dedupes by content and extracts text. */
+export async function uploadAttachment(orgId: ID, file: File): Promise<import("./contract").AttachmentView> {
+  const res = await fetch(`${API_BASE_URL}${O(orgId)}/attachments?filename=${encodeURIComponent(file.name)}`, { method: "POST", credentials: "include", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((body as { message?: string }).message ?? `Upload failed (${res.status})`);
+  return body as import("./contract").AttachmentView;
 }

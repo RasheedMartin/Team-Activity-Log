@@ -20,6 +20,7 @@ import type {
   User,
   UserPreferences,
   Workspace,
+  AttachmentView,
 } from "../api/contract";
 
 // The mock server's "Postgres": rows live in memory (fast search over 5,000 posts) and are
@@ -88,6 +89,14 @@ export interface ImportJobRow extends ImportJob {
   /** Content hash of the upload: finds the same deck imported before. */
   sourceSha256?: string;
 }
+/** A file attached to a post (mirrors the attachments table). */
+export interface AttachmentRow extends AttachmentView {
+  orgId: ID;
+  sha256: string;
+  text?: string;
+  blob: Blob;
+  createdBy: ID;
+}
 export interface DraftOrderRow {
   id: ID;
 }
@@ -112,6 +121,7 @@ interface Rows {
   savedViews: SavedView;
   collections: Collection;
   importJobs: ImportJobRow;
+  attachments: AttachmentRow;
   emails: DevEmail;
   meta: MetaRow;
 }
@@ -136,6 +146,7 @@ const TABLES: TableName[] = [
   "savedViews",
   "collections",
   "importJobs",
+  "attachments",
   "emails",
   "meta",
 ];
@@ -143,7 +154,7 @@ const TABLES: TableName[] = [
 class Persist extends Dexie {
   constructor() {
     super("tal-mock");
-    this.version(1).stores(Object.fromEntries(TABLES.map((t) => [t, "id"])));
+    this.version(2).stores(Object.fromEntries(TABLES.map((t) => [t, "id"]))); // 2: + attachments
   }
 }
 

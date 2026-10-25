@@ -64,6 +64,7 @@ import { EmptyState, TagChip, UserAvatar } from "../../components/ui";
 import { formatDay, formatRange } from "../../lib/dates";
 import { AnnotatedImage } from "../posts/editor/ImageBlock";
 import { AddPostsDialog } from "./AddPosts";
+import { FileCard } from "../../components/FileCard";
 import { FavoriteButton } from "./FavoriteButton";
 import { ShareDialog } from "./ShareDialog";
 
@@ -101,6 +102,7 @@ function Entry({ detail, people, tags, origin, pageBreak }: { detail: PostDetail
           if (b.type === "text" || b.type === "table") return <RichText key={b.id} doc={b.doc} />;
           if (b.type === "slide_break") return null;
           if (b.type === "slide") return <SlideCanvas key={b.id} design={b.design} images={imgs} sx={{ breakInside: "avoid" }} />;
+          if (b.type === "file") return <FileCard key={b.id} file={detail.attachments?.find((a) => a.id === b.attachmentId)} />;
           const img = imgs.get(b.imageInstanceId);
           return img ? (
             <Box component="figure" key={b.id} sx={{ m: 0, breakInside: "avoid" }}>

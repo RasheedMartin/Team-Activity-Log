@@ -23,7 +23,7 @@ test("v2 Write It Up end to end", async ({ page }) => {
   await page.getByLabel("Title").fill("Detector B noise after shielding");
   await page.getByLabel("Text block 1").click();
   await page.keyboard.type("Moved the ground strap and added copper tape. Noise floor dropped by half.");
-  await page.locator("input[type=file][multiple]").setInputFiles([PNG, PNG]);
+  await page.locator("input[type=file][accept='image/*']").setInputFiles([PNG, PNG]);
   await expect(page.getByLabel("Annotate image")).toHaveCount(2, { timeout: 15_000 });
 
   // Annotate both images.
@@ -141,7 +141,7 @@ test("annotation text: click the image, type, Enter adds a label; clicking away 
   await openScenario(page, "small");
   await page.keyboard.press("c");
   await expect(page).toHaveURL(/\/p\/[^/]+\/edit$/);
-  await page.locator("input[type=file][multiple]").setInputFiles([PNG]);
+  await page.locator("input[type=file][accept='image/*']").setInputFiles([PNG]);
   await expect(page.getByLabel("Annotate image")).toHaveCount(1, { timeout: 15_000 });
   await page.locator("img[alt='']").filter({ visible: true }).first().hover();
   await page.getByRole("button", { name: "Annotate image" }).click();

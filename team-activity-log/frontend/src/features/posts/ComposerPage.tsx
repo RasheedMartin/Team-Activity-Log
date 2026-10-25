@@ -11,17 +11,17 @@ import {
   RadioButtonUncheckedRounded,
   TableChartOutlined,
   ViewCarouselOutlined,
-  WarningAmberRounded,
-} from "@mui/icons-material";
+  WarningAmberRounded, AttachFileRounded } from "@mui/icons-material";
 import { Alert, Box, Button, Divider, IconButton, InputBase, LinearProgress, Menu, MenuItem, Paper, Skeleton, Stack, TextField, Tooltip, Typography } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useBlocker, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { Origin } from "../../app/origin";
 import { ApiError } from "../../api/client";
-import type { Block, ImageView, Post, PostDetail, Shape } from "../../api/contract";
-import { createImageInstance, patchImageInCaches, qk, uploadImage, useCreateDraft, useImportJob, usePost, usePostAction, useSaveAnnotation, useUpdateImage, useUpdatePost } from "../../api/hooks";
+import type { Block, ImageView, Post, PostDetail, Shape, AttachmentView } from "../../api/contract";
+import { createImageInstance, patchImageInCaches, qk, uploadImage, uploadAttachment, useCreateDraft, useImportJob, usePost, usePostAction, useSaveAnnotation, useUpdateImage, useUpdatePost } from "../../api/hooks";
 import { can, useWs, wsPath } from "../../app/session";
+import { FileCard } from "../../components/FileCard";
 import { useNotify } from "../../components/notify";
 import { PeoplePicker, TagPicker } from "../../components/Pickers";
 import { ErrorState, Kbd, StatusPill } from "../../components/ui";
@@ -116,6 +116,21 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
   const [f, setF] = useState<Fields>(() => toFields(post));
   const [uploads, setUploads] = useState<Record<string, UploadState>>({});
   const [extraImages, setExtraImages] = useState<Record<string, ImageView>>({});
+  // Attached files: the post's, plus any attached in this session.
+  const [files, setFiles] = useState<Record<string, AttachmentView>>(() => Object.fromEntries((detail.attachments ?? []).map((a) => [a.id, a])));
+  const attach = async (list: File[]) => {
+    for (const file of list) {
+      notify(`Attaching ${file.name}…`);
+      try {
+        const a = await uploadAttachment(orgId, file);
+        setFiles((m) => ({ ...m, [a.id]: a }));
+        change((cur) => ({ blocks: [...cur.blocks, { id: uuidv7(), type: "file", attachmentId: a.id } as LocalBlock] }));
+        notify(a.searchable ? `Attached ${a.filename}; its text is searchable` : `Attached ${a.filename}`);
+      } catch (e) {
+        notify(`Couldn't attach ${file.name}: ${errorMessage(e)}`);
+      }
+    }
+  };
   const [annotating, setAnnotating] = useState<string | null>(null);
   const [details, setDetails] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
@@ -328,7 +343,7 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
   const missingAlt = imagesInPost.filter((i) => !i.altText).length;
   const checklist: { ok: boolean; label: string; blocking: boolean }[] = [
     { ok: !!f.title.trim(), label: "Title", blocking: true },
-    { ok: hasContent, label: "Some text or an image", blocking: true },
+    { ok: hasContent, label: "Some text, an image, or a file", blocking: true },
     { ok: pendingUploads === 0, label: failedUploads ? `${failedUploads} upload${failedUploads > 1 ? "s" : ""} failed` : pendingUploads ? "Uploads finishing" : "Uploads finished", blocking: true },
     { ok: f.tagIds.length > 0, label: "Tags help people find this later", blocking: false },
     { ok: missingAlt === 0, label: missingAlt ? `${missingAlt} image${missingAlt > 1 ? "s" : ""} without alt text` : "Alt text on images", blocking: false },
@@ -503,7 +518,9 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
             <Stack spacing={1.5}>
               {f.blocks.map((b, i) => (
                 <BlockFrame key={b.id} index={i} count={f.blocks.length} onMove={(d) => move(i, d)} onRemove={b.type === "image" || b.type === "uploading" ? undefined : () => removeBlock(b.id)}>
-                  {b.type === "text" || b.type === "table" ? (
+                  {b.type === "file" ? (
+                    <FileCard file={files[b.attachmentId]} />
+                  ) : b.type === "text" || b.type === "table" ? (
                     <Box onFocusCapture={() => (focusedIndex.current = i)}>
                       <TextBlockEditor
                         label={b.type === "table" ? "Table" : `Text block ${i + 1}`}
@@ -552,6 +569,7 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
               ))}
             </Stack>
             <AddBar
+              onAttach={(list) => void attach(list)}
               onText={() => {
                 const b = emptyText();
                 setFocusBlock(b.id); // typing goes into the block just added
@@ -661,7 +679,7 @@ function SlideBreak({ notes, onNotes, onDesign }: { notes: string; onNotes: (n: 
   );
 }
 
-function AddBar({ onText, onTable, onSlide, onDesigned, onFiles }: { onText: () => void; onTable: () => void; onSlide: () => void; onDesigned: (layout: SlideLayout) => void; onFiles: (files: File[]) => void }) {
+function AddBar({ onText, onTable, onSlide, onDesigned, onFiles, onAttach }: { onText: () => void; onTable: () => void; onSlide: () => void; onDesigned: (layout: SlideLayout) => void; onFiles: (files: File[]) => void; onAttach: (files: File[]) => void }) {
   const [menu, setMenu] = useState<HTMLElement | null>(null);
   return (
     <Stack direction="row" spacing={1} sx={{ mt: 2, pt: 1.5, borderTop: 1, borderColor: "divider", flexWrap: "wrap", rowGap: 1 }}>
@@ -669,6 +687,10 @@ function AddBar({ onText, onTable, onSlide, onDesigned, onFiles }: { onText: () 
       <Button size="small" startIcon={<AddPhotoAlternateOutlined />} component="label">
         Images
         <input hidden type="file" accept="image/*" multiple onChange={(e) => (onFiles(Array.from(e.target.files ?? [])), (e.target.value = ""))} />
+      </Button>
+      <Button size="small" startIcon={<AttachFileRounded />} component="label">
+        Attach a file
+        <input hidden type="file" multiple onChange={(e) => (onAttach(Array.from(e.target.files ?? [])), (e.target.value = ""))} aria-label="File to attach" />
       </Button>
       <Button size="small" startIcon={<TableChartOutlined />} onClick={onTable}>Table</Button>
       <Button size="small" startIcon={<ViewCarouselOutlined />} onClick={onSlide}>Slide break</Button>

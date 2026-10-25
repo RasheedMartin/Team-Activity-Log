@@ -6,6 +6,7 @@ import { blockImageIds, hasContent as blocksHaveContent } from "../../lib/blocks
 import { createAsset } from "../assets";
 import { postPublished } from "../follow";
 import { requireRole } from "./collectionAccess";
+import { view as attachmentView } from "./attachments";
 import { db, type PostRow } from "../db";
 import {
   assetView,
@@ -28,7 +29,8 @@ const imagesOf = (p: Post) => blockImageIds(p.blocks).flatMap((id) => [imageView
 const detail = (p: PostRow): PostDetail => {
   const { indexedAt: _i, ...post } = p;
   void _i;
-  return { post, images: imagesOf(p) as PostDetail["images"] };
+  const files = p.blocks.flatMap((b) => (b.type === "file" ? [db.t.attachments.get(b.attachmentId)] : [])).filter((a) => !!a && a.orgId === p.orgId);
+  return { post, images: imagesOf(p) as PostDetail["images"], ...(files.length ? { attachments: files.map((a) => attachmentView(a!)) } : {}) };
 };
 
 function postFor(ctx: OrgCtx, id: string, needEdit = true) {
@@ -219,7 +221,7 @@ export const postHandlers = [
       const problems: string[] = [];
       if (!p.title.trim()) problems.push("Add a title");
       const hasContent = blocksHaveContent(p.blocks);
-      if (!hasContent) problems.push("Add some text or an image");
+      if (!hasContent) problems.push("Add some text, an image, or a file");
       const pending = imagesOf(p).some((i) => i!.asset.processing === "failed");
       if (pending) problems.push("Remove or retry failed uploads");
       if (problems.length) fail(422, "not_publishable", problems.join(". "), { problems });

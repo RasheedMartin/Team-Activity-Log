@@ -200,6 +200,11 @@ export const engine = new SearchEngine({
       return inst && asset ? [{ inst, asset: assetView(asset) }] : [];
     }),
   comments: (postId) => commentsByPost().get(postId) ?? [],
+  fileText: (post) =>
+    post.blocks.flatMap((b) => {
+      const a = b.type === "file" ? db.t.attachments.get(b.attachmentId) : undefined;
+      return a && a.orgId === post.orgId ? [`${a.filename}\n${a.text ?? ""}`] : [];
+    }),
 });
 
 // Comments grouped by post, rebuilt lazily when the comments table changes size or is touched.

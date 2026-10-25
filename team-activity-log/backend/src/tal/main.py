@@ -18,7 +18,7 @@ from .config import get_settings
 from .errors import ApiError, api_error_handler
 from .mailer import run_mailer
 from .ocr import run_ocr, tesseract_available
-from .routes import auth, billing, dev, discussion, health, imports, library, oauth, ocr, orgs, posts, search
+from .routes import attachments, auth, billing, dev, discussion, health, imports, library, oauth, ocr, orgs, posts, search
 from .search import client as es_client
 from .search.diagnose import explain, identity
 from .search.indexer import ensure_index, run_indexer
@@ -75,7 +75,7 @@ def create_app() -> FastAPI:
         log.exception("unhandled error")
         return JSONResponse({"code": "internal", "message": "Something went wrong on our side. Try again in a moment."}, status_code=500)
 
-    for r in (health, auth, oauth, orgs, posts, search, library, discussion, imports, billing, ocr):
+    for r in (health, auth, oauth, orgs, posts, search, library, discussion, imports, billing, ocr, attachments):
         app.include_router(r.router, prefix="/v1")
     if s.dev_mode:
         app.include_router(dev.router, prefix="/v1")

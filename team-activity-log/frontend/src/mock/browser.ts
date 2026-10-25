@@ -5,6 +5,7 @@ import { authHandlers } from "./handlers/auth";
 import { discussionHandlers } from "./handlers/discussion";
 import { importHandlers } from "./handlers/imports";
 import { ocrHandlers } from "./handlers/ocr";
+import { attachmentHandlers } from "./handlers/attachments";
 import { libraryHandlers } from "./handlers/library";
 import { orgHandlers } from "./handlers/orgs";
 import { postHandlers } from "./handlers/posts";
@@ -12,7 +13,7 @@ import { searchHandlers } from "./handlers/search";
 import { seedScenario } from "./seed";
 import { engine, invalidateComments, SESSION_COOKIE } from "./server";
 
-export const handlers = [...authHandlers, ...orgHandlers, ...postHandlers, ...searchHandlers, ...libraryHandlers, ...discussionHandlers, ...importHandlers, ...ocrHandlers];
+export const handlers = [...authHandlers, ...orgHandlers, ...postHandlers, ...searchHandlers, ...libraryHandlers, ...discussionHandlers, ...importHandlers, ...ocrHandlers, ...attachmentHandlers];
 
 const SEEDED_KEY = "tal.seeded";
 
