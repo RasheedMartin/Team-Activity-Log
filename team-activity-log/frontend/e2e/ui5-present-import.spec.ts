@@ -101,9 +101,9 @@ for (const mode of ["One post per slide", "One post for the deck", "Group by sec
     const expected = Number((await create.innerText()).match(/\d+/)![0]);
     await create.click();
     await expect(page.getByText(new RegExp(`Created ${expected} drafts`))).toBeVisible();
-    await page.getByRole("button", { name: "Publish all" }).click();
-    await expect(page.getByText("All imported drafts published")).toBeVisible();
-    await page.getByRole("link", { name: "Open the deck" }).click();
+    await page.getByRole("button", { name: /^Publish all/ }).click(); // on the deck, where the import lands
+    await expect(page.getByText(/^Published \d+ slides?$/)).toBeVisible();
+    await expect(page.getByRole("tab", { name: `Published (${expected})` })).toBeVisible();
     const cards = page.getByRole("list", { name: "Posts in this collection" }).getByRole("link");
     await expect(cards).toHaveCount(expected);
     if (mode === "One post per slide") {
@@ -128,7 +128,8 @@ test("delete a whole import removes its posts", async ({ page }) => {
   await openScenario(page, "small");
   await startImport(page, deck("Old_Deck.pptx"), "One post per slide");
   await page.getByRole("button", { name: /^Create \d+ drafts?$/ }).click({ timeout: 20_000 });
-  await page.getByRole("button", { name: "Delete this import" }).click();
+  await page.getByRole("button", { name: "More deck actions" }).click();
+  await page.getByRole("menuitem", { name: /Delete this import/ }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
   await expect(page.getByText("Import deleted")).toBeVisible();
   await page.getByRole("link", { name: "Activity" }).click();

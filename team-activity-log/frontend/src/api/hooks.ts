@@ -786,6 +786,7 @@ export function useImportAction(orgId: ID, id: ID) {
     onSuccess: (job) => {
       if (job) qc.setQueryData(qk.importJob(orgId, id), job);
       invalidatePostLists(qc, orgId);
+      qc.invalidateQueries({ queryKey: ["org", orgId, "post"] }); // e.g. Publish all: each post's status
       qc.invalidateQueries({ queryKey: ["org", orgId, "ws"] });
     },
   });

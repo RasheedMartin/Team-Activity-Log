@@ -1,4 +1,4 @@
-import { CallMergeRounded, CollectionsBookmarkOutlined, CallSplitRounded, CheckCircleRounded, ErrorOutlineRounded, SlideshowRounded, UploadFileOutlined, WarningAmberRounded } from "@mui/icons-material";
+import { CallMergeRounded, CallSplitRounded, CheckCircleRounded, ErrorOutlineRounded, UploadFileOutlined, WarningAmberRounded } from "@mui/icons-material";
 import {
   Alert,
   Box,
@@ -6,10 +6,6 @@ import {
   ButtonBase,
   Checkbox,
   Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   FormControlLabel,
   LinearProgress,
   List,
@@ -23,14 +19,12 @@ import {
   Step,
   StepLabel,
   Stepper,
-  Tab,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Tabs,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
@@ -38,10 +32,10 @@ import {
   Typography,
 } from "@mui/material";
 import { useEffect, useRef, useState } from "react";
-import { Link as RouterLink, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { deckHref } from "../collections/libraryLinks";
 import type { ImportItem, ImportJob, ImportMode, ImportSummary, SlideDesignMode } from "../../api/contract";
-import { useImportAction, useImportJob, useImportPosts, useMyImports, useStartImport } from "../../api/hooks";
-import { DraftList } from "../activity/DraftList";
+import { useImportAction, useImportJob, useMyImports, useStartImport } from "../../api/hooks";
 import { can, useWs, wsPath } from "../../app/session";
 import { useNotify } from "../../components/notify";
 import { TagPicker } from "../../components/Pickers";
@@ -316,7 +310,7 @@ function ReviewStep({ job }: { job: ImportJob }) {
           disabled={!included.length || act.isPending}
           onClick={() => {
             clearTimeout(saveTimer.current);
-            act.mutateAsync({ action: "items", items }).then(() => act.mutate({ action: "commit" }, { onError: (e) => notify(errorMessage(e)) }));
+            act.mutateAsync({ action: "items", items }).then(() => act.mutate({ action: "commit" }, { onSuccess: (j) => notify(`Created ${j?.report?.created ?? included.length} drafts from “${job.sourceFilename}”. Review them here.`), onError: (e) => notify(errorMessage(e)) }));
           }}
         >
           Create {included.length} {included.length === 1 ? "draft" : "drafts"}
@@ -327,77 +321,14 @@ function ReviewStep({ job }: { job: ImportJob }) {
   );
 }
 
+/** Drafts are created: the deck is where they're reviewed (owner request), so go there. */
 function DoneStep({ job, onNew }: { job: ImportJob; onNew: () => void }) {
   const { org, ws } = useWs();
-  const act = useImportAction(org.id, job.id);
-  const notify = useNotify();
-  const navigate = useNavigate();
-  const [confirm, setConfirm] = useState(false);
-  const [published, setPublished] = useState(false);
-  const r = job.report;
-  const posts = useImportPosts(org.id, job.id);
-  const mine = (posts.data ?? []).filter((p) => p.status === "draft");
-  const out = (posts.data ?? []).filter((p) => p.status === "published");
-  const [tab, setTab] = useState<"review" | "published">("review");
-  const collectionUrl = job.collectionId ? wsPath(org, ws, `/collections/${job.collectionId}`) : wsPath(org, ws);
+  if (job.collectionId) return <Navigate replace to={deckHref(wsPath(org, ws), job.collectionId, true)} />;
   return (
     <Stack spacing={2} alignItems="flex-start">
-      <Alert icon={<CheckCircleRounded />} severity="success">
-        Created {r?.created ?? 0} drafts from “{job.sourceFilename}”{r?.skipped ? `, skipped ${r.skipped}` : ""}{r?.warnings ? `, with ${r.warnings} warnings to review` : ""}.
-      </Alert>
-      <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
-        <Button variant="contained" disabled={published || act.isPending || (!posts.isPending && !mine.length)} onClick={() => act.mutate({ action: "publishAll" }, { onSuccess: () => (setPublished(true), notify("All imported drafts published")) })}>
-          {published ? "Published" : "Publish all"}
-        </Button>
-        {job.collectionId && <Button component={RouterLink} to={collectionUrl} startIcon={<CollectionsBookmarkOutlined />}>Open the deck</Button>}
-        {job.collectionId && (
-          <Tooltip describeChild title="All of this import's slides in Present, where you can also download them as a PowerPoint file">
-            <Button component={RouterLink} to={`${wsPath(org, ws, "/present")}?collection=${job.collectionId}`} startIcon={<SlideshowRounded />}>
-              Present or download
-            </Button>
-          </Tooltip>
-        )}
-        <Button onClick={onNew}>Import more slides</Button>
-        <Button color="error" onClick={() => setConfirm(true)}>Delete this import</Button>
-      </Stack>
-      <Box sx={{ width: "100%" }}>
-        <Tabs value={tab} onChange={(_, v) => setTab(v)} aria-label="Posts from this import" sx={{ mb: 1.5, borderBottom: 1, borderColor: "divider" }}>
-          <Tab value="review" label={`To review (${mine.length})`} />
-          <Tab value="published" label={`Published (${out.length})`} />
-        </Tabs>
-        {tab === "review" ? (
-          <>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-              Open a draft to check it; you come back here when you're done. Select several to publish them together.
-            </Typography>
-            {mine.length ? <DraftList drafts={mine} hideSource /> : <Typography variant="body2" color="text.secondary">Nothing left to review: everything from this import is published or discarded.</Typography>}
-          </>
-        ) : out.length ? (
-          <Paper variant="outlined">
-            <List disablePadding aria-label="Published from this import">
-              {out.map((p, i) => (
-                <ListItem key={p.id} disablePadding divider={i < out.length - 1}>
-                  <ListItemButton component={RouterLink} to={wsPath(org, ws, `/p/${p.id}`)}>
-                    <ListItemText primary={p.title || "Untitled"} secondary={`Slide ${p.source?.slide ?? "?"} · published`} />
-                  </ListItemButton>
-                </ListItem>
-              ))}
-            </List>
-          </Paper>
-        ) : (
-          <Typography variant="body2" color="text.secondary">Nothing published yet. Publish drafts from the To review tab.</Typography>
-        )}
-      </Box>
-      <Dialog open={confirm} onClose={() => setConfirm(false)} maxWidth="xs">
-        <DialogTitle>Delete this import?</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2">This removes all {r?.created ?? 0} posts it created (published or not) and their collection. Images no other post uses are cleaned up later.</Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setConfirm(false)}>Cancel</Button>
-          <Button color="error" variant="contained" onClick={() => act.mutate({ action: "delete" }, { onSuccess: () => (setConfirm(false), notify("Import deleted"), navigate(wsPath(org, ws, "/import"))) })}>Delete</Button>
-        </DialogActions>
-      </Dialog>
+      <Alert icon={<CheckCircleRounded />} severity="success">Created {job.report?.created ?? 0} drafts from “{job.sourceFilename}”. Find them in Activity → Drafts.</Alert>
+      <Button onClick={onNew}>Import more slides</Button>
     </Stack>
   );
 }
@@ -405,6 +336,7 @@ function DoneStep({ job, onNew }: { job: ImportJob; onNew: () => void }) {
 /** Where each recent import got to, unfinished ones first: one click goes back into it. */
 function YourImports({ onOpen }: { onOpen: (id: string) => void }) {
   const { org, ws } = useWs();
+  const navigate = useNavigate();
   const list = useMyImports(org.id, ws.id).data ?? [];
   if (!list.length) return null;
   const state = (i: ImportSummary): { label: string; open: boolean } =>
@@ -425,7 +357,7 @@ function YourImports({ onOpen }: { onOpen: (id: string) => void }) {
             const st = state(i);
             return (
               <ListItem key={i.id} disablePadding divider={k < sorted.length - 1}>
-                <ListItemButton onClick={() => onOpen(i.id)}>
+                <ListItemButton onClick={() => (i.status === "done" && i.collectionId ? navigate(deckHref(wsPath(org, ws), i.collectionId, i.drafts > 0)) : onOpen(i.id))}>
                   <ListItemText
                     primary={i.sourceFilename}
                     secondary={

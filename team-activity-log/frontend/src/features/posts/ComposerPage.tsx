@@ -20,7 +20,7 @@ import { useBlocker, useLocation, useNavigate, useParams, useSearchParams } from
 import type { Origin } from "../../app/origin";
 import { ApiError } from "../../api/client";
 import type { Block, ImageView, Post, PostDetail, Shape } from "../../api/contract";
-import { createImageInstance, patchImageInCaches, qk, uploadImage, useCreateDraft, usePost, usePostAction, useSaveAnnotation, useUpdateImage, useUpdatePost } from "../../api/hooks";
+import { createImageInstance, patchImageInCaches, qk, uploadImage, useCreateDraft, useImportJob, usePost, usePostAction, useSaveAnnotation, useUpdateImage, useUpdatePost } from "../../api/hooks";
 import { can, useWs, wsPath } from "../../app/session";
 import { useNotify } from "../../components/notify";
 import { PeoplePicker, TagPicker } from "../../components/Pickers";
@@ -37,6 +37,7 @@ import { emptyTable } from "./editor/emptyTable";
 import { SlideEditor } from "./editor/SlideEditor";
 import { TextBlockEditor } from "./editor/TextBlockEditor";
 import { ImportTrail } from "../import/ImportTrail";
+import { deckHref } from "../collections/libraryLinks";
 import { ImageMetadataDrawer } from "./ImageMetadataDrawer";
 
 type LocalBlock = Block | { id: string; type: "uploading" };
@@ -102,9 +103,11 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
   const post = detail.post;
   const isDraft = post.status === "draft";
   /** Where Back, Publish, and Discard return: where the draft was opened from (a collection, the
-   *  drafts list, the import), else an imported draft's import. */
+   *  drafts list), else an imported draft's deck, where its slides are reviewed. */
   const origin = (useLocation().state as Origin | null)?.from;
-  const importHome = origin ?? (post.source?.kind === "import" ? `${wsPath(org, ws, "/import")}?job=${post.source.importJobId}` : undefined);
+  const importJob = useImportJob(orgId, post.source?.kind === "import" ? post.source.importJobId : undefined);
+  const deck = importJob.data?.collectionId;
+  const importHome = origin ?? (post.source?.kind === "import" ? (deck ? deckHref(wsPath(org, ws), deck, true) : `${wsPath(org, ws, "/import")}?job=${post.source.importJobId}`) : undefined);
   const update = useUpdatePost(orgId, post.id);
   const action = usePostAction(orgId);
   const updateImage = useUpdateImage(orgId);
@@ -443,7 +446,7 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
               This post changed in another tab or by someone else. Load the latest version, or keep yours and overwrite it.
             </Alert>
           )}
-          {post.source?.kind === "import" && isDraft && <ImportTrail source={post.source} postId={post.id} />}
+          {post.source?.kind === "import" && isDraft && <ImportTrail source={post.source} postId={post.id} deckId={deck} />}
           <Paper variant="outlined" sx={{ p: { xs: 2, sm: 3 } }}>
             <InputBase
               fullWidth

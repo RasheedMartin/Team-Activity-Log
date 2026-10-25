@@ -300,6 +300,8 @@ export interface ImportSummary {
   status: ImportJob["status"];
   slideCount: number;
   createdAt: ISODateTime;
+  /** The deck (collection) its posts went into, once drafts are created: where it's reviewed. */
+  collectionId?: ID | null;
   drafts: number;
   published: number;
 }

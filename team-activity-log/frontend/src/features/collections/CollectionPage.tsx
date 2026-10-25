@@ -1,9 +1,9 @@
-import { AddRounded, CollectionsBookmarkOutlined, ManageSearchRounded, SlideshowRounded, UploadFileOutlined } from "@mui/icons-material";
-import { Box, Button, ButtonBase, Checkbox, Chip, Skeleton, Stack, Typography } from "@mui/material";
+import { AddRounded, CollectionsBookmarkOutlined, DeleteOutlineRounded, ManageSearchRounded, MoreVertRounded, SlideshowRounded, UploadFileOutlined } from "@mui/icons-material";
+import { Box, Button, ButtonBase, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, ListItemIcon, Menu, MenuItem, Skeleton, Stack, Tab, Tabs, Typography } from "@mui/material";
 import { useMemo, useState } from "react";
-import { Link as RouterLink, useParams } from "react-router-dom";
+import { Link as RouterLink, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { PostDetail } from "../../api/contract";
-import { useCollection, usePostAction, usePostDetails, useUpdateCollection } from "../../api/hooks";
+import { useCollection, useImportAction, useImportJob, usePostAction, usePostDetails, useUpdateCollection } from "../../api/hooks";
 import { useOrigin } from "../../app/origin";
 import { useWs, wsPath } from "../../app/session";
 import { RichText } from "../../components/RichText";
@@ -34,9 +34,13 @@ function Preview({ d }: { d: PostDetail }) {
   );
 }
 
+type Show = "all" | "review" | "published";
+
 /**
- * A collection's own page: its posts in order as slide-like cards (an imported deck reads like
- * the deck), with Present, Favorite, the import it came from, and Search within for filtering.
+ * A collection's own page: its posts in order as slide-like cards, with Present, Favorite, and
+ * Search within for filtering. An imported deck is also where its slides are reviewed (owner
+ * request): To review / Published tabs, Publish all, and deleting the import live here; the import
+ * page is only for uploading.
  */
 export default function CollectionPage() {
   const { id = "" } = useParams();
@@ -49,13 +53,23 @@ export default function CollectionPage() {
   const deck = c.data?.kind === "deck_import";
   const importJobId = loaded.find((d) => d.post.source?.kind === "import")?.post.source?.importJobId;
   const drafts = loaded.filter((d) => d.post.status === "draft").length;
+  const status = new Map(loaded.map((d) => [d.post.id, d.post.status]));
+  const [params, setParams] = useSearchParams();
+  const show: Show = (["review", "published"] as const).find((x) => x === params.get("show")) ?? "all";
+  const tabs = deck || drafts > 0;
+  const shows = (x: string) => !tabs || show === "all" || (show === "review" ? status.get(x) === "draft" : status.get(x) === "published");
+  const job = useImportJob(org.id, deck ? importJobId : undefined);
+  const importAct = useImportAction(org.id, importJobId ?? "");
+  const navigate = useNavigate();
+  const [menu, setMenu] = useState<HTMLElement | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const action = usePostAction(org.id);
   const update = useUpdateCollection(org.id, ws.id);
   const notify = useNotify();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState(false);
-  const ids = c.data?.postIds ?? [];
+  const ids = (c.data?.postIds ?? []).filter(shows); // what's on screen: selection and Select all work on this
   const chosen = ids.filter((x) => selected.has(x)); // posts that left the collection drop out of the selection
   const all = chosen.length === ids.length && ids.length > 0;
   const chosenDrafts = loaded.filter((d) => selected.has(d.post.id) && d.post.status === "draft").map((d) => d.post.id);
@@ -108,14 +122,21 @@ export default function CollectionPage() {
             {drafts > 0 && ` · ${drafts} still draft${drafts === 1 ? "" : "s"}`}
             {coll.updatedAt && ` · updated ${formatDay(coll.updatedAt.slice(0, 10))}`}
           </Typography>
+          {job.data?.report && (job.data.report.skipped > 0 || job.data.report.warnings > 0) && (
+            <Typography variant="body2" sx={{ color: "warning.main" }}>
+              From “{job.data.sourceFilename}”:{job.data.report.skipped ? ` ${job.data.report.skipped} slides skipped` : ""}
+              {job.data.report.skipped && job.data.report.warnings ? "," : ""}
+              {job.data.report.warnings ? ` ${job.data.report.warnings} warnings to check` : ""}
+            </Typography>
+          )}
         </Box>
         <Stack direction="row" spacing={1} useFlexGap alignItems="center" sx={{ flexWrap: "wrap" }}>
           <Button variant="contained" startIcon={<SlideshowRounded />} component={RouterLink} to={`${base}/present?collection=${coll.id}`} disabled={!coll.postIds.length}>
             Present
           </Button>
-          {deck && importJobId && (
-            <Button component={RouterLink} to={`${base}/import?job=${importJobId}`} startIcon={<UploadFileOutlined />}>
-              Open import
+          {deck && importJobId && drafts > 0 && (
+            <Button variant="outlined" disabled={importAct.isPending} onClick={() => importAct.mutate({ action: "publishAll" }, { onSuccess: () => (setParams({}, { replace: true }), notify(`Published ${plural(drafts, "slide")}`)), onError: (e) => notify(`Couldn't publish: ${e.message}`) })}>
+              Publish all {drafts}
             </Button>
           )}
           <Button startIcon={<AddRounded />} onClick={() => setAdding(true)}>
@@ -126,9 +147,44 @@ export default function CollectionPage() {
             Search within
           </Button>
           <FavoriteButton kind="collection" id={coll.id} name={coll.name} />
+          {deck && importJobId && (
+            <>
+              <IconButton aria-label="More deck actions" onClick={(e) => setMenu(e.currentTarget)}><MoreVertRounded /></IconButton>
+              <Menu anchorEl={menu} open={!!menu} onClose={() => setMenu(null)}>
+                <MenuItem component={RouterLink} to={`${base}/import`} onClick={() => setMenu(null)}>
+                  <ListItemIcon><UploadFileOutlined fontSize="small" /></ListItemIcon>Import more slides
+                </MenuItem>
+                <MenuItem onClick={() => (setMenu(null), setConfirmDelete(true))} sx={{ color: "error.main" }}>
+                  <ListItemIcon><DeleteOutlineRounded fontSize="small" color="error" /></ListItemIcon>Delete this import…
+                </MenuItem>
+              </Menu>
+              <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)} maxWidth="xs">
+                <DialogTitle>Delete this import?</DialogTitle>
+                <DialogContent>
+                  <Typography variant="body2">This removes all {coll.postIds.length} posts it created (published or not) and this deck. Images no other post uses are cleaned up later.</Typography>
+                </DialogContent>
+                <DialogActions>
+                  <Button onClick={() => setConfirmDelete(false)}>Cancel</Button>
+                  <Button color="error" variant="contained" onClick={() => importAct.mutate({ action: "delete" }, { onSuccess: () => (setConfirmDelete(false), notify("Import deleted"), navigate(`${base}/import`)) })}>Delete</Button>
+                </DialogActions>
+              </Dialog>
+            </>
+          )}
         </Stack>
       </Stack>
 
+      {tabs && coll.postIds.length > 0 && (
+        <Tabs value={show} onChange={(_, v: Show) => (setSelected(new Set()), setParams(v === "all" ? {} : { show: v }, { replace: true }))} aria-label="Which posts" sx={{ mb: 1, borderBottom: 1, borderColor: "divider" }}>
+          <Tab value="all" label={`All (${coll.postIds.length})`} />
+          <Tab value="review" label={`To review (${drafts})`} />
+          <Tab value="published" label={`Published (${loaded.length - drafts})`} />
+        </Tabs>
+      )}
+      {tabs && show !== "all" && !ids.length && loaded.length === coll.postIds.length && (
+        <Typography variant="body2" color="text.secondary" sx={{ py: 3 }}>
+          {show === "review" ? "Nothing left to review: every slide is published or discarded." : "Nothing published yet. Publish slides from To review."}
+        </Typography>
+      )}
       {!coll.postIds.length ? (
         <EmptyState icon={<CollectionsBookmarkOutlined />} title="Nothing here yet" body="Posts added to this collection show up here, in order." />
       ) : (
@@ -146,7 +202,7 @@ export default function CollectionPage() {
           </Stack>
         <Box component="ol" aria-label="Posts in this collection" sx={{ listStyle: "none", p: 0, m: 0, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 2 }}>
           {details.map((q, i) =>
-            q.data ? (
+            q.data && !shows(q.data.post.id) ? null : q.data ? (
               <Box component="li" key={q.data.post.id} sx={{ position: "relative" }}>
                 {/* A sibling of the card link, not inside it, so it stays its own control. */}
                 <Checkbox

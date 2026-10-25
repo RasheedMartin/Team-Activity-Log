@@ -198,7 +198,7 @@ export const importHandlers = [
         .slice(0, 30)
         .map((j) => {
           const posts = db.t.posts.filter((p) => p.source?.importJobId === j.id && !p.deletedAt);
-          return { id: j.id, sourceFilename: j.sourceFilename, status: j.status, slideCount: j.slideCount, createdAt: j.createdAt, drafts: posts.filter((p) => p.status === "draft").length, published: posts.filter((p) => p.status === "published").length };
+          return { id: j.id, sourceFilename: j.sourceFilename, status: j.status, slideCount: j.slideCount, createdAt: j.createdAt, collectionId: j.collectionId, drafts: posts.filter((p) => p.status === "draft").length, published: posts.filter((p) => p.status === "published").length };
         });
       return HttpResponse.json(list);
     }),

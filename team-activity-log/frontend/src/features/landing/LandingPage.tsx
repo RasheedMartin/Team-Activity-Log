@@ -18,6 +18,7 @@ import { BRAND } from "../../app/brand";
 import { ACADEMIC_NOTE, PLANS } from "../../app/pricing";
 import { homePath } from "../../app/session";
 import { HeroArt } from "./HeroArt";
+import { HowItWorks } from "./HowItWorks";
 import { HeroDemo, type DemoScene } from "./HeroDemo";
 
 const FEATURES: { icon: ReactNode; title: string; body: string; scene: DemoScene }[] = [
@@ -27,12 +28,6 @@ const FEATURES: { icon: ReactNode; title: string; body: string; scene: DemoScene
   { icon: <AlternateEmailRounded />, scene: "discuss", title: "Discuss", body: "Threads, mentions, comments on images." },
   { icon: <AutoStoriesOutlined />, scene: "notebook", title: "Notebooks", body: "Posts in order, read start to finish." },
   { icon: <SlideshowRounded />, scene: "present", title: "Present", body: "Any set of posts, as slides." },
-];
-
-const STEPS = [
-  { n: "1", title: "Post", body: "What you did, with the plot." },
-  { n: "2", title: "Search", body: "Find it months later." },
-  { n: "3", title: "Share", body: "Discuss, collect, present." },
 ];
 
 function Section({ id, eyebrow, title, children }: { id?: string; eyebrow: string; title: string; children: ReactNode }) {
@@ -174,16 +169,8 @@ export default function LandingPage() {
         </Section>
 
         <Box sx={{ bgcolor: "background.paper", borderTop: 1, borderBottom: 1, borderColor: "divider" }}>
-          <Section id="how" eyebrow="How it works" title="Two minutes a day">
-            <Box component="ol" sx={{ listStyle: "none", p: 0, m: 0, display: "grid", gridTemplateColumns: { xs: "1fr", md: "repeat(3, 1fr)" }, gap: 4 }}>
-              {STEPS.map((s) => (
-                <Box component="li" key={s.n}>
-                  <Typography aria-hidden sx={{ fontFamily: "'IBM Plex Mono', ui-monospace, monospace", fontSize: "2.4rem", fontWeight: 600, color: "primary.main", lineHeight: 1, mb: 1.5 }}>{s.n}</Typography>
-                  <Typography component="h3" variant="h3" sx={{ mb: 0.75 }}>{s.title}</Typography>
-                  <Typography color="text.secondary">{s.body}</Typography>
-                </Box>
-              ))}
-            </Box>
+          <Section id="how" eyebrow="How it works" title="From a note to an answer, in four steps">
+            <HowItWorks />
           </Section>
         </Box>
 

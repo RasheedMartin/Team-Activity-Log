@@ -35,8 +35,8 @@ test("an imported deck's text slides present in the deck's look", async ({ page 
   await page.getByRole("radio", { name: /^Text only/ }).click();
   await page.getByRole("button", { name: "Start import" }).click();
   await page.getByRole("button", { name: /^Create 1 draft$/ }).click({ timeout: 20_000 });
-  await page.getByRole("button", { name: "Publish all" }).click();
-  await page.getByRole("link", { name: "Open the deck" }).click();
+  await page.getByRole("button", { name: /^Publish all/ }).click(); // on the deck, where the import lands
+  await expect(page.getByRole("tab", { name: "Published (1)" })).toBeVisible(); // cards now open the post, not the editor
   await page.getByRole("list", { name: "Posts in this collection" }).getByRole("link").first().click();
   await page.getByRole("button", { name: "Present" }).click();
   await expect(surface(page)).toHaveCSS("background-color", "rgb(247, 249, 252)"); // the deck's #f7f9fc

@@ -4,12 +4,14 @@ import { Link as RouterLink, useLocation } from "react-router-dom";
 import type { ID, PostSource } from "../../api/contract";
 import { useImportPosts } from "../../api/hooks";
 import { useWs, wsPath } from "../../app/session";
+import { deckHref } from "../collections/libraryLinks";
 
 /**
  * Where an imported draft came from, and the way back: "From deck.pptx · slide 3 of 12",
- * Back to import, and Previous / Next among that import's drafts still to review (slide order).
+ * Back to the deck (where imported slides are reviewed), and Previous / Next among that import's
+ * drafts still to review (slide order).
  */
-export function ImportTrail({ source, postId }: { source: PostSource; postId: ID }) {
+export function ImportTrail({ source, postId, deckId }: { source: PostSource; postId: ID; deckId?: ID | null }) {
   const { org, ws } = useWs();
   const location = useLocation(); // Prev/Next keep where the review started, so Back returns there
   const posts = useImportPosts(org.id, source.importJobId);
@@ -49,8 +51,8 @@ export function ImportTrail({ source, postId }: { source: PostSource; postId: ID
           Next
         </Button>
       )}
-      <Button size="small" variant="outlined" component={RouterLink} to={`${wsPath(org, ws, "/import")}?job=${source.importJobId}`} startIcon={<ArrowBackRounded />}>
-        Back to import
+      <Button size="small" variant="outlined" component={RouterLink} to={deckId ? deckHref(wsPath(org, ws), deckId, true) : `${wsPath(org, ws, "/import")}?job=${source.importJobId}`} startIcon={<ArrowBackRounded />}>
+        Back to deck
       </Button>
     </Stack>
   );

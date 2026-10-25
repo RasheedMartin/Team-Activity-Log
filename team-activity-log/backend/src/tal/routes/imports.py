@@ -189,6 +189,7 @@ async def my_imports(org: str, ws: str, u: m.User = Depends(require_user), db: A
             "status": j.status,
             "slideCount": j.slide_count,
             "createdAt": iso(j.created_at),
+            "collectionId": str(j.collection_id) if j.collection_id else None,
             "drafts": counts.get((str(j.id), "draft"), 0),
             "published": counts.get((str(j.id), "published"), 0),
         }
