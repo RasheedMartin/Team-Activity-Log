@@ -1,9 +1,10 @@
-import { ArrowBackRounded, ChevronLeftRounded, ChevronRightRounded, SlideshowRounded } from "@mui/icons-material";
+import { ArrowBackRounded, CallSplitRounded, ChevronLeftRounded, ChevronRightRounded, SlideshowRounded } from "@mui/icons-material";
 import { Box, Button, Stack, Typography } from "@mui/material";
-import { Link as RouterLink, useLocation } from "react-router-dom";
+import { Link as RouterLink, useLocation, useNavigate } from "react-router-dom";
 import type { ID, PostSource } from "../../api/contract";
-import { useImportPosts } from "../../api/hooks";
+import { useImportPosts, useSplitDraft } from "../../api/hooks";
 import { useWs, wsPath } from "../../app/session";
+import { useNotify } from "../../components/notify";
 import { deckHref } from "../collections/libraryLinks";
 
 /**
@@ -21,6 +22,11 @@ export function ImportTrail({ source, postId, deckId }: { source: PostSource; po
   const prev = at >= 0 ? siblings[at - 1] : [...siblings].reverse().find((d) => (d.source?.slide ?? 0) < source.slide);
   const next = at >= 0 ? siblings[at + 1] : siblings.find((d) => (d.source?.slide ?? 0) > source.slide);
   const edit = (id: ID) => wsPath(org, ws, `/p/${id}/edit`);
+  const back = deckId ? deckHref(wsPath(org, ws), deckId, true) : `${wsPath(org, ws, "/import")}?job=${source.importJobId}`;
+  const split = useSplitDraft(org.id);
+  const navigate = useNavigate();
+  const notify = useNotify();
+  const merged = source.mergedFrom ?? [];
   return (
     <Stack direction="row" alignItems="center" useFlexGap spacing={1} sx={{ flexWrap: "wrap", mb: 2, px: 1.5, py: 0.75, borderRadius: 1, bgcolor: "action.hover" }} component="nav" aria-label="Import">
       <SlideshowRounded fontSize="small" sx={{ color: "text.secondary" }} />
@@ -32,7 +38,17 @@ export function ImportTrail({ source, postId, deckId }: { source: PostSource; po
             · {siblings.length} draft{siblings.length === 1 ? "" : "s"} to review
           </Box>
         )}
+        {merged.length > 0 && (
+          <Box component="span" sx={{ display: "block", color: "text.secondary" }}>
+            Combined with {merged.map((x) => (x.slide ? `slide ${x.slide}` : `“${x.title || "Untitled"}”`)).join(", ")}
+          </Box>
+        )}
       </Typography>
+      {merged.length > 0 && (
+        <Button size="small" startIcon={<CallSplitRounded />} disabled={split.isPending} onClick={() => split.mutate(postId, { onSuccess: () => (navigate(back), notify("Split back into separate slides")), onError: (e) => notify(e.message) })}>
+          Split back
+        </Button>
+      )}
       {prev ? (
         <Button size="small" component={RouterLink} to={edit(prev.id)} state={location.state} startIcon={<ChevronLeftRounded />} aria-label="Previous imported draft">
           Prev
@@ -51,7 +67,7 @@ export function ImportTrail({ source, postId, deckId }: { source: PostSource; po
           Next
         </Button>
       )}
-      <Button size="small" variant="outlined" component={RouterLink} to={deckId ? deckHref(wsPath(org, ws), deckId, true) : `${wsPath(org, ws, "/import")}?job=${source.importJobId}`} startIcon={<ArrowBackRounded />}>
+      <Button size="small" variant="outlined" component={RouterLink} to={back} startIcon={<ArrowBackRounded />}>
         Back to deck
       </Button>
     </Stack>

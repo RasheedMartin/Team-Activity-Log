@@ -166,6 +166,10 @@ export interface PostSource {
   fileSha256: string;
   slide: number;
   slideCount: number;
+  /** A draft other drafts were combined into (until it's split or published): what to restore. */
+  mergedFrom?: { postId: ID; title: string; slide?: number; blockIds: ID[]; imageInstanceIds: ID[] }[];
+  /** Set aside by a combine: the draft it went into. */
+  mergedInto?: ID;
 }
 
 export interface Post {

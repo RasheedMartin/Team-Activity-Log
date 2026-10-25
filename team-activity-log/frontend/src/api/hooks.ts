@@ -846,3 +846,29 @@ export function useCorrectOcr(orgId: ID) {
     },
   });
 }
+
+// ---- combine / split drafts ----
+
+/** Combine drafts into the first one (deck order); the rest are set aside until split. */
+export function useCombineDrafts(orgId: ID) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (postIds: ID[]) => post<PostDetail>(`${O(orgId)}/posts/combine`, { postIds }),
+    onSuccess: (d) => {
+      qc.setQueryData(qk.post(orgId, d.post.id), d);
+      qc.invalidateQueries({ queryKey: ["org", orgId, "post"] });
+      invalidatePostLists(qc, orgId);
+    },
+  });
+}
+export function useSplitDraft(orgId: ID) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: ID) => post<PostDetail>(`${O(orgId)}/posts/${id}/split`),
+    onSuccess: (d) => {
+      qc.setQueryData(qk.post(orgId, d.post.id), d);
+      qc.invalidateQueries({ queryKey: ["org", orgId, "post"] });
+      invalidatePostLists(qc, orgId);
+    },
+  });
+}

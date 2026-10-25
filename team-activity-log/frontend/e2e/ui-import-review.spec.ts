@@ -18,6 +18,7 @@ async function importPerSlide(page: Page) {
   await page.getByRole("button", { name: /^Create \d+ drafts$/ }).click({ timeout: 20_000 });
   await expect(page.getByText(/Created 8 drafts/)).toBeVisible();
   await expect(page).toHaveURL(/\/collections\/[^/?]+\?show=review$/); // landed on the deck, on what's left to review
+  await expect(grid(page).getByRole("checkbox")).toHaveCount(8); // every card loaded (placeholders have no checkbox)
 }
 const grid = (page: Page) => page.getByRole("list", { name: "Posts in this collection" });
 const cards = (page: Page) => grid(page).locator(":scope > li"); // (slide previews have bullet lists of their own)
@@ -68,8 +69,9 @@ test("Activity lists each unfinished import once, and leads to its deck", async 
   await importPerSlide(page);
   // Make one draft unpublishable (no title).
   await cards(page).nth(1).getByRole("link").click();
-  await page.getByLabel("Title").fill("");
-  await page.getByLabel("Title").blur();
+  await expect(page.getByRole("navigation", { name: "Import" })).toBeVisible(); // in the editor
+  await page.getByLabel("Title", { exact: true }).fill("");
+  await page.getByLabel("Title", { exact: true }).blur();
   await expect(page.getByRole("status")).toContainText("Saved", { timeout: 10_000 });
   await page.getByRole("button", { name: "Back", exact: true }).click();
   await page.getByRole("checkbox", { name: "Select all posts" }).check();
@@ -175,6 +177,7 @@ test("drafts stay in sync: discard on the deck, and Activity agrees", async ({ p
 
   // Discard two again (shift-click picks the range), then Activity shows the same 6.
   await grid(page).getByRole("checkbox").nth(0).check();
+  await expect(page.getByText("1 selected")).toBeVisible();
   await grid(page).getByRole("checkbox").nth(1).click({ modifiers: ["Shift"] });
   await expect(page.getByText("2 selected")).toBeVisible();
   await page.getByRole("button", { name: "Discard" }).click();
@@ -190,4 +193,35 @@ test("drafts stay in sync: discard on the deck, and Activity agrees", async ({ p
   await expect(page.getByText(/Published 1 post/)).toBeVisible();
   await expect(page.getByRole("tab", { name: "To review (5)" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Published (1)" })).toBeVisible();
+});
+
+test("combine drafts on the deck into one post, and split them back until it's published", async ({ page }) => {
+  await openScenario(page, "small");
+  await importPerSlide(page);
+  await grid(page).getByRole("checkbox").nth(1).check();
+  await expect(page.getByText("1 selected")).toBeVisible();
+  await grid(page).getByRole("checkbox").nth(3).click({ modifiers: ["Shift"] }); // slides 2–4
+  await page.getByRole("button", { name: "Combine into one post" }).click();
+  await expect(page.getByText(/^Combined 3 slides into/)).toBeVisible();
+  await expect(cards(page)).toHaveCount(6);
+  await expect(page.getByRole("tab", { name: "To review (6)" })).toBeVisible();
+  await expect(cards(page).nth(1)).toContainText("+2");
+
+  // Open it: the trail says what's in it, and Split back restores the slides in place.
+  await cards(page).nth(1).getByRole("link").click();
+  const trail = page.getByRole("navigation", { name: "Import" });
+  await expect(trail).toContainText("Combined with slide 3, slide 4");
+  await trail.getByRole("button", { name: "Split back" }).click();
+  await expect(page.getByText("Split back into separate slides")).toBeVisible();
+  await expect(cards(page)).toHaveCount(8);
+  await expect(page.getByRole("tab", { name: "To review (8)" })).toBeVisible();
+
+  // Combine again from the deck, then undo from the message.
+  await grid(page).getByRole("checkbox").nth(0).check();
+  await grid(page).getByRole("checkbox").nth(1).check();
+  await expect(page.getByText("2 selected")).toBeVisible();
+  await page.getByRole("button", { name: "Combine into one post" }).click();
+  await expect(cards(page)).toHaveCount(7);
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(cards(page)).toHaveCount(8);
 });

@@ -56,6 +56,71 @@ const pendingUploads = new Map<string, { orgId: string; filename: string; mime: 
 const MAX_UPLOAD = 25 * 1024 * 1024;
 
 export const postHandlers = [
+  // ---- combine / split drafts (mirrors routes/posts.py: combine, split) ----
+  http.post(
+    "/v1/orgs/:org/posts/combine",
+    route(async ({ cookies, params, request }) => {
+      const ctx = orgCtx(cookies, params.org as string, "member");
+      const ids = [...new Set(((await request.json()) as { postIds?: string[] }).postIds ?? [])];
+      if (ids.length < 2) fail(422, "invalid", "Pick at least two drafts to combine");
+      const posts = ids.map((id) => postFor(ctx, id));
+      if (posts.some((p) => p.status !== "draft")) fail(422, "invalid", "Only drafts can be combined: unpublish a post first");
+      if (new Set(posts.map((p) => p.workspaceId)).size > 1) fail(422, "invalid", "These drafts are in different workspaces");
+      const [target, ...rest] = posts;
+      const blocks = [...target.blocks];
+      const merged = [...(target.source?.mergedFrom ?? [])];
+      const t = now();
+      for (const p of rest) {
+        const copies = new Map<string, string>();
+        for (const old of blockImageIds(p.blocks)) {
+          const inst = db.t.images.get(old);
+          if (inst) copies.set(old, db.t.images.put({ ...inst, id: uuidv7(), postId: target.id }).id);
+        }
+        const swap = (x: unknown): unknown =>
+          Array.isArray(x) ? x.map(swap) : x && typeof x === "object" ? Object.fromEntries(Object.entries(x).map(([k, v]) => [k, k === "imageInstanceId" && typeof v === "string" ? (copies.get(v) ?? v) : swap(v)])) : x;
+        let added = p.blocks.map((b) => ({ ...(swap(b) as Block), id: uuidv7() }));
+        if (!added.some((b) => b.type === "slide")) {
+          const head: Block[] = [{ id: uuidv7(), type: "slide_break" } as Block];
+          if (p.title) head.push({ id: uuidv7(), type: "text", doc: { type: "doc", content: [{ type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: p.title }] }] } } as Block);
+          added = [...head, ...added];
+        }
+        blocks.push(...added);
+        merged.push({ postId: p.id, title: p.title, slide: p.source?.slide, blockIds: added.map((b) => b.id), imageInstanceIds: [...copies.values()] });
+        const gone = db.t.posts.put({ ...p, deletedAt: t, version: p.version + 1, updatedAt: t, source: p.source ? { ...p.source, mergedInto: target.id } : p.source });
+        changed(p.id, gone);
+      }
+      const next = db.t.posts.put({ ...target, blocks, source: target.source ? { ...target.source, mergedFrom: merged } : target.source, version: target.version + 1, updatedAt: t });
+      changed(next.id, next);
+      return HttpResponse.json(detail(next));
+    }),
+  ),
+  http.post(
+    "/v1/orgs/:org/posts/:id/split",
+    route(({ cookies, params }) => {
+      const ctx = orgCtx(cookies, params.org as string, "member");
+      const p = postFor(ctx, params.id as string);
+      const merged = p.source?.mergedFrom ?? [];
+      if (p.status !== "draft" || !merged.length) fail(422, "invalid", "Only a combined draft can be split");
+      const drop = new Set(merged.flatMap((x) => x.blockIds));
+      const t = now();
+      for (const x of merged) {
+        const other = db.t.posts.get(x.postId);
+        if (other) {
+          const { mergedInto: _m, ...src } = other.source ?? ({} as NonNullable<Post["source"]>);
+          void _m;
+          changed(other.id, db.t.posts.put({ ...other, deletedAt: undefined, version: other.version + 1, updatedAt: t, source: other.source ? (src as Post["source"]) : other.source }));
+        }
+        x.imageInstanceIds.forEach((id) => db.t.images.delete(id));
+      }
+      const blocks = p.blocks.filter((b) => !drop.has(b.id));
+      const { mergedFrom: _f, ...src } = p.source!;
+      void _f;
+      const next = db.t.posts.put({ ...p, blocks, source: src as Post["source"], version: p.version + 1, updatedAt: t });
+      changed(next.id, next);
+      return HttpResponse.json(detail(next));
+    }),
+  ),
+
   // ---- drafts & posts ----
   http.post(
     "/v1/orgs/:org/workspaces/:ws/posts",

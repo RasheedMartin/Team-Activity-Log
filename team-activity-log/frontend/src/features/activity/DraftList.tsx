@@ -107,7 +107,7 @@ export function DraftList({ drafts, hideSource }: Props) {
             }
           >
             <ListItemIcon sx={{ minWidth: 0, pl: 1 }}>
-              <Checkbox edge="start" size="small" checked={selected.has(d.id)} onChange={(e) => toggle(d.id, (e.nativeEvent as MouseEvent).shiftKey)} inputProps={{ "aria-label": `Select ${d.title || "untitled draft"}` }} />
+              <Checkbox edge="start" size="small" checked={selected.has(d.id)} onClick={(e) => toggle(d.id, e.shiftKey)} /* the click carries Shift; change events don't reliably */ onChange={() => undefined} inputProps={{ "aria-label": `Select ${d.title || "untitled draft"}` }} />
             </ListItemIcon>
             <ListItemButton onClick={() => navigate(wsPath(org, ws, `/p/${d.id}/edit`), { state: origin })} sx={{ pl: 1 }}>
               <ListItemText

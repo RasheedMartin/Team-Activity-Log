@@ -1,9 +1,9 @@
-import { AddRounded, CollectionsBookmarkOutlined, DeleteOutlineRounded, ManageSearchRounded, MoreVertRounded, SlideshowRounded, UploadFileOutlined } from "@mui/icons-material";
-import { Box, Button, ButtonBase, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, ListItemIcon, Menu, MenuItem, Skeleton, Stack, Tab, Tabs, Typography } from "@mui/material";
+import { AddRounded, CallMergeRounded, CallSplitRounded, CollectionsBookmarkOutlined, DeleteOutlineRounded, ManageSearchRounded, MoreVertRounded, SlideshowRounded, UploadFileOutlined, WarningAmberRounded } from "@mui/icons-material";
+import { Box, Button, ButtonBase, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, ListItemIcon, Menu, MenuItem, Skeleton, Stack, Tab, Tabs, Tooltip, Typography } from "@mui/material";
 import { useMemo, useState } from "react";
 import { Link as RouterLink, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { PostDetail } from "../../api/contract";
-import { useCollection, useImportAction, useImportJob, usePostAction, usePostDetails, useUpdateCollection } from "../../api/hooks";
+import { useCollection, useCombineDrafts, useImportAction, useImportJob, usePostAction, usePostDetails, useSplitDraft, useUpdateCollection } from "../../api/hooks";
 import { useOrigin } from "../../app/origin";
 import { useWs, wsPath } from "../../app/session";
 import { RichText } from "../../components/RichText";
@@ -63,6 +63,19 @@ export default function CollectionPage() {
   const navigate = useNavigate();
   const [menu, setMenu] = useState<HTMLElement | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const combine = useCombineDrafts(org.id);
+  const splitDraft = useSplitDraft(org.id);
+  // Import notes per post ("Animations not preserved", …), minus ones a designed slide makes moot
+  // (its chart and SmartArt are drawn, not turned into a table or list).
+  const notes = new Map<string, string[]>();
+  for (const it of job.data?.items ?? []) {
+    if (!it.postId || !it.warnings.length) continue;
+    const d = loaded.find((x) => x.post.id === it.postId);
+    const designed = d?.post.blocks.some((b) => b.type === "slide");
+    const left = designed ? it.warnings.filter((w) => !/imported as a (table of its data|list)$/.test(w)) : it.warnings;
+    if (left.length) notes.set(it.postId, left);
+  }
+  const draftsWithNotes = loaded.filter((d) => d.post.status === "draft" && notes.has(d.post.id)).length;
   const action = usePostAction(org.id);
   const update = useUpdateCollection(org.id, ws.id);
   const notify = useNotify();
@@ -122,11 +135,12 @@ export default function CollectionPage() {
             {drafts > 0 && ` · ${drafts} still draft${drafts === 1 ? "" : "s"}`}
             {coll.updatedAt && ` · updated ${formatDay(coll.updatedAt.slice(0, 10))}`}
           </Typography>
-          {job.data?.report && (job.data.report.skipped > 0 || job.data.report.warnings > 0) && (
+          {job.data && (draftsWithNotes > 0 || (job.data.report?.skipped ?? 0) > 0) && (
             <Typography variant="body2" sx={{ color: "warning.main" }}>
-              From “{job.data.sourceFilename}”:{job.data.report.skipped ? ` ${job.data.report.skipped} slides skipped` : ""}
-              {job.data.report.skipped && job.data.report.warnings ? "," : ""}
-              {job.data.report.warnings ? ` ${job.data.report.warnings} warnings to check` : ""}
+              From “{job.data.sourceFilename}”:
+              {job.data.report?.skipped ? ` ${plural(job.data.report.skipped, "slide")} skipped` : ""}
+              {job.data.report?.skipped && draftsWithNotes ? " ·" : ""}
+              {draftsWithNotes ? ` ${draftsWithNotes} of the slides to review ${draftsWithNotes === 1 ? "has" : "have"} import notes (marked ⚠)` : ""}
             </Typography>
           )}
         </Box>
@@ -195,6 +209,23 @@ export default function CollectionPage() {
             {chosen.length > 0 && (
               <>
                 {chosenDrafts.length > 0 && <Button size="small" variant="contained" disabled={busy} onClick={() => void publish()}>Publish {chosenDrafts.length}</Button>}
+                {chosen.length > 1 && onlyDrafts && (
+                  <Tooltip describeChild title="Into the first one, in deck order. You can split them back until it's published.">
+                    <Button
+                      size="small"
+                      startIcon={<CallMergeRounded />}
+                      disabled={busy || combine.isPending}
+                      onClick={() => combine.mutate(chosen, { onSuccess: (d) => (setSelected(new Set([d.post.id])), notify(`Combined ${chosen.length} slides into “${d.post.title || "Untitled"}”`, () => splitDraft.mutate(d.post.id))), onError: (e) => notify(e.message) })}
+                    >
+                      Combine into one post
+                    </Button>
+                  </Tooltip>
+                )}
+                {chosen.length === 1 && loaded.find((d) => d.post.id === chosen[0])?.post.source?.mergedFrom?.length ? (
+                  <Button size="small" startIcon={<CallSplitRounded />} disabled={splitDraft.isPending} onClick={() => splitDraft.mutate(chosen[0], { onSuccess: () => (setSelected(new Set()), notify("Split back into separate slides")), onError: (e) => notify(e.message) })}>
+                    Split back
+                  </Button>
+                ) : null}
                 <Button size="small" disabled={busy || update.isPending} onClick={remove}>Remove from collection</Button>
                 <Button size="small" color="error" disabled={busy} onClick={() => void discard()}>{onlyDrafts ? "Discard" : "Delete"}</Button>
               </>
@@ -208,7 +239,7 @@ export default function CollectionPage() {
                 <Checkbox
                   size="small"
                   checked={selected.has(q.data.post.id)}
-                  onChange={(e) => toggle(q.data!.post.id, (e.nativeEvent as MouseEvent).shiftKey)}
+                  onClick={(e) => toggle(q.data!.post.id, e.shiftKey)} /* the click carries Shift; change events don't reliably */ onChange={() => undefined}
                   inputProps={{ "aria-label": `Select ${q.data.post.title || "untitled post"}` }}
                   sx={{ position: "absolute", top: 12, left: 12, zIndex: 1, p: 0.5, bgcolor: "background.paper", borderRadius: 1, boxShadow: 1, "&:hover": { bgcolor: "background.paper" } }}
                 />
@@ -228,6 +259,12 @@ export default function CollectionPage() {
                     <Typography variant="body2" sx={{ fontWeight: 600, flex: 1, minWidth: 0 }} noWrap>
                       {q.data.post.title || "Untitled"}
                     </Typography>
+                    {notes.has(q.data.post.id) && q.data.post.status === "draft" && (
+                      <Tooltip title={notes.get(q.data.post.id)!.join(" · ")}>
+                        <WarningAmberRounded aria-label={`Import notes: ${notes.get(q.data.post.id)!.join("; ")}`} sx={{ fontSize: 18, color: "warning.main" }} />
+                      </Tooltip>
+                    )}
+                    {!!q.data.post.source?.mergedFrom?.length && <Chip size="small" label={`+${q.data.post.source.mergedFrom.length}`} title={`Combined with ${q.data.post.source.mergedFrom.map((m) => m.title || "Untitled").join(", ")}`} />}
                     {q.data.post.status === "draft" && <Chip size="small" label="Draft" color="warning" variant="outlined" />}
                   </Stack>
                 </ButtonBase>
