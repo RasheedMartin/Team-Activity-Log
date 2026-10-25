@@ -1,4 +1,4 @@
-"""Plan limits (Free: 10 members, 1 workspace, no private workspaces, 2 GB, 5 imports/month)
+"""Plan limits (Free: 10 members, 1 workspace, no private workspaces, 2 GB, 5 committed imports/month)
 and profile photos (stored, re-encoded, visible only within shared orgs)."""
 
 from __future__ import annotations
@@ -103,8 +103,19 @@ async def test_imports_per_month(client):
     me = await signup(client, "owner@example.test")
     org, ws = me["orgs"][0]["org"]["id"], me["orgs"][0]["workspaces"][0]["id"]
     body = {"filename": "deck.pptx", "bytes": 1000, "mode": "per_slide", "defaults": {"tagIds": [], "guessDates": True, "collectionName": "deck"}}
-    for _ in range(5):
+    # Started but never committed (abandoned at review): free.
+    for _ in range(7):
         assert (await client.post(f"/v1/orgs/{org}/workspaces/{ws}/imports", json=body)).status_code == 201
+    # Five committed ones use the month's allowance.
+    from sqlalchemy import update
+
+    from tal import models as m
+    from tal.db import sessionmaker
+
+    async with sessionmaker()() as s:
+        ids = (await s.execute(m.ImportJobRow.__table__.select().with_only_columns(m.ImportJobRow.id).limit(5))).scalars().all()
+        await s.execute(update(m.ImportJobRow).where(m.ImportJobRow.id.in_(ids)).values(status="done"))
+        await s.commit()
     r = await client.post(f"/v1/orgs/{org}/workspaces/{ws}/imports", json=body)
     assert r.status_code == 403 and r.json()["details"]["limit"] == "imports"
 

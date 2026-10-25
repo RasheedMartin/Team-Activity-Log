@@ -70,8 +70,9 @@ async def storage_used(db: AsyncSession, org_id: uuid.UUID) -> int:
 
 
 async def imports_this_month(db: AsyncSession, org_id: uuid.UUID) -> int:
+    """Imports committed this month. Abandoned uploads/reviews and deleted imports don't count."""
     start = now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    return await db.scalar(select(func.count()).select_from(m.ImportJobRow).where(m.ImportJobRow.org_id == org_id, m.ImportJobRow.created_at >= start, m.ImportJobRow.status != "failed")) or 0
+    return await db.scalar(select(func.count()).select_from(m.ImportJobRow).where(m.ImportJobRow.org_id == org_id, m.ImportJobRow.created_at >= start, m.ImportJobRow.status == "done")) or 0
 
 
 async def storage_limit(db: AsyncSession, org: m.Organization) -> int | None:

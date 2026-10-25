@@ -62,7 +62,7 @@ reading and writing text.
 | Members | sending invites; accepting an invite or join link | active members + pending invites |
 | Workspaces / private workspaces | creating, unarchiving, making private | open (not archived) workspaces |
 | Storage | storing a new image (upload, deck import) | original bytes, each image once per org |
-| Imports per month | starting an import | imports started this calendar month that didn't fail |
+| Imports per month | starting and committing an import | imports committed this calendar month (abandoned or deleted imports don't count) |
 
 Admins see a Plan & usage tab (Organization admin). New orgs start on `NEW_ORG_PLAN` (default
 Free); no grandfathering. Demo scenarios load as Team.

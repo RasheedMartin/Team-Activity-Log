@@ -323,6 +323,7 @@ async def commit(org: str, job_id: str, u: m.User = Depends(require_user), db: A
         return import_job_view(j)  # idempotent
     if j.status != "review":
         fail(409, "not_in_review", "Nothing to commit yet")
+    await plans.check_can_import(db, ctx.org)  # committing is what counts toward the monthly limit
     deck = await _deck(db, j)
     by_slide = {x.n: x for x in deck.slides}
     look = deck_look(deck.slides)
