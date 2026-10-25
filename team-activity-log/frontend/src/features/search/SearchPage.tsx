@@ -485,7 +485,7 @@ export function SearchPage() {
                 )
               ) : view === "gallery" ? (
                 <>
-                  <ImageCarousel images={images.slice(0, 8)} onOpen={setViewer} />
+                  <ImageCarousel images={images} total={first?.total} onOpen={setViewer} onNeedMore={onEndReached} />
                   <GalleryGrid images={images} onEndReached={onEndReached} onOpen={setViewer} />
                 </>
               ) : (

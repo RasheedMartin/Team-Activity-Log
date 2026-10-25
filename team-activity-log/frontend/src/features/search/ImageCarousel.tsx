@@ -26,8 +26,9 @@ export function FittedImage({ img, ratio, fit, large }: { img: GalleryImage; rat
 
 const label = (img: GalleryImage) => `${img.figureLabel ? `${img.figureLabel} ` : ""}${img.caption ?? "Image"} from ${img.postTitle}`;
 
-/** Owner request: highlight the first few matching images large, above the grid. */
-export function ImageCarousel({ images, onOpen }: { images: GalleryImage[]; onOpen: (img: GalleryImage) => void }) {
+/** Owner request: step through the matching images large, above the grid, in the grid's order
+ *  (the current sort). Reaching the end of what's loaded loads more. */
+export function ImageCarousel({ images, total, onOpen, onNeedMore }: { images: GalleryImage[]; total?: number; onOpen: (img: GalleryImage) => void; onNeedMore?: () => void }) {
   const [at, setAt] = useState(0);
   const [paused, setPaused] = useState(false);
   const reduced = useMediaQuery("(prefers-reduced-motion: reduce)");
@@ -38,8 +39,12 @@ export function ImageCarousel({ images, onOpen }: { images: GalleryImage[]; onOp
     const t = setTimeout(() => setAt((i) => (i + 1) % n), 6000);
     return () => clearTimeout(t);
   }, [at, paused, reduced, n]);
+  useEffect(() => {
+    if (at >= n - 2 && n < (total ?? n)) onNeedMore?.();
+  }, [at, n, total, onNeedMore]);
   if (n < 2) return null;
   const img = images[Math.min(at, n - 1)];
+  const of = Math.max(total ?? n, n);
   return (
     <Box
       role="region"
@@ -49,23 +54,24 @@ export function ImageCarousel({ images, onOpen }: { images: GalleryImage[]; onOp
       onMouseLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)}
       onKeyDown={(e) => (e.key === "ArrowRight" ? go(1) : e.key === "ArrowLeft" ? go(-1) : null)}
-      sx={{ position: "relative", mb: 3, borderRadius: 2, overflow: "hidden", bgcolor: "#0d0f12", color: "#e6e8eb" }}
+      sx={{ position: "relative", mb: 3, borderRadius: 2, overflow: "hidden", bgcolor: "background.paper", border: 1, borderColor: "divider" }}
     >
       <ButtonBase key={img.imageInstanceId} onClick={() => onOpen(img)} aria-label={`Open ${label(img)}`} sx={{ display: "block", width: "100%", animation: reduced ? undefined : "carouselIn 300ms ease-out", "@keyframes carouselIn": { from: { opacity: 0 }, to: { opacity: 1 } } }}>
         <Box sx={{ maxWidth: 900, mx: "auto" }}>
-          <FittedImage img={{ ...img, dominantColor: "#0d0f12" }} ratio={16 / 8} fit="contain" large />
+          <FittedImage img={{ ...img, dominantColor: undefined }} ratio={16 / 8} fit="contain" large />
         </Box>
       </ButtonBase>
-      <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 2, py: 1.25, background: "linear-gradient(transparent, rgba(0,0,0,0.35))" }}>
+      <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 2, py: 1.25, borderTop: 1, borderColor: "divider" }}>
         <Box sx={{ flex: 1, minWidth: 0 }} aria-live="polite">
           <Typography sx={{ fontWeight: 600, fontSize: "0.95rem" }} noWrap>
             {img.figureLabel && `${img.figureLabel} · `}
             {img.caption ?? "Untitled image"}
           </Typography>
-          <Typography variant="caption" sx={{ color: "#aab0b8" }} noWrap component="div">
-            {img.postTitle} · {Math.min(at, n - 1) + 1} of {n}
+          <Typography variant="caption" color="text.secondary" noWrap component="div">
+            {img.postTitle} · {Math.min(at, n - 1) + 1} of {of}
           </Typography>
         </Box>
+        {n <= 12 && (
         <Stack direction="row" spacing={0.5} sx={{ display: { xs: "none", sm: "flex" } }} role="tablist" aria-label="Choose an image">
           {images.map((x, i) => (
             <Box
@@ -75,12 +81,13 @@ export function ImageCarousel({ images, onOpen }: { images: GalleryImage[]; onOp
               aria-selected={i === at}
               aria-label={`Image ${i + 1}`}
               onClick={() => setAt(i)}
-              sx={{ width: i === at ? 18 : 7, height: 7, p: 0, border: 0, borderRadius: 4, cursor: "pointer", bgcolor: i === at ? "#e6e8eb" : "rgba(230,232,235,0.35)", transition: "width 200ms" }}
+              sx={{ width: i === at ? 18 : 7, height: 7, p: 0, border: 0, borderRadius: 4, cursor: "pointer", bgcolor: i === at ? "primary.main" : "action.disabled", transition: "width 200ms" }}
             />
           ))}
         </Stack>
-        <IconButton onClick={() => go(-1)} aria-label="Previous image" sx={{ color: "inherit" }}><ChevronLeftRounded /></IconButton>
-        <IconButton onClick={() => go(1)} aria-label="Next image" sx={{ color: "inherit" }}><ChevronRightRounded /></IconButton>
+        )}
+        <IconButton onClick={() => go(-1)} aria-label="Previous image"><ChevronLeftRounded /></IconButton>
+        <IconButton onClick={() => go(1)} aria-label="Next image"><ChevronRightRounded /></IconButton>
       </Stack>
     </Box>
   );
