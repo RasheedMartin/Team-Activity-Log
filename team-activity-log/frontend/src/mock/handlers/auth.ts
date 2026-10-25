@@ -259,7 +259,7 @@ export const authHandlers = [
   ),
 
   // The mock has no OAuth provider; the live server reports what's configured.
-  http.get("/v1/auth/providers", route(() => HttpResponse.json({ google: false }), { flaky: false })),
+  http.get("/v1/auth/providers", route(() => HttpResponse.json({ google: false, pricing: false, signupCode: false }), { flaky: false })),
 
   // ---- dev only ----
   http.get(

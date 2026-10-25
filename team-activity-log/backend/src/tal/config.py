@@ -66,6 +66,10 @@ class Settings(BaseSettings):
     # ---- Plans (docs/PRICING.md; limits in tal/plans.py) ----
     new_org_plan: Literal["free", "team", "business", "enterprise"] = Field(default="free", description="Plan for newly created organizations (billing upgrades them later).")
 
+    # While testing (owner request): pricing hidden, everyone on Free with its limits (no trial),
+    # and optionally sign-up only with a code you hand out.
+    pricing_public: bool = Field(default=False, description="Show pricing, trials, and upgrades. Off while testing: every org is on Free, with its limits.")
+    signup_code: str | None = Field(default=None, description="If set, creating an account (email or Google) needs this code. Invited people never need it.")
     trial_days: int = Field(default=14, ge=0, le=90, description="New organizations get the Team plan free for this many days (0 = no trial). No card needed.")
 
     # ---- Billing: Stripe (docs/PRICING.md). Off until these are set. ----

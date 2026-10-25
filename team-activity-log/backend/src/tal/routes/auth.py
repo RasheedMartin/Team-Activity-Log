@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import hmac
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, Request, Response
@@ -86,6 +87,9 @@ async def register(request: Request, response: Response, body: dict = Body(...),
     name = clean.text(body.get("name"), "name", 200, required=True, label="Your name") or ""
     email = clean.email(body.get("email"))
     pw = clean.password(body.get("password"))
+    code = get_settings().signup_code
+    if code and not hmac.compare_digest(str(body.get("signupCode") or "").strip(), code):
+        fail(403, "signup_code", "Sign-ups are invite-only right now. Enter the code you were given, or ask a team to invite you.")
     if await find_by_email(db, email):
         fail(409, "email_taken", "An account with this email already exists. Sign in instead.")
     u = m.User(id=uuid7(), name=name, email=email, password_hash=hash_password(pw), timezone=clean.timezone(body.get("timezone")) or "UTC")

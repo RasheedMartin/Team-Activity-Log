@@ -13,7 +13,7 @@ import { Box, Button, ButtonBase, Container, Link, Paper, Stack, Typography } fr
 import { alpha } from "@mui/material/styles";
 import { useState, type ReactNode } from "react";
 import { Link as RouterLink } from "react-router-dom";
-import { useMe } from "../../api/hooks";
+import { useAuthProviders, useMe } from "../../api/hooks";
 import { BRAND } from "../../app/brand";
 import { ACADEMIC_NOTE, PLANS } from "../../app/pricing";
 import { homePath } from "../../app/session";
@@ -56,6 +56,8 @@ const Logo = () => (
 /** Public front door (owner request): show what the product does, then send people to sign up or in. */
 export default function LandingPage() {
   const { data: me } = useMe();
+  // Pricing stays hidden until it's switched on for launch (owner request; PRICING_PUBLIC).
+  const pricingOpen = !!useAuthProviders().data?.pricing;
   const [scene, setScene] = useState<DemoScene>("write");
   const feature = FEATURES.find((f) => f.scene === scene)!;
   const appCta = me ? (
@@ -72,7 +74,7 @@ export default function LandingPage() {
             <Stack component="nav" aria-label="Page" direction="row" spacing={3} sx={{ display: { xs: "none", sm: "flex" } }}>
               <Link href="#features" color="text.secondary" underline="hover">Features</Link>
               <Link href="#how" color="text.secondary" underline="hover">How it works</Link>
-              <Link href="#pricing" color="text.secondary" underline="hover">Pricing</Link>
+              {pricingOpen && <Link href="#pricing" color="text.secondary" underline="hover">Pricing</Link>}
             </Stack>
             {appCta ?? (
               <Stack direction="row" spacing={1}>
@@ -174,6 +176,7 @@ export default function LandingPage() {
           </Section>
         </Box>
 
+        {pricingOpen && (
         <Section id="pricing" eyebrow="Pricing" title="Free for small teams">
           <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr", md: "repeat(4, 1fr)" }, gap: 2, alignItems: "stretch" }}>
             {PLANS.map((p) => (
@@ -197,6 +200,7 @@ export default function LandingPage() {
           </Box>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>{ACADEMIC_NOTE}</Typography>
         </Section>
+        )}
 
         <Container maxWidth="lg" sx={{ pb: { xs: 7, md: 10 } }}>
           <Paper

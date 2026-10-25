@@ -112,7 +112,7 @@ function useSetsMe<V>(fn: (v: V) => Promise<MeResponse>) {
 }
 
 export const useLogin = () => useSetsMe((v: { email: string; password: string }) => post<MeResponse>("/auth/login", v));
-export const useRegister = () => useSetsMe((v: { name: string; email: string; password: string }) => post<MeResponse>("/auth/register", v));
+export const useRegister = () => useSetsMe((v: { name: string; email: string; password: string; signupCode?: string }) => post<MeResponse>("/auth/register", v));
 export const useVerifyEmail = () => useSetsMe((token: string) => post<MeResponse>(`/auth/verify/${token}`));
 export const useMagicSignIn = () => useSetsMe((token: string) => post<MeResponse>(`/auth/magic/${token}`));
 export const useResetPassword = () => useSetsMe((v: { token: string; password: string }) => post<MeResponse>(`/auth/reset/${v.token}`, { password: v.password }));
@@ -819,9 +819,10 @@ export function useBilling(orgId: ID) {
   });
 }
 
-/** Sign-in methods the server has configured (shows the Google button only when it works). */
+/** Public server settings: sign-in methods (the Google button only when it works), whether pricing
+ *  is open (hidden while testing), and whether sign-up needs an invite code. */
 export const useAuthProviders = () =>
-  useQuery({ queryKey: ["auth", "providers"], queryFn: ({ signal }) => get<{ google: boolean }>("/auth/providers", signal), staleTime: Infinity, retry: false });
+  useQuery({ queryKey: ["auth", "providers"], queryFn: ({ signal }) => get<{ google: boolean; pricing?: boolean; signupCode?: boolean }>("/auth/providers", signal), staleTime: Infinity, retry: false });
 
 // ---- dev ----
 

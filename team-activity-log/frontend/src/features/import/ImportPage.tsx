@@ -422,7 +422,10 @@ function ReviewStep({ job }: { job: ImportJob }) {
       </Stack>
       <FormControlLabel
         control={<Checkbox checked={shareDeck} onChange={(e) => setShareDeck(e.target.checked)} />}
-        label={shareDeck ? "Share this deck with the workspace (people find it instead of importing it again)" : "Keep this deck to myself (you can share it later)"}
+        label={(() => {
+          const what = job.defaults.fileKind && job.defaults.fileKind !== "pptx" ? "notebook" : "deck";
+          return shareDeck ? `Share this ${what} with the workspace (people find it instead of importing it again)` : `Keep this ${what} to myself (you can share it later)`;
+        })()}
       />
     </Stack>
   );

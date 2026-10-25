@@ -16,6 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import models as m
+from .config import get_settings
 from .errors import fail
 from .timeutil import now
 
@@ -44,6 +45,8 @@ PLANS: dict[str, Plan] = {
 
 def in_trial(org: m.Organization) -> bool:
     """A Free org inside its Team trial (new orgs get one; no card needed)."""
+    if not get_settings().pricing_public:
+        return False  # testing: no trials, so new orgs can't sidestep Free's limits
     return org.plan == "free" and org.trial_ends_at is not None and org.trial_ends_at > now()
 
 
@@ -155,7 +158,7 @@ async def plan_view(db: AsyncSession, org: m.Organization) -> dict:
     p = plan_of(org)
     s = get_settings()
     trial = None
-    if org.trial_ends_at and org.plan == "free":
+    if org.trial_ends_at and org.plan == "free" and get_settings().pricing_public:
         left = (org.trial_ends_at - now()).total_seconds()
         trial = {"endsAt": org.trial_ends_at.isoformat().replace("+00:00", "Z"), "daysLeft": max(0, int(-(-left // 86400))), "active": left > 0}
     return {

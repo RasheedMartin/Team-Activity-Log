@@ -83,7 +83,9 @@ async def _copy_google_photo(db: AsyncSession, user: m.User, url: str) -> None:
 
 @router.get("/auth/providers")
 async def providers():
-    return {"google": get_settings().google_enabled}
+    s = get_settings()
+    # Public settings the sign-in pages and homepage need.
+    return {"google": s.google_enabled, "pricing": s.pricing_public, "signupCode": bool(s.signup_code)}
 
 
 @router.get("/auth/google/start")
@@ -152,6 +154,8 @@ async def google_callback(request: Request, code: str | None = None, state: str 
         user = (await db.execute(select(m.User).where(func.lower(m.User.email) == email.lower()))).scalar_one_or_none()
     if user and user.deactivated_at:
         return _fail("deactivated")
+    if not user and get_settings().signup_code:
+        return _fail("signup_code")  # new accounts need the code: register with email first
     if not user:
         user = m.User(id=uuid7(), email=email, name=str(claims.get("name") or email.split("@")[0]), email_verified_at=now(), timezone="UTC")
         db.add(user)

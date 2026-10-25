@@ -1,14 +1,14 @@
 """Files attached to posts: stored once, text searchable, downloadable by people who can see the post."""
 
 from sqlalchemy import select
-from test_collections import add_member, login  # noqa: I001 (sibling test modules)
-from test_documents import docx, text_pdf
-from test_plans_and_avatars import signup
 
 from tal import models as m
 from tal.attachments import extract_text
 from tal.db import sessionmaker
 from tal.search.documents import build_documents
+from test_collections import add_member, login  # noqa: I001 (sibling test modules)
+from test_documents import docx, text_pdf
+from test_plans_and_avatars import signup
 
 
 def test_text_comes_out_of_common_files():

@@ -42,6 +42,7 @@ async def app():
         TAL_ENV_FILE="/nonexistent",
         RATE_LIMIT="false",
         TRIAL_DAYS="0",  # plan tests start on Free; trials have their own tests
+        PRICING_PUBLIC="true",  # tests run the launch setup; testing mode has its own tests
     )
     from tal import config, db
 
