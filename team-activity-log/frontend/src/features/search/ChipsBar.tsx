@@ -1,4 +1,4 @@
-import { AccountTreeOutlined, AddRounded, CheckRounded, ExpandMoreRounded, SavedSearchRounded } from "@mui/icons-material";
+import { AccountTreeOutlined, AddRounded, CheckRounded, DeleteOutlineRounded, ExpandMoreRounded, SavedSearchRounded } from "@mui/icons-material";
 import {
   Box,
   Button,
@@ -9,6 +9,7 @@ import {
   DialogTitle,
   Divider,
   FormControlLabel,
+  IconButton,
   ListItemIcon,
   ListItemText,
   ListSubheader,
@@ -18,15 +19,16 @@ import {
   Stack,
   Switch,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import { useEffect, useState } from "react";
-import { Link as RouterLink } from "react-router-dom";
 import type { Condition, FilterSpec, LibraryItem, SavedView } from "../../api/contract";
-import { useLibrary, useSaveView } from "../../api/hooks";
+import { useDeleteView, useLibrary, useSaveView } from "../../api/hooks";
+import { useNotify } from "../../components/notify";
 import { KINDS } from "../collections/concepts";
 import { FavoriteButton } from "../collections/FavoriteButton";
-import { can, useWs, wsPath } from "../../app/session";
+import { can, useWs } from "../../app/session";
 import { formatRange } from "../../lib/dates";
 import { clearFilters, isEmptySpec, normalize, specKey } from "../../lib/filterSpec";
 import { errorMessage } from "../../lib/format";
@@ -140,7 +142,15 @@ export function SaveViewDialog({ open, onClose, spec, existing, onSaved }: { ope
 
 /** The saved-searches menu searches them on the server (a workspace may have hundreds). */
 export function SavedViewsMenu({ activeId, onApply }: { activeId?: string | null; onApply: (v: LibraryItem) => void }) {
-  const { org, ws } = useWs();
+  const { org, ws, me, role } = useWs();
+  const notify = useNotify();
+  const del = useDeleteView(org.id, ws.id);
+  const restore = useSaveView(org.id, ws.id);
+  const remove = (v: LibraryItem) =>
+    del.mutate(v.id, {
+      onSuccess: (gone) => notify(`Deleted “${gone.name}”`, () => restore.mutate({ name: gone.name, filterSpec: gone.filterSpec, shared: gone.shared, pinned: v.pinned })),
+      onError: (e) => notify(errorMessage(e)),
+    });
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [q, setQ] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -167,12 +177,28 @@ export function SavedViewsMenu({ activeId, onApply }: { activeId?: string | null
             <ListItemIcon>{v.id === activeId ? <CheckRounded fontSize="small" /> : null}</ListItemIcon>
             <ListItemText primary={v.name} secondary={v.shared ? "Shared" : "Only you"} slotProps={{ primary: { noWrap: true } }} />
             <FavoriteButton kind="view" id={v.id} name={v.name} size="small" />
+            {(v.ownerId === me.user.id || can(role, "admin")) && (
+              <Tooltip title="Delete saved search">
+                <IconButton
+                  size="small"
+                  aria-label={`Delete ${v.name}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setAnchor(null); // so the Undo in the message underneath can be reached
+                    remove(v);
+                  }}
+                >
+                  <DeleteOutlineRounded fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            )}
           </MenuItem>
         ))}
-        <Divider />
-        <MenuItem component={RouterLink} to={`${wsPath(org, ws, "/library")}?kind=view`} onClick={() => setAnchor(null)}>
-          <ListItemText primary={total > views.length ? `All ${total} saved searches in the Library` : "Manage in the Library"} slotProps={{ primary: { color: "primary", fontSize: "0.85rem" } }} />
-        </MenuItem>
+        {total > views.length && (
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", px: 2, pt: 1 }}>
+            Showing {views.length} of {total}: type to find the rest.
+          </Typography>
+        )}
       </Menu>
     </>
   );

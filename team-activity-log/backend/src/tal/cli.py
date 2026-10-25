@@ -7,6 +7,7 @@
                               rebuild search from Postgres (zero-downtime with --new-version)
     tal serve [--port 8000]   run the API (indexer included unless RUN_INDEXER=false)
     tal worker                run only the outbox -> Elasticsearch indexer
+    tal plan ORG [PLAN]       show an organization's plan and imports this month; set it
 """
 
 from __future__ import annotations
@@ -79,6 +80,30 @@ async def _check() -> int:
     return 0 if ok else 1
 
 
+async def _plan(org: str, new: str | None) -> int:
+    """Show an org's plan and usage; with a plan name, change it (support/testing; billing later)."""
+    from sqlalchemy import or_, select
+
+    from . import models as m
+    from . import plans
+    from .db import dispose, sessionmaker
+
+    async with sessionmaker()() as db:
+        oid = uuid.UUID(org) if len(org) == 36 else None
+        o = (await db.execute(select(m.Organization).where(or_(m.Organization.slug == org, m.Organization.id == oid) if oid else m.Organization.slug == org))).scalar_one_or_none()
+        if not o:
+            print(f"No organization '{org}'")
+            await dispose()
+            return 1
+        if new:
+            o.plan = new
+            await db.commit()
+        p = plans.plan_of(o)
+        print(f"{o.name} ({o.slug}): {p.name} plan; imports this month {await plans.imports_this_month(db, o.id)}/{p.imports_per_month or 'unlimited'}")
+    await dispose()
+    return 0
+
+
 async def _init_search() -> None:
     from .search.client import close
     from .search.indexer import ensure_index
@@ -121,6 +146,9 @@ def main(argv: list[str] | None = None) -> int:
     sv.add_argument("--port", type=int, default=8000)
     sv.add_argument("--reload", action="store_true")
     sub.add_parser("worker")
+    pl = sub.add_parser("plan", help="show or change an organization's plan")
+    pl.add_argument("org", help="organization slug or id")
+    pl.add_argument("set", nargs="?", choices=["free", "team", "business", "enterprise"])
     a = p.parse_args(argv)
 
     if a.cmd == "check":
@@ -133,6 +161,8 @@ def main(argv: list[str] | None = None) -> int:
         command.upgrade(cfg, "head")
         print(f"Database schema is at {ScriptDirectory.from_config(cfg).get_current_head()} (latest).")
         return 0
+    if a.cmd == "plan":
+        return asyncio.run(_plan(a.org, a.set))
     if a.cmd == "init-search":
         asyncio.run(_init_search())
         return 0

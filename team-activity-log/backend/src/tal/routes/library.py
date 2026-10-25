@@ -9,6 +9,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import models as m
+from .. import sanitize as clean
 from ..context import WsCtx, require_user, role_at_least, ws_ctx
 from ..db import get_db
 from ..errors import fail
@@ -107,7 +108,8 @@ async def put_pins(org: str, ws: str, body: dict = Body(...), u: m.User = Depend
     valid = {(i["kind"], i["id"]) for i in await library_items(db, ctx)}
     await db.execute(delete(m.Pin).where(m.Pin.user_id == u.id, m.Pin.workspace_id == ctx.ws.id))
     seen = set()
-    for pos, it in enumerate([x for x in body.get("items") or [] if (x.get("kind"), x.get("id")) in valid][:50]):
+    items = body.get("items") if isinstance(body.get("items"), list) else []
+    for pos, it in enumerate([x for x in items if isinstance(x, dict) and (x.get("kind"), x.get("id")) in valid][:50]):
         key = (it["kind"], it["id"])
         if key in seen:
             continue
@@ -136,10 +138,8 @@ async def get_view(org: str, ws: str, view_id: str, u: m.User = Depends(require_
 @router.post("/orgs/{org}/workspaces/{ws}/saved-views", status_code=201)
 async def create_view(org: str, ws: str, body: dict = Body(...), u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
     ctx = await ws_ctx(db, u, org, ws)
-    name = str(body.get("name") or "").strip()
-    if not name:
-        fail(422, "invalid", "Name the view")
-    spec = {k: v for k, v in (body.get("filterSpec") or {}).items() if k not in ("cursor", "limit")}
+    name = clean.text(body.get("name"), "name", 200, required=True, label="Name") or ""
+    spec = {k: v for k, v in clean.filter_spec(body.get("filterSpec")).items() if k not in ("cursor", "limit")}
     t = now()
     v = m.SavedView(id=uuid7(), org_id=ctx.org.id, workspace_id=ctx.ws.id, owner_id=u.id, name=name, filter_spec=spec, shared=bool(body.get("shared")), created_at=t, updated_at=t)
     db.add(v)
@@ -161,12 +161,10 @@ async def patch_view(org: str, ws: str, view_id: str, body: dict = Body(...), u:
     if edits:
         if v.owner_id != u.id and not ctx.is_admin:
             fail(403, "forbidden", "Only the owner can change this view")
-        if "name" in edits and not str(edits["name"] or "").strip():
-            fail(422, "invalid", "Name can't be empty")
         if "name" in edits:
-            v.name = edits["name"].strip()
+            v.name = clean.text(edits["name"], "name", 200, required=True, label="Name") or v.name
         if "filterSpec" in edits:
-            v.filter_spec = {k: x for k, x in (edits["filterSpec"] or {}).items() if k not in ("cursor", "limit")}
+            v.filter_spec = {k: x for k, x in clean.filter_spec(edits["filterSpec"]).items() if k not in ("cursor", "limit")}
         if "shared" in edits:
             v.shared = bool(edits["shared"])
         v.updated_at = now()
@@ -212,7 +210,7 @@ async def assert_unique_notebook_name(db: AsyncSession, ws_id, name: str, except
 async def set_collection_posts(db: AsyncSession, c: m.CollectionRow, post_ids: list) -> None:
     """Replace membership; reindex every post that joined or left (collection is a search filter)."""
     before = set((await db.execute(select(m.CollectionPost.post_id).where(m.CollectionPost.collection_id == c.id))).scalars())
-    ids = [p for p in dict.fromkeys(parse_uuid(x) for x in post_ids) if p]
+    ids = clean.uuid_list(post_ids, "postIds", 5000)
     valid = set((await db.execute(select(m.Post.id).where(m.Post.id.in_(ids), m.Post.org_id == c.org_id))).scalars()) if ids else set()
     await db.execute(delete(m.CollectionPost).where(m.CollectionPost.collection_id == c.id))
     for pos, pid in enumerate(x for x in ids if x in valid):
@@ -245,10 +243,8 @@ async def entries(org: str, ws: str, cid: str, u: m.User = Depends(require_user)
 @router.post("/orgs/{org}/workspaces/{ws}/collections", status_code=201)
 async def create_collection(org: str, ws: str, body: dict = Body(...), u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
     ctx = await ws_ctx(db, u, org, ws, "member")
-    name = str(body.get("name") or "").strip()
-    if not name:
-        fail(422, "invalid", "Name the collection")
-    kind = body.get("kind") or "manual"
+    name = clean.text(body.get("name"), "name", 300, required=True, label="Name") or ""
+    kind = body.get("kind") if body.get("kind") in ("manual", "deck_import", "saved_selection", "notebook") else "manual"
     tag_id = parse_uuid(body.get("sourceTagId"))
     if kind == "notebook":
         # One notebook per tag (survives renames), and notebook names are unique.
@@ -276,12 +272,14 @@ async def patch_collection(org: str, ws: str, cid: str, body: dict = Body(...), 
     if "name" in body and body["name"] is not None:
         if not role_at_least(ctx.role, "member"):
             fail(403, "forbidden", "Viewers can't rename collections")
-        name = str(body["name"]).strip()
-        if not name:
-            fail(422, "invalid", "Name can't be empty")
+        name = clean.text(body["name"], "name", 300, required=True, label="Name") or ""
         if c.kind == "notebook":
             await assert_unique_notebook_name(db, ctx.ws.id, name, c.id)
         c.name, c.updated_at = name, now()
+    if "presentation" in body:
+        if not role_at_least(ctx.role, "member"):
+            fail(403, "forbidden", "Viewers can't change how this presents")
+        c.presentation, c.updated_at = clean.presentation(body["presentation"]), now()
     return await _view_of(db, c)
 
 

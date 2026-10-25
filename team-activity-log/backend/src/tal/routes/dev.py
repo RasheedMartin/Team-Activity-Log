@@ -120,7 +120,8 @@ async def load(request: Request, response: Response, body: dict = Body(...), db:
             for u in users
         ],
     )
-    await bulk(db, m.Organization, [{"id": U(o["id"]), "name": o["name"], "slug": o["slug"]} for o in t.get("orgs", [])])
+    # Demo orgs are on Team, so scenarios aren't held back by Free limits.
+    await bulk(db, m.Organization, [{"id": U(o["id"]), "name": o["name"], "slug": o["slug"], "plan": "team"} for o in t.get("orgs", [])])
     await bulk(
         db,
         m.Workspace,
@@ -181,7 +182,7 @@ async def load(request: Request, response: Response, body: dict = Body(...), db:
                 "title": p.get("title") or "", "summary": p.get("summary"), "work_date": D(p["workDate"]), "work_date_source": p.get("workDateSource") or "user",
                 "status": p["status"], "visibility": p.get("visibility") or "visible", "hidden_reason": p.get("hiddenReason"),
                 "hidden_by": U(p.get("hiddenBy")), "hidden_at": T(p.get("hiddenAt")), "blocks": p.get("blocks") or [], "reactions": p.get("reactions") or {},
-                "source": p.get("source"), "revision": p.get("revision") or 0, "version": p.get("version") or 1,
+                "source": p.get("source"), "presentation": p.get("presentation"), "revision": p.get("revision") or 0, "version": p.get("version") or 1,
                 "comment_count": (p.get("counts") or {}).get("comments", 0), "reaction_count": (p.get("counts") or {}).get("reactions", 0),
                 "image_count": (p.get("counts") or {}).get("images", 0), "created_at": T(p["createdAt"]), "updated_at": T(p["updatedAt"]),
                 "published_at": T(p.get("publishedAt")) if p["status"] == "published" else None, "deleted_at": T(p.get("deletedAt")),
@@ -259,7 +260,7 @@ async def load(request: Request, response: Response, body: dict = Body(...), db:
         db,
         m.CollectionRow,
         [
-            {"id": U(c["id"]), "org_id": U(org_of_ws.get(c["workspaceId"])), "workspace_id": U(c["workspaceId"]), "name": c["name"], "kind": c.get("kind") or "manual", "created_by": U(c["createdBy"]), "source_tag_id": U(c.get("sourceTagId")), "updated_at": T(c.get("updatedAt")) or now()}
+            {"id": U(c["id"]), "org_id": U(org_of_ws.get(c["workspaceId"])), "workspace_id": U(c["workspaceId"]), "name": c["name"], "kind": c.get("kind") or "manual", "created_by": U(c["createdBy"]), "source_tag_id": U(c.get("sourceTagId")), "presentation": c.get("presentation"), "updated_at": T(c.get("updatedAt")) or now()}
             for c in colls
         ],
     )

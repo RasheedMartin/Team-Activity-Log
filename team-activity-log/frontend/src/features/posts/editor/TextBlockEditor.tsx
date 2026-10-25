@@ -15,13 +15,37 @@ import {
 } from "@mui/icons-material";
 import { Box, Divider, IconButton, Stack, Tooltip, Typography } from "@mui/material";
 import Placeholder from "@tiptap/extension-placeholder";
-import { TableKit } from "@tiptap/extension-table";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, useSyncExternalStore, type ReactNode } from "react";
 import { proseSx } from "../../../theme/prose";
+import { AlignButton, ColorMenu } from "./FormatControls";
+import { formattingExtensions, tableExtensions } from "./formatting";
 
 // One TipTap editor per text/table block. Content is ProseMirror JSON in and out (§C1).
+
+/**
+ * Which text block shows its toolbar: the one most recently focused. A toolbar never collapses
+ * just because focus left (a button, a slide, the page), since that would shift everything below it
+ * mid-click. Focusing another block swaps toolbars: the old one closes as the new one opens.
+ */
+let activeBar: string | null = null;
+const barListeners = new Set<() => void>();
+const setActiveBar = (id: string | null) => {
+  activeBar = id;
+  barListeners.forEach((l) => l());
+};
+function useToolbarOwner(id: string, focused: boolean) {
+  const active = useSyncExternalStore(
+    (l) => (barListeners.add(l), () => barListeners.delete(l)),
+    () => activeBar,
+  );
+  useEffect(() => {
+    if (focused) setActiveBar(id);
+  }, [focused, id]);
+  useEffect(() => () => void (activeBar === id && setActiveBar(null)), [id]);
+  return active === id;
+}
 
 function Btn({ title, active, onClick, children }: { title: string; active?: boolean; onClick: () => void; children: ReactNode }) {
   return (
@@ -74,11 +98,13 @@ export function EditorToolbar({ editor, table }: { editor: Editor; table?: boole
       <Btn title="Strikethrough" active={s.strike} onClick={() => c().toggleStrike().run()}><FormatStrikethrough /></Btn>
       <Btn title="Inline code" active={s.code} onClick={() => c().toggleCode().run()}><Code /></Btn>
       <Btn title="Link" active={s.link} onClick={setLink}><LinkRounded /></Btn>
+      <ColorMenu editor={editor} />
       <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
       <Btn title="Heading" active={s.h2} onClick={() => c().toggleHeading({ level: 2 }).run()}><Typography sx={{ fontWeight: 700, fontSize: 13, px: 0.25 }}>H2</Typography></Btn>
       <Btn title="Subheading" active={s.h3} onClick={() => c().toggleHeading({ level: 3 }).run()}><Typography sx={{ fontWeight: 700, fontSize: 12, px: 0.25 }}>H3</Typography></Btn>
       <Btn title="Bulleted list" active={s.bullet} onClick={() => c().toggleBulletList().run()}><FormatListBulleted /></Btn>
       <Btn title="Numbered list" active={s.ordered} onClick={() => c().toggleOrderedList().run()}><FormatListNumbered /></Btn>
+      <AlignButton editor={editor} />
       <Btn title="Quote" active={s.quote} onClick={() => c().toggleBlockquote().run()}><FormatQuote /></Btn>
       <Btn title="Code block" active={s.codeBlock} onClick={() => c().toggleCodeBlock().run()}><DataObject /></Btn>
       {table && (
@@ -117,8 +143,9 @@ export function TextBlockEditor({ doc, onChange, onPasteImages, onBlur, placehol
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ heading: { levels: [2, 3, 4] }, link: { openOnClick: false, autolink: true, protocols: ["http", "https", "mailto"] } }),
+      ...formattingExtensions,
       Placeholder.configure({ placeholder: placeholder ?? "Write…" }),
-      ...(table ? [TableKit.configure({ table: { resizable: false } })] : []),
+      ...(table ? tableExtensions : []),
     ],
     content: (doc as object) ?? undefined,
     editable: !readOnly,
@@ -144,11 +171,13 @@ export function TextBlockEditor({ doc, onChange, onPasteImages, onBlur, placehol
     },
   });
   const focused = useEditorState({ editor, selector: ({ editor: e }) => e?.isFocused ?? false });
+  const barId = useId();
+  const showBar = useToolbarOwner(barId, focused);
 
   return (
     <Box sx={{ position: "relative" }}>
       {!readOnly && editor && (
-        <Box sx={{ position: "sticky", top: 52, zIndex: 2, bgcolor: "background.paper", borderBottom: 1, borderColor: "divider", mb: 1, opacity: focused ? 1 : 0, height: focused ? "auto" : 0, overflow: "hidden", transition: "opacity 120ms" }}>
+        <Box sx={{ position: "sticky", top: 52, zIndex: 2, bgcolor: "background.paper", borderBottom: 1, borderColor: "divider", mb: 1, opacity: showBar ? 1 : 0, height: showBar ? "auto" : 0, overflow: "hidden", transition: "opacity 120ms" }}>
           <EditorToolbar editor={editor} table={table} />
         </Box>
       )}

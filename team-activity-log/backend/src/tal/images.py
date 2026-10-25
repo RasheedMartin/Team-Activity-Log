@@ -17,7 +17,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import models as m
-from . import storage
+from . import plans, storage
 from .errors import fail
 from .ids import uuid7
 from .timeutil import now
@@ -76,6 +76,9 @@ async def create_asset(
     existing = (await db.execute(select(m.Asset).where(m.Asset.org_id == org_id, m.Asset.sha256 == sha))).scalar_one_or_none()
     if existing:
         return existing, False
+    org = await db.get(m.Organization, org_id)
+    if org:
+        await plans.check_storage(db, org, len(data))
     mime = _sniff(data)
     if mime not in ALLOWED:
         fail(415, "unsupported_type", "Only PNG, JPEG, GIF, WebP, and SVG images are supported")

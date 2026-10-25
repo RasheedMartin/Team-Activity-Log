@@ -2,7 +2,7 @@ import { http, HttpResponse } from "msw";
 import type { Asset, Block, DraftSummary, Post, PostDetail, PostPatch, PostRevision } from "../../api/contract";
 import { todayISO } from "../../lib/dates";
 import { uuidv7 } from "../../lib/ids";
-import { isDocEmpty } from "../../lib/prosemirror";
+import { blockImageIds, hasContent as blocksHaveContent } from "../../lib/blocks";
 import { createAsset } from "../assets";
 import { db, type PostRow } from "../db";
 import {
@@ -21,8 +21,7 @@ import {
   type OrgCtx,
 } from "../server";
 
-const imagesOf = (p: Post) =>
-  p.blocks.flatMap((b) => (b.type === "image" ? [imageView(b.imageInstanceId)].filter((x) => !!x) : []));
+const imagesOf = (p: Post) => blockImageIds(p.blocks).flatMap((id) => [imageView(id)].filter((x) => !!x));
 
 const detail = (p: PostRow): PostDetail => {
   const { indexedAt: _i, ...post } = p;
@@ -41,7 +40,7 @@ function checkVersion(p: Post, version: number | undefined) {
     fail(409, "version_conflict", "This post changed in another tab or by someone else. Review and retry.", { current: p });
 }
 
-const imageCount = (blocks: Block[]) => blocks.filter((b) => b.type === "image").length;
+const imageCount = (blocks: Block[]) => blockImageIds(blocks, "content").length;
 
 function snapshotRevision(p: PostRow, editedBy: string) {
   const rev: PostRevision = { revision: p.revision, editedBy, editedAt: now(), title: p.title, blocks: p.blocks };
@@ -104,8 +103,13 @@ export const postHandlers = [
       const patch = (await request.json()) as PostPatch;
       checkVersion(p, patch.version);
       if (p.deletedAt) fail(409, "deleted", "This post was deleted");
-      const { version: _v, ...fields } = patch;
+      const { version: _v, presentation, ...fields } = patch;
       void _v;
+      if (presentation !== undefined && !Object.keys(fields).length) {
+        // A theme change isn't a content edit: no revision.
+        const themed = db.t.posts.put({ ...p, presentation: presentation ?? undefined, version: p.version + 1 });
+        return HttpResponse.json(detail(themed));
+      }
       const blocks = fields.blocks ?? p.blocks;
       let revision = p.revision;
       if (p.status === "published") {
@@ -117,6 +121,7 @@ export const postHandlers = [
       const next = db.t.posts.put({
         ...p,
         ...fields,
+        ...(presentation !== undefined ? { presentation: presentation ?? undefined } : {}),
         blocks,
         version: p.version + 1,
         revision,
@@ -138,7 +143,7 @@ export const postHandlers = [
       if (p.status === "published") return HttpResponse.json(detail(p)); // idempotent
       const problems: string[] = [];
       if (!p.title.trim()) problems.push("Add a title");
-      const hasContent = p.blocks.some((b) => b.type === "image" || ((b.type === "text" || b.type === "table") && !isDocEmpty(b.doc)));
+      const hasContent = blocksHaveContent(p.blocks);
       if (!hasContent) problems.push("Add some text or an image");
       const pending = imagesOf(p).some((i) => i!.asset.processing === "failed");
       if (pending) problems.push("Remove or retry failed uploads");
@@ -229,7 +234,14 @@ export const postHandlers = [
       const list: DraftSummary[] = db.t.posts
         .filter((p) => p.workspaceId === ctx.ws.id && p.status === "draft" && p.authorId === ctx.user.id && !p.deletedAt)
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-        .map((p) => ({ id: p.id, title: p.title, updatedAt: p.updatedAt, imageCount: imageCount(p.blocks), workspaceId: p.workspaceId }));
+        .map((p) => ({
+          id: p.id,
+          title: p.title,
+          updatedAt: p.updatedAt,
+          imageCount: imageCount(p.blocks),
+          workspaceId: p.workspaceId,
+          ...(p.source?.kind === "import" ? { source: { importJobId: p.source.importJobId, fileName: p.source.fileName, slide: p.source.slide, slideCount: p.source.slideCount } } : {}),
+        }));
       return HttpResponse.json(list);
     }),
   ),

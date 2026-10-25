@@ -136,3 +136,31 @@ test("one Activity entry in the rail: mentions, drafts, and recycle bin are tabs
   await expect(page).toHaveURL(/\/activity\/recycle-bin$/);
   await expect(page.getByRole("tab", { name: /Recycle bin/ })).toHaveAttribute("aria-selected", "true");
 });
+
+test("annotation text: click the image, type, Enter adds a label; clicking away keeps it", async ({ page }) => {
+  await openScenario(page, "small");
+  await page.keyboard.press("c");
+  await expect(page).toHaveURL(/\/p\/[^/]+\/edit$/);
+  await page.locator("input[type=file][multiple]").setInputFiles([PNG]);
+  await expect(page.getByLabel("Annotate image")).toHaveCount(1, { timeout: 15_000 });
+  await page.locator("img[alt='']").filter({ visible: true }).first().hover();
+  await page.getByRole("button", { name: "Annotate image" }).click();
+  const canvas = page.getByRole("img", { name: /Annotation canvas/ });
+  const box = (await canvas.boundingBox())!;
+
+  await page.getByRole("button", { name: "Text" }).click();
+  await page.mouse.click(box.x + box.width * 0.4, box.y + box.height * 0.5);
+  const input = page.getByLabel("Annotation text");
+  await expect(input).toBeFocused();
+  await page.keyboard.type("peak at 1332 keV");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("img", { name: "Annotation canvas, 1 shapes" })).toBeVisible();
+  await expect(canvas.locator("text", { hasText: "peak at 1332 keV" })).toBeVisible();
+
+  // A second label, finished by clicking elsewhere on the image instead of Enter.
+  await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.2);
+  await page.keyboard.type("baseline");
+  await page.mouse.click(box.x + box.width * 0.7, box.y + box.height * 0.8);
+  await expect(page.getByRole("img", { name: /Annotation canvas, [23] shapes/ })).toBeVisible();
+  await expect(canvas.locator("text", { hasText: "baseline" })).toBeVisible();
+});

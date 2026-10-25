@@ -103,7 +103,61 @@ export type Block =
   | { id: ID; type: "text"; doc: unknown /* ProseMirror JSON */ }
   | { id: ID; type: "image"; imageInstanceId: ID }
   | { id: ID; type: "table"; doc: unknown }
-  | { id: ID; type: "slide_break"; notes?: string };
+  | { id: ID; type: "slide_break"; notes?: string }
+  | { id: ID; type: "slide"; design: SlideDesign; notes?: string };
+
+/**
+ * A designed slide: elements placed on a fixed canvas (units are points; 960×540 is 16:9), the
+ * way PowerPoint lays one out. Text elements hold ProseMirror docs, so their text is indexed like
+ * any other post text; image elements reference image instances, so search and comments work.
+ */
+export interface SlideDesign {
+  size: { w: number; h: number };
+  background?: string; // #rrggbb
+  fonts?: { heading?: string; body?: string };
+  elements: SlideElement[];
+}
+interface SlideElementBase {
+  id: ID;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  rotation?: number; // degrees
+  decorative?: boolean; // template art from the master/layout (logos, bars, footers): not searched
+}
+export type SlideShape = "rect" | "roundRect" | "ellipse" | "triangle" | "line" | "arrow";
+export interface SlideBox {
+  doc?: unknown; // ProseMirror JSON
+  fontSize?: number; // points; runs inherit it
+  color?: string; // default text color
+  valign?: "top" | "middle" | "bottom";
+  role?: "title" | "body"; // title uses the heading font
+}
+export type SlideElement =
+  | (SlideElementBase & SlideBox & { kind: "text"; fill?: string; line?: string })
+  | (SlideElementBase & SlideBox & { kind: "shape"; shape: SlideShape; fill?: string; line?: string; lineWidth?: number; flipH?: boolean; flipV?: boolean })
+  | (SlideElementBase & { kind: "image"; imageInstanceId: ID })
+  /** Drawn from the data table in its doc (header row: series names; first column: categories),
+   *  so editing the table redraws the chart and its numbers are searchable. */
+  | (SlideElementBase & SlideBox & { kind: "chart"; chartType: ChartType; colors?: (string | null)[] });
+export type ChartType = "column" | "bar" | "line" | "area" | "pie" | "doughnut" | "scatter";
+
+/** How automatic slides look when presenting (designed slides keep their own design). */
+export interface SlideTheme {
+  name?: string;
+  background?: string; // #rrggbb
+  heading?: string;
+  text?: string;
+  accent?: string;
+  headingFont?: string;
+  bodyFont?: string;
+}
+/** A post's or notebook's presentation settings; `deck` keeps an imported deck's own look. */
+export interface Presentation {
+  theme?: SlideTheme;
+  deck?: SlideTheme;
+}
 
 export interface PostSource {
   kind: "import";
@@ -141,6 +195,7 @@ export interface Post {
   reactions: Record<string, ID[]>;
   collectionIds: ID[];
   source?: PostSource;
+  presentation?: Presentation;
 }
 
 /** Image metadata (§B10): what the author provides lives on ImageInstance; this is extracted. */
@@ -234,6 +289,24 @@ export interface DraftSummary {
   updatedAt: ISODateTime;
   imageCount: number;
   workspaceId: ID;
+  /** Drafts made by importing slides: which import, file, and slide. */
+  source?: Pick<PostSource, "importJobId" | "fileName" | "slide" | "slideCount">;
+}
+
+/** One of your recent imports and how far it got ("Your imports" on the import page). */
+export interface ImportSummary {
+  id: ID;
+  sourceFilename: string;
+  status: ImportJob["status"];
+  slideCount: number;
+  createdAt: ISODateTime;
+  drafts: number;
+  published: number;
+}
+
+/** A post an import created, drafts and published alike (the import page's two lists). */
+export interface ImportPost extends DraftSummary {
+  status: "draft" | "published";
 }
 
 export interface PostPatch {
@@ -244,6 +317,7 @@ export interface PostPatch {
   tagIds?: ID[];
   coAuthorIds?: ID[];
   blocks?: Block[];
+  presentation?: Presentation | null; // not a content edit: no new revision
 }
 
 // ---- Discussion (v3) ----
@@ -473,6 +547,7 @@ export interface Collection {
   updatedAt?: ISODateTime;
   /** Notebooks made from a tag remember it, so there is one per tag even after a rename. */
   sourceTagId?: ID;
+  presentation?: Presentation;
 }
 
 // ---- Library (scale): everything a person can save, searchable and paged ----
@@ -513,6 +588,8 @@ export interface CollectionEntry {
 // ---- Import (v5) ----
 
 export type ImportMode = "per_slide" | "whole_deck" | "by_section";
+/** auto: slides whose layout carries meaning (pictures, shapes, columns) stay designed; text slides become post text. */
+export type SlideDesignMode = "auto" | "slides" | "text";
 export interface ImportItem {
   id: ID;
   slideNumbers: number[];
@@ -533,11 +610,21 @@ export interface ImportJob {
   sourceFilename: string;
   sourceBytes: number;
   slideCount: number;
-  defaults: { tagIds: ID[]; baseDate?: ISODate; guessDates: boolean; collectionName: string };
+  defaults: { tagIds: ID[]; baseDate?: ISODate; guessDates: boolean; collectionName: string; slideDesign?: SlideDesignMode };
   items: ImportItem[];
   collectionId?: ID;
   error?: string;
   report?: { created: number; skipped: number; warnings: number };
+}
+
+// ---- Plans (docs/PRICING.md; enforced by the server) ----
+
+export interface PlanInfo {
+  plan: "free" | "team" | "business" | "enterprise";
+  name: string;
+  /** null = unlimited */
+  limits: { members: number | null; workspaces: number | null; privateWorkspaces: boolean; storageBytes: number | null; importsPerMonth: number | null };
+  usage: { members: number; pendingInvites: number; workspaces: number; storageBytes: number; importsThisMonth: number };
 }
 
 // ---- Errors & dev ----

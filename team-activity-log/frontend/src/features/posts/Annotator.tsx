@@ -62,6 +62,7 @@ export function Annotator({ image, open, onClose, onSave, saving }: Props) {
   const [textAt, setTextAt] = useState<Pt | null>(null);
   const [text, setText] = useState("");
   const svgRef = useRef<SVGSVGElement>(null);
+  const textInput = useRef<HTMLInputElement>(null);
   const drag = useRef<{ start: Pt; last: Pt; erased: Set<string> } | null>(null);
 
   const W = image.asset.width;
@@ -92,14 +93,18 @@ export function Annotator({ image, open, onClose, onSave, saving }: Props) {
   const topHit = (p: Pt) => [...shapes].reverse().find((s) => hitTest(s, p, tol(), aspect));
 
   const onDown = (e: React.PointerEvent) => {
-    if (textAt) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
     const p = toNorm(e);
     if (tool === "text") {
-      setTextAt(p);
+      // Claim the click: the browser's own mouse-down would otherwise move focus off the new
+      // text box, and blurring an empty box closes it before you can type.
+      e.preventDefault();
+      if (textAt) commitText(); // clicking elsewhere finishes the current label…
+      setTextAt(p); // …and starts the next one there
       setText("");
       return;
     }
+    if (textAt) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
     if (tool === "select") {
       const hit = topHit(p);
       setSelected(hit?.id ?? null);
@@ -164,6 +169,13 @@ export function Annotator({ image, open, onClose, onSave, saving }: Props) {
     setTextAt(null);
     setText("");
   };
+
+  // Focus a new text box once it's on screen (autoFocus alone can lose to the click that made it).
+  useEffect(() => {
+    if (!textAt) return;
+    const id = requestAnimationFrame(() => textInput.current?.focus());
+    return () => cancelAnimationFrame(id);
+  }, [textAt]);
 
   // Restyle the selected shape when color/size change.
   const restyle = (patch: Partial<Shape>) => {
@@ -286,12 +298,17 @@ export function Annotator({ image, open, onClose, onSave, saving }: Props) {
           {textAt && (
             <Box sx={{ position: "absolute", left: `${textAt[0] * 100}%`, top: `${textAt[1] * 100}%`, transform: "translateY(-100%)" }}>
               <input
-                autoFocus
+                ref={textInput}
+                key={`${textAt[0]},${textAt[1]}`}
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") commitText();
-                  if (e.key === "Escape") setTextAt(null);
+                  if (e.key === "Escape") {
+                    e.stopPropagation(); // close the box, not the whole annotator
+                    setTextAt(null);
+                    setText("");
+                  }
                 }}
                 onBlur={commitText}
                 placeholder="Type, then Enter"

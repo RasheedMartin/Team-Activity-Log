@@ -24,7 +24,7 @@ import {
 import { useState, type ReactNode } from "react";
 import { Link as RouterLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import type { FilterSpec, UserPreferences } from "../../api/contract";
-import { useChangePassword, useDeleteAccount, useExportMyData, useMe, useRevokeSessions, useSessions, useUpdatePreferences, useUpdateProfile } from "../../api/hooks";
+import { useChangePassword, useDeleteAccount, useExportMyData, useMe, useProfilePhoto, useRevokeSessions, useSessions, useUpdatePreferences, useUpdateProfile } from "../../api/hooks";
 import { homePath, wsPath } from "../../app/session";
 import { useNotify } from "../../components/notify";
 import { UserAvatar } from "../../components/ui";
@@ -50,26 +50,10 @@ const TIMEZONES: string[] = (() => {
   }
 })();
 
-/** Read a picked image and downscale it to a 128px square data URL for the avatar. */
-async function avatarFromFile(file: File): Promise<string> {
-  const url = URL.createObjectURL(file);
-  try {
-    const img = new Image();
-    img.src = url;
-    await img.decode();
-    const c = document.createElement("canvas");
-    c.width = c.height = 128;
-    const s = Math.min(img.naturalWidth, img.naturalHeight);
-    c.getContext("2d")!.drawImage(img, (img.naturalWidth - s) / 2, (img.naturalHeight - s) / 2, s, s, 0, 0, 128, 128);
-    return c.toDataURL("image/jpeg", 0.85);
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
-
 function ProfileTab() {
   const { data: me } = useMe();
   const update = useUpdateProfile();
+  const photo = useProfilePhoto();
   const notify = useNotify();
   const u = me!.user;
   const [f, setF] = useState({ name: u.name, title: u.title ?? "", bio: u.bio ?? "", pronouns: u.pronouns ?? "", timezone: u.timezone ?? "UTC" });
@@ -82,12 +66,17 @@ function ProfileTab() {
           <UserAvatar user={u} size={64} />
           <Button component="label" variant="outlined" size="small">
             Change photo
-            <input hidden type="file" accept="image/*" onChange={async (e) => {
+            <input hidden type="file" accept="image/png,image/jpeg,image/gif,image/webp" onChange={(e) => {
               const file = e.target.files?.[0];
-              if (file) update.mutate({ avatarUrl: await avatarFromFile(file) }, { onSuccess: () => notify("Photo updated") });
+              e.target.value = ""; // picking the same file again still fires
+              if (file) photo.upload.mutate(file, { onSuccess: () => notify("Photo updated"), onError: (err) => notify(errorMessage(err)) });
             }} />
           </Button>
-          {u.avatarUrl && <Button size="small" onClick={() => update.mutate({ avatarUrl: undefined })}>Remove</Button>}
+          {u.avatarUrl && (
+            <Button size="small" disabled={photo.remove.isPending} onClick={() => photo.remove.mutate(undefined, { onSuccess: () => notify("Photo removed"), onError: (err) => notify(errorMessage(err)) })}>
+              Remove
+            </Button>
+          )}
         </Stack>
         <TextField label="Name" value={f.name} onChange={set("name")} required />
         <TextField label="Title or team" value={f.title} onChange={set("title")} placeholder="Postdoc, Detector group" />

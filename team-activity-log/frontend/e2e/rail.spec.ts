@@ -12,9 +12,9 @@ test("only the clicked saved search or collection is highlighted", async ({ page
   await rail.getByRole("link", { name: "Lab_Notes_2022.pptx" }).click();
   await expect(rail.getByRole("link", { name: "Lab_Notes_2022.pptx" })).toHaveAttribute("aria-current", "page");
   await expect(views.first()).not.toHaveAttribute("aria-current", "page");
-  // Changing filters means you're no longer "on" the collection.
-  await page.getByRole("button", { name: "Add filter" }).click();
-  await page.getByRole("menuitem", { name: "Has images" }).click();
+  await expect(page).toHaveURL(/\/collections\//); // a collection opens as its own page
+  // Searching within it means you're in Search, no longer "on" the collection.
+  await page.getByRole("main").getByRole("link", { name: "Search within" }).click();
   await expect(rail.getByRole("link", { name: "Lab_Notes_2022.pptx" })).not.toHaveAttribute("aria-current", "page");
   // With an ad-hoc search (no favorite matches), Search is the current item.
   await expect(rail.getByRole("link", { name: "Search", exact: true })).toHaveAttribute("aria-current", "page");

@@ -20,6 +20,10 @@ export const proseSx: SystemStyleObject<Theme> = {
   "& th": { bgcolor: "action.hover", fontWeight: 600 },
   "& hr": { border: 0, borderTop: 1, borderColor: "divider", my: 2 },
   "& .mention": { color: "primary.main", fontWeight: 500 },
+  // Text color and highlight (see features/posts/editor/formatting.tsx). Dark mode lightens
+  // stored colors so a deck's navy or maroon stays readable; highlights keep dark text.
+  "& [data-tc]": { color: (t) => (t.palette.mode === "dark" ? "color-mix(in oklab, var(--tc) 62%, white)" : "var(--tc)") },
+  "& mark[data-hl]": { bgcolor: "var(--hl, #fff176)", color: "#1f2328", borderRadius: "2px", px: "1px", "& [data-tc]": { color: "var(--tc)" } },
   "& > :first-of-type": { mt: 0 },
   "& > :last-child": { mb: 0 },
 };

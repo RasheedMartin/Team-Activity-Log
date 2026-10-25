@@ -23,8 +23,6 @@ import {
   Paper,
   Skeleton,
   Stack,
-  Tab,
-  Tabs,
   TextField,
   ToggleButton,
   Typography,
@@ -42,10 +40,6 @@ import { KINDS } from "./concepts";
 import { FavoriteButton } from "./FavoriteButton";
 import { libraryHref } from "./libraryLinks";
 
-const TABS: { value: LibraryKind | "all"; label: string }[] = [
-  { value: "all", label: "All" },
-  ...(["view", "collection", "notebook"] as const).map((k) => ({ value: k, label: KINDS[k].plural })),
-];
 
 function RenameDialog({ item, onClose }: { item: LibraryItem; onClose: () => void }) {
   const { org, ws } = useWs();
@@ -141,13 +135,13 @@ function Row({ item, ownerName }: { item: LibraryItem; ownerName?: string }) {
 }
 
 /**
- * Library (scale): every saved search, collection, and notebook in the workspace — searchable,
- * filterable, sorted, and paged from the server. The rail only shows your Favorites.
+ * Collections or Notebooks (each its own page in the rail; owner request, replacing the Library):
+ * every one in the workspace, searchable by name, sorted, and paged from the server. Saved
+ * searches live in Search's "Saved searches" menu.
  */
-export default function LibraryPage() {
+export default function LibraryPage({ kind }: { kind: Exclude<LibraryKind, "view"> }) {
   const { org, ws } = useWs();
   const [params, setParams] = useSearchParams();
-  const kind = (params.get("kind") as LibraryKind | null) ?? undefined;
   const sort = params.get("sort") === "name" ? "name" : "recent";
   const mine = params.get("mine") === "1";
   const [q, setQ] = useState(params.get("q") ?? "");
@@ -160,35 +154,22 @@ export default function LibraryPage() {
   const { data: people = [] } = usePeople(org.id);
   const names = useMemo(() => new Map(people.map((p) => [p.id, p.name])), [people]);
   const items = lib.data?.pages.flatMap((p) => p.items) ?? [];
-  const counts = lib.data?.pages[0]?.counts;
   const set = (patch: Record<string, string | null>) => {
     const next = new URLSearchParams(params);
     Object.entries(patch).forEach(([k, v]) => (v === null ? next.delete(k) : next.set(k, v)));
     setParams(next, { replace: true });
   };
-  const countFor = (t: LibraryKind | "all") => (counts ? (t === "all" ? counts.view + counts.notebook + counts.collection : counts[t]) : undefined);
 
   return (
     <Box sx={{ maxWidth: 960, width: "100%", mx: "auto", px: { xs: 1.5, sm: 3 }, py: 3 }}>
-      <PageHeader title="Library" />
-      <Tabs value={kind ?? "all"} onChange={(_, v) => set({ kind: v === "all" ? null : v })} sx={{ mb: 1.5, minHeight: 40, "& .MuiTab-root": { minHeight: 40, textTransform: "none" } }} variant="scrollable">
-        {TABS.map((t) => (
-          <Tab key={t.value} value={t.value} label={countFor(t.value) === undefined ? t.label : `${t.label} (${countFor(t.value)})`} />
-        ))}
-      </Tabs>
-      {kind && (
-        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5, color: "text.secondary", "& svg": { fontSize: 18 } }}>
-          {KINDS[kind].icon}
-          <Typography variant="body2">{KINDS[kind].blurb}</Typography>
-        </Stack>
-      )}
+      <PageHeader title={KINDS[kind].plural} sub={KINDS[kind].blurb} />
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mb: 2 }}>
         <TextField
           placeholder="Search by name"
           value={q}
           onChange={(e) => (setQ(e.target.value), set({ q: e.target.value || null }))}
           slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchRounded fontSize="small" /></InputAdornment> } }}
-          inputProps={{ "aria-label": "Search the library" }}
+          inputProps={{ "aria-label": `Find ${KINDS[kind].plural.toLowerCase()}` }}
           sx={{ flex: 1 }}
         />
         <TextField select value={sort} onChange={(e) => set({ sort: e.target.value === "name" ? "name" : null })} sx={{ minWidth: 180 }} inputProps={{ "aria-label": "Sort" }}>
@@ -205,12 +186,12 @@ export default function LibraryPage() {
         <ErrorState error={lib.error} onRetry={() => lib.refetch()} />
       ) : !items.length ? (
         <EmptyState
-          title={debounced || mine ? "Nothing matches" : "Nothing saved yet"}
-          body={debounced || mine ? "Try a different name or clear the filters." : "Save a search, or select posts in Search to make a collection or notebook."}
+          title={debounced || mine ? "Nothing matches" : `No ${KINDS[kind].plural.toLowerCase()} yet`}
+          body={debounced || mine ? "Try a different name or clear the filters." : kind === "collection" ? "Import slides to make one per deck, or select posts in Search and choose New collection." : "Select posts in Search and choose New notebook, or make one from a tag on Home."}
         />
       ) : (
         <Paper variant="outlined" sx={{ opacity: lib.isPlaceholderData ? 0.6 : 1 }}>
-          <List disablePadding aria-label="Library items">
+          <List disablePadding aria-label={KINDS[kind].plural}>
             {items.map((i) => <Row key={`${i.kind}-${i.id}`} item={i} ownerName={names.get(i.ownerId)} />)}
           </List>
         </Paper>

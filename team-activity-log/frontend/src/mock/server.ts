@@ -11,6 +11,7 @@ import type {
   User,
   Workspace,
 } from "../api/contract";
+import { blockImageIds } from "../lib/blocks";
 import { uuidv7 } from "../lib/ids";
 import { db, type AssetRow, type MembershipRow, type PostRow, type UserRow } from "./db";
 import { readDevSettings } from "./devSettings";
@@ -193,9 +194,8 @@ export const engine = new SearchEngine({
   posts: () => db.t.posts.rows.values(),
   tags: (orgId) => (orgId ? db.t.tags.filter((t) => t.orgId === orgId) : db.t.tags.all()),
   images: (post) =>
-    post.blocks.flatMap((b) => {
-      if (b.type !== "image") return [];
-      const inst = db.t.images.get(b.imageInstanceId);
+    blockImageIds(post.blocks, "content").flatMap((id) => {
+      const inst = db.t.images.get(id);
       const asset = inst ? db.t.assets.get(inst.assetId) : undefined;
       return inst && asset ? [{ inst, asset: assetView(asset) }] : [];
     }),

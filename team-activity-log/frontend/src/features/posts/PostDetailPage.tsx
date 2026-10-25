@@ -21,6 +21,7 @@ import {
   Divider,
   Drawer,
   IconButton,
+  Link,
   List,
   ListItemButton,
   ListItemText,
@@ -43,6 +44,8 @@ import { can, useWs, wsPath } from "../../app/session";
 import { AnnotationLayer } from "../../components/AnnotationLayer";
 import { useNotify } from "../../components/notify";
 import { RichText } from "../../components/RichText";
+import { SlideCanvas } from "../../components/SlideCanvas";
+import { designDocs } from "../../lib/blocks";
 import { EmptyState, ErrorState, StatusPill, TagChip, UserAvatar } from "../../components/ui";
 import { formatDay, timeAgo } from "../../lib/dates";
 import { lineDiff } from "../../lib/diff";
@@ -80,7 +83,8 @@ export default function PostDetailPage() {
 }
 
 /** Plain text of a block list (for the revision diff). */
-const blocksText = (blocks: Block[]) => blocks.map((b) => (b.type === "text" || b.type === "table" ? docText(b.doc) : b.type === "image" ? "[image]" : "— slide —")).join("\n");
+const blocksText = (blocks: Block[]) =>
+  blocks.map((b) => (b.type === "text" || b.type === "table" ? docText(b.doc) : b.type === "image" ? "[image]" : b.type === "slide" ? ["— designed slide —", ...designDocs(b.design).map(docText)].join("\n") : "— slide —")).join("\n");
 
 function RevisionDrawer({ post, open, onClose }: { post: Post; open: boolean; onClose: () => void }) {
   const { org } = useWs();
@@ -314,6 +318,11 @@ function PostView({ post, images }: { post: Post; images: ImageView[] }) {
               <Stack direction="row" spacing={0.5} alignItems="center" sx={{ color: "text.secondary", ml: 1 }}>
                 <FileUploadOutlined sx={{ fontSize: 15 }} />
                 <Typography variant="caption">From “{post.source.fileName}” · slide {post.source.slide} of {post.source.slideCount}</Typography>
+                {post.authorId === me.user.id && (
+                  <Link component={RouterLink} to={`${base}/import?job=${post.source.importJobId}`} variant="caption" sx={{ ml: 0.5 }}>
+                    Open import
+                  </Link>
+                )}
               </Stack>
             )}
           </Stack>
@@ -323,6 +332,7 @@ function PostView({ post, images }: { post: Post; images: ImageView[] }) {
           {post.blocks.map((b) => {
             if (b.type === "text" || b.type === "table") return <RichText key={b.id} doc={b.doc} />;
             if (b.type === "slide_break") return <Divider key={b.id} sx={{ borderStyle: "dashed" }} />;
+            if (b.type === "slide") return <SlideCanvas key={b.id} design={b.design} images={imgs} />;
             const img = imgs.get(b.imageInstanceId);
             if (!img) return null;
             return (

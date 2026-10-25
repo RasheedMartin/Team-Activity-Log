@@ -56,6 +56,11 @@ test("visitors get the landing page; signed-in people go straight to their works
   await expect(page.getByRole("button", { name: "Account menu" })).toBeVisible();
   await page.goto("/");
   await expect(page).toHaveURL(/\/o\/[^/]+\/w\/[^/]+$/);
-  await page.goto("/about");
-  await expect(page.getByRole("link", { name: "Open your workspace" }).first()).toBeVisible();
+  // Signed in, the public home page is one click away in the account menu.
+  await page.getByRole("button", { name: "Account menu" }).click();
+  await page.getByRole("menuitem", { name: /^About / }).click();
+  await expect(page).toHaveURL(/\/about$/);
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("Find it in seconds");
+  await page.getByRole("link", { name: "Open your workspace" }).first().click();
+  await expect(page.getByRole("button", { name: "Account menu" })).toBeVisible();
 });

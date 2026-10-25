@@ -1,13 +1,28 @@
-import type { Block, ID, ImageView, Post } from "../api/contract";
+import type { Block, ID, ImageView, Post, SlideDesign } from "../api/contract";
 import { docText, type PMNode } from "./prosemirror";
 
 // §W5.1 slide derivation [DECISION]: a title slide, then slides from blocks. Explicit slide-break
 // blocks win; otherwise each image becomes a slide with its adjacent text as caption, and long
 // text is chunked. Imported decks keep their original breaks (they arrive as slide_break blocks).
+// A designed slide block is always exactly one slide, shown as designed.
 
 export type Slide =
   | { kind: "title"; postId: ID; title: string; summary?: string; workDate: string; authorId: ID; tagIds: ID[]; notes?: string }
-  | { kind: "content"; postId: ID; heading?: string; text: PMNode[]; image?: ImageView; notes?: string };
+  | {
+      kind: "content";
+      postId: ID;
+      heading?: string;
+      text: PMNode[];
+      image?: ImageView;
+      notes?: string;
+      /** The post blocks this slide shows ("Customize this slide" turns them into a designed slide). */
+      blockIds: ID[];
+      /** Part of a text block split across slides: it can't be designed on its own. */
+      partial?: boolean;
+    }
+  | { kind: "designed"; postId: ID; design: SlideDesign; images: Map<ID, ImageView>; notes?: string };
+
+const designed = (postId: ID, b: Extract<Block, { type: "slide" }>, images: Map<ID, ImageView>): Slide => ({ kind: "designed", postId, design: b.design, images, notes: b.notes });
 
 const TEXT_BUDGET = 650; // characters of body text that comfortably fit beside nothing else
 const CAPTION_BUDGET = 260; // text that fits as a caption under an image
@@ -46,16 +61,20 @@ function liftHeading(nodes: PMNode[]): { heading?: string; rest: PMNode[] } {
 function contentSlides(postId: ID, blocks: Block[], images: Map<ID, ImageView>, notes?: string): Slide[] {
   const slides: Slide[] = [];
   let pendingText: PMNode[] = [];
+  let pendingIds: ID[] = [];
   const flushText = () => {
     if (isBlank(pendingText)) {
       pendingText = [];
+      pendingIds = [];
       return;
     }
-    for (const c of chunk(pendingText)) {
+    const chunks = chunk(pendingText);
+    for (const c of chunks) {
       const { heading, rest } = liftHeading(c);
-      slides.push({ kind: "content", postId, heading, text: rest });
+      slides.push({ kind: "content", postId, heading, text: rest, blockIds: pendingIds, partial: chunks.length > 1 || undefined });
     }
     pendingText = [];
+    pendingIds = [];
   };
   for (let i = 0; i < blocks.length; i++) {
     const b = blocks[i];
@@ -65,23 +84,31 @@ function contentSlides(postId: ID, blocks: Block[], images: Map<ID, ImageView>, 
       // Adjacent text becomes the caption when it's short: the text right before the image
       // (if nothing else claimed it), else the text right after.
       let caption: PMNode[] = [];
+      let ids: ID[] = [b.id];
       const before = pendingText;
       if (!isBlank(before) && docText({ type: "doc", content: before }).length <= CAPTION_BUDGET) {
         caption = before;
+        ids = [...pendingIds, b.id];
         pendingText = [];
+        pendingIds = [];
       } else {
         flushText();
         const next = blocks[i + 1];
         const after = next ? topNodes(next) : [];
         if (next && next.type === "text" && !isBlank(after) && docText(next.doc).length <= CAPTION_BUDGET) {
           caption = after;
+          ids = [b.id, next.id];
           i++;
         }
       }
       const { heading, rest } = liftHeading(caption);
-      slides.push({ kind: "content", postId, heading, text: rest, image });
+      slides.push({ kind: "content", postId, heading, text: rest, image, blockIds: ids });
     } else if (b.type === "text" || b.type === "table") {
       pendingText.push(...topNodes(b));
+      pendingIds.push(b.id);
+    } else if (b.type === "slide") {
+      flushText();
+      slides.push(designed(postId, b, images));
     }
   }
   flushText();
@@ -95,21 +122,28 @@ export function deriveSlides(post: Post, images: ImageView[]): Slide[] {
   const hasBreaks = post.blocks.some((b) => b.type === "slide_break");
   if (!hasBreaks) return [title, ...contentSlides(post.id, post.blocks, imgs)];
   // Explicit breaks: each section is one slide (images and text together), chunked only if huge.
-  const sections: { blocks: Block[]; notes?: string }[] = [{ blocks: [] }];
+  const sections: { blocks: Block[]; notes?: string; slide?: Extract<Block, { type: "slide" }> }[] = [{ blocks: [] }];
   for (const b of post.blocks) {
     if (b.type === "slide_break") sections.push({ blocks: [], notes: b.notes });
+    else if (b.type === "slide") sections.push({ blocks: [], slide: b }, { blocks: [] });
     else sections[sections.length - 1].blocks.push(b);
   }
   const out: Slide[] = [title];
   for (const s of sections) {
+    if (s.slide) {
+      out.push(designed(post.id, s.slide, imgs));
+      continue;
+    }
     const imageBlocks = s.blocks.filter((b): b is Extract<Block, { type: "image" }> => b.type === "image");
     const text = s.blocks.flatMap(topNodes);
     if (!imageBlocks.length && isBlank(text)) continue;
     if (imageBlocks.length <= 1) {
       const chunks = chunk(text, imageBlocks.length ? CAPTION_BUDGET * 2 : TEXT_BUDGET * 1.5);
       const first = liftHeading(chunks[0] ?? []);
-      out.push({ kind: "content", postId: post.id, heading: first.heading, text: first.rest, image: imageBlocks[0] ? imgs.get(imageBlocks[0].imageInstanceId) : undefined, notes: s.notes });
-      chunks.slice(1).forEach((c) => out.push({ kind: "content", postId: post.id, text: c }));
+      const ids = s.blocks.map((b) => b.id);
+      const partial = chunks.length > 1 || undefined;
+      out.push({ kind: "content", postId: post.id, heading: first.heading, text: first.rest, image: imageBlocks[0] ? imgs.get(imageBlocks[0].imageInstanceId) : undefined, notes: s.notes, blockIds: ids, partial });
+      chunks.slice(1).forEach((c) => out.push({ kind: "content", postId: post.id, text: c, blockIds: ids, partial }));
     } else {
       out.push(...contentSlides(post.id, s.blocks, imgs, s.notes));
     }

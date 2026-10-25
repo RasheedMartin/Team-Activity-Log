@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import datetime as dt
-import re
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, Request, Response
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .. import avatars, security, storage
 from .. import models as m
+from .. import sanitize as clean
 from ..config import get_settings
 from ..context import (
     OrgCtx,
@@ -27,12 +28,13 @@ from ..context import (
 )
 from ..db import get_db
 from ..errors import fail
+from ..httputil import read_limited
 from ..ids import parse_uuid, uuid7
 from ..timeutil import iso, now
 from ..views import org_view, prefs_view, user_view, workspace_view
 
 router = APIRouter()
-EMAIL_RE = re.compile(r"^\S+@\S+\.\S+$")
+DUMMY_HASH = hash_password("not-a-real-password-used-only-for-equal-timing")
 
 
 async def me_response(db: AsyncSession, u: m.User) -> dict:
@@ -79,21 +81,14 @@ async def signed_in(db: AsyncSession, request: Request, response: Response, u: m
     return await me_response(db, u)
 
 
-def check_password(pw: str | None) -> str:
-    if len(pw or "") < 8:
-        fail(422, "weak_password", "Use at least 8 characters")
-    return pw or ""
-
-
 @router.post("/auth/register", status_code=201)
 async def register(request: Request, response: Response, body: dict = Body(...), db: AsyncSession = Depends(get_db, scope="function")):
-    name, email = str(body.get("name") or "").strip(), str(body.get("email") or "").strip()
-    if not name or not EMAIL_RE.match(email):
-        fail(422, "invalid", "Enter your name and a valid email")
-    pw = check_password(body.get("password"))
+    name = clean.text(body.get("name"), "name", 200, required=True, label="Your name") or ""
+    email = clean.email(body.get("email"))
+    pw = clean.password(body.get("password"))
     if await find_by_email(db, email):
         fail(409, "email_taken", "An account with this email already exists. Sign in instead.")
-    u = m.User(id=uuid7(), name=name, email=email, password_hash=hash_password(pw), timezone=body.get("timezone") or "UTC")
+    u = m.User(id=uuid7(), name=name, email=email, password_hash=hash_password(pw), timezone=clean.timezone(body.get("timezone")) or "UTC")
     db.add(u)
     await db.flush()
     token = await issue_token(db, "verify", u.id, 72)
@@ -110,8 +105,15 @@ async def verify(token: str, request: Request, response: Response, db: AsyncSess
 
 @router.post("/auth/login")
 async def login(request: Request, response: Response, body: dict = Body(...), db: AsyncSession = Depends(get_db, scope="function")):
-    u = await find_by_email(db, str(body.get("email") or ""))
-    if not u or not verify_password(u.password_hash, str(body.get("password") or "")):
+    email = clean.text(body.get("email"), "email", 254) or ""
+    pw = body.get("password") if isinstance(body.get("password"), str) else ""
+    if security.login_locked(email):
+        fail(429, "rate_limited", "Too many wrong passwords for this account. Wait 15 minutes, or use “Forgot?” to reset it.")
+    u = await find_by_email(db, email)
+    # Same work whether or not the account exists, so response time doesn't reveal accounts.
+    ok = verify_password(u.password_hash if u else DUMMY_HASH, pw[:256])
+    if not u or not ok:
+        security.record_login_failure(email)
         fail(401, "bad_credentials", "Email or password is incorrect")
     if u.deactivated_at:
         fail(403, "deactivated", "This account has been deactivated")
@@ -120,7 +122,7 @@ async def login(request: Request, response: Response, body: dict = Body(...), db
 
 @router.post("/auth/magic-link", status_code=204)
 async def magic_link(body: dict = Body(...), db: AsyncSession = Depends(get_db, scope="function")):
-    u = await find_by_email(db, str(body.get("email") or ""))
+    u = await find_by_email(db, clean.text(body.get("email"), "email", 254) or "")
     # Same response whether or not the account exists (no account enumeration).
     if u:
         token = await issue_token(db, "magic", u.id, 1)
@@ -136,7 +138,7 @@ async def magic(token: str, request: Request, response: Response, db: AsyncSessi
 
 @router.post("/auth/forgot", status_code=204)
 async def forgot(body: dict = Body(...), db: AsyncSession = Depends(get_db, scope="function")):
-    u = await find_by_email(db, str(body.get("email") or ""))
+    u = await find_by_email(db, clean.text(body.get("email"), "email", 254) or "")
     if u:
         token = await issue_token(db, "reset", u.id, 2)
         await send_email(db, u.email, "Reset your password", "Use this link to choose a new password.", f"/reset/{token}")
@@ -145,7 +147,7 @@ async def forgot(body: dict = Body(...), db: AsyncSession = Depends(get_db, scop
 
 @router.post("/auth/reset/{token}")
 async def reset(token: str, request: Request, response: Response, body: dict = Body(...), db: AsyncSession = Depends(get_db, scope="function")):
-    pw = check_password(body.get("password"))
+    pw = clean.password(body.get("password"))
     u = await use_token(db, "reset", token, "This reset link is invalid or expired")
     u.password_hash = hash_password(pw)
     # A reset signs out every other session.
@@ -173,26 +175,63 @@ async def get_me(u: m.User = Depends(require_user), db: AsyncSession = Depends(g
 
 @router.patch("/me")
 async def patch_me(body: dict = Body(...), u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
-    if "name" in body and not str(body["name"] or "").strip():
-        fail(422, "invalid", "Name can't be empty")
-    for key, attr in (("name", "name"), ("title", "title"), ("bio", "bio"), ("pronouns", "pronouns"), ("timezone", "timezone"), ("avatarUrl", "avatar_url")):
-        if key in body:
-            setattr(u, attr, body[key].strip() if key == "name" else body[key])
+    # Photos go through PUT /me/avatar; avatarUrl is never client-writable.
+    if "name" in body:
+        u.name = clean.text(body["name"], "name", 200, required=True, label="Name") or u.name
+    if "title" in body:
+        u.title = clean.text(body["title"], "title", 200)
+    if "bio" in body:
+        u.bio = clean.text(body["bio"], "bio", 2000, multiline=True)
+    if "pronouns" in body:
+        u.pronouns = clean.text(body["pronouns"], "pronouns", 50)
+    if "timezone" in body:
+        u.timezone = clean.timezone(body["timezone"]) or "UTC"
     return await me_response(db, u)
+
+
+@router.put("/me/avatar")
+async def put_avatar(request: Request, u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
+    data = await read_limited(request, avatars.MAX_BYTES, "Profile photos must be under 8 MB")
+    await avatars.set_avatar(db, u, data)
+    return await me_response(db, u)
+
+
+@router.delete("/me/avatar")
+async def delete_avatar(u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
+    await avatars.remove_avatar(db, u)
+    return await me_response(db, u)
+
+
+@router.get("/users/{user_id}/avatar")
+async def get_avatar(user_id: str, u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
+    """Visible to the person and to anyone who shares an organization with them."""
+    uid = parse_uuid(user_id)
+    if not uid:
+        fail(404, "not_found", "Photo not found")
+    if uid != u.id:
+        mine = select(m.Membership.org_id).where(m.Membership.user_id == u.id, m.Membership.status == "active")
+        shared = await db.scalar(select(func.count()).select_from(m.Membership).where(m.Membership.user_id == uid, m.Membership.org_id.in_(mine)))
+        if not shared:
+            fail(404, "not_found", "Photo not found")
+    found = await storage.get_key(db, avatars.key_for(uid))
+    if not found:
+        fail(404, "not_found", "Photo not found")
+    mime, data = found
+    return Response(content=data, media_type=mime, headers={"Cache-Control": "private, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff"})
 
 
 @router.put("/me/preferences")
 async def put_prefs(body: dict = Body(...), u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
-    allowed = {"theme", "density", "defaultWorkspaceId", "histogramDateField", "shortcuts", "digest", "reducedMotion", "timezone"}
-    u.preferences = {k: v for k, v in body.items() if k in allowed}
+    u.preferences = clean.preferences(body)
     return await me_response(db, u)
 
 
 @router.put("/me/password", status_code=204)
 async def put_password(body: dict = Body(...), u: m.User = Depends(require_user)):
-    if not verify_password(u.password_hash, str(body.get("current") or "")):
+    current = body.get("current") if isinstance(body.get("current"), str) else ""
+    if not verify_password(u.password_hash, current[:256]):
         fail(422, "bad_credentials", "Current password is incorrect")
-    u.password_hash = hash_password(check_password(body.get("next")))
+    u.password_hash = hash_password(clean.password(body.get("next"), "next"))
     return Response(status_code=204)
 
 

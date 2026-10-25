@@ -1,10 +1,11 @@
 import { http, HttpResponse } from "msw";
-import type { Block, ImportItem, ImportJob, ImportMode } from "../../api/contract";
+import type { Block, ImportItem, ImportJob, ImportMode, ImportPost, ImportSummary, SlideDesign, SlideDesignMode } from "../../api/contract";
+import { blockImageIds } from "../../lib/blocks";
 import { uuidv7 } from "../../lib/ids";
 import { doc, heading } from "../../lib/prosemirror";
 import { createAsset } from "../assets";
 import { db, type ImportJobRow } from "../db";
-import { parsePptx, type ParsedDeck, type ParsedSlide } from "../pptx";
+import { deckLook, parsePptx, type ParsedDeck, type ParsedSlide } from "../pptx";
 import { emit, fail, now, orgCtx, reindex, route, workspaceCtx } from "../server";
 
 // The import reads the real .pptx in the browser (src/mock/pptx.ts) so decks can be tried for
@@ -89,14 +90,48 @@ async function parseJob(jobId: string) {
   await db.flush();
 }
 
-/** Blocks for one post: per slide a break (with presenter notes), heading when several slides, text, images. */
-async function blocksFor(orgId: string, postId: string, slides: ParsedSlide[]): Promise<Block[]> {
+const keepsDesign = (sl: ParsedSlide, mode: SlideDesignMode) => !!sl.design?.elements.length && (mode === "slides" || (mode === "auto" && sl.rich));
+
+/** The slide as a designed-slide block: its pictures become image instances of the post. */
+async function designBlock(orgId: string, postId: string, sl: ParsedSlide): Promise<Block> {
+  const elements = [];
+  for (const e of sl.design!.elements) {
+    if (e.kind !== "image") {
+      elements.push(e);
+      continue;
+    }
+    const img = sl.designImages[e.image as number];
+    const { asset } = await createAsset(orgId, img.blob, img.name, "pptx_import");
+    const inst = db.t.images.put({ id: uuidv7(), assetId: asset.id, postId, tags: [], customFields: {}, caption: e.decorative ? undefined : `Slide ${sl.n}` });
+    const { image: _i, ...rest } = e;
+    void _i;
+    elements.push({ ...rest, imageInstanceId: inst.id });
+  }
+  return { id: uuidv7(), type: "slide", design: { ...sl.design!, elements } as unknown as SlideDesign, ...(sl.notes ? { notes: sl.notes } : {}) };
+}
+
+/** Blocks for one post: per slide a designed-slide block when its layout is kept, otherwise a
+ *  break (with presenter notes), heading when several slides, then text and images in the slide's
+ *  reading order. */
+async function blocksFor(orgId: string, postId: string, slides: ParsedSlide[], designMode: SlideDesignMode = "auto"): Promise<Block[]> {
   const blocks: Block[] = [];
   for (const [k, sl] of slides.entries()) {
+    if (keepsDesign(sl, designMode)) {
+      blocks.push(await designBlock(orgId, postId, sl));
+      continue;
+    }
     if (k > 0 || sl.notes) blocks.push({ id: uuidv7(), type: "slide_break", notes: sl.notes || undefined });
-    const content = [...(slides.length > 1 && sl.title ? [heading(sl.title)] : []), ...sl.content];
-    if (content.length) blocks.push({ id: uuidv7(), type: "text", doc: doc(...content) });
-    for (const img of sl.images) {
+    let parts = sl.parts;
+    if (slides.length > 1 && sl.title) {
+      const [head, ...rest] = parts;
+      parts = head?.kind === "text" ? [{ kind: "text", content: [heading(sl.title), ...head.content] }, ...rest] : [{ kind: "text", content: [heading(sl.title)] }, ...parts];
+    }
+    for (const part of parts) {
+      if (part.kind === "text") {
+        blocks.push({ id: uuidv7(), type: "text", doc: doc(...part.content) });
+        continue;
+      }
+      const img = sl.images[part.index];
       const { asset } = await createAsset(orgId, img.blob, img.name, "pptx_import"); // deduped by hash within the org
       const inst = db.t.images.put({ id: uuidv7(), assetId: asset.id, postId, tags: [], customFields: {}, caption: `Slide ${sl.n}` });
       blocks.push({ id: uuidv7(), type: "image", imageInstanceId: inst.id });
@@ -125,6 +160,7 @@ export const importHandlers = [
         slideCount: 0,
         defaults: body.defaults,
         items: [],
+        createdAt: now(),
       });
       return HttpResponse.json(view(job), { status: 201 });
     }),
@@ -151,6 +187,43 @@ export const importHandlers = [
       return HttpResponse.json(view(j!));
     }, { flaky: false }),
   ),
+  http.get(
+    "/v1/orgs/:org/workspaces/:ws/imports",
+    route(({ cookies, params }) => {
+      const ctx = workspaceCtx(cookies, params.org as string, params.ws as string, "member");
+      const list: ImportSummary[] = db.t.importJobs
+        .filter((j) => j.workspaceId === ctx.ws.id && j.userId === ctx.user.id && j.status !== "failed")
+        .map((j) => ({ ...j, createdAt: j.createdAt ?? new Date(parseInt(j.id.replace(/-/g, "").slice(0, 12), 16)).toISOString() }))
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        .slice(0, 30)
+        .map((j) => {
+          const posts = db.t.posts.filter((p) => p.source?.importJobId === j.id && !p.deletedAt);
+          return { id: j.id, sourceFilename: j.sourceFilename, status: j.status, slideCount: j.slideCount, createdAt: j.createdAt, drafts: posts.filter((p) => p.status === "draft").length, published: posts.filter((p) => p.status === "published").length };
+        });
+      return HttpResponse.json(list);
+    }),
+  ),
+  http.get(
+    "/v1/orgs/:org/imports/:id/posts",
+    route(({ cookies, params }) => {
+      const ctx = orgCtx(cookies, params.org as string);
+      const j = db.t.importJobs.get(params.id as string);
+      if (!j || j.orgId !== ctx.org.id || j.userId !== ctx.user.id) fail(404, "not_found", "Import not found");
+      const list: ImportPost[] = db.t.posts
+        .filter((p) => p.source?.importJobId === j!.id && !p.deletedAt)
+        .map((p) => ({
+          id: p.id,
+          title: p.title,
+          status: (p.status === "published" ? "published" : "draft") as ImportPost["status"],
+          updatedAt: p.updatedAt,
+          imageCount: p.counts.images,
+          workspaceId: p.workspaceId,
+          source: { importJobId: p.source!.importJobId, fileName: p.source!.fileName, slide: p.source!.slide, slideCount: p.source!.slideCount },
+        }))
+        .sort((a, b) => (a.source.slide ?? 0) - (b.source.slide ?? 0));
+      return HttpResponse.json(list);
+    }),
+  ),
   http.patch(
     "/v1/orgs/:org/imports/:id",
     route(async ({ cookies, params, request }) => {
@@ -172,6 +245,8 @@ export const importHandlers = [
       if (j!.status === "done") return HttpResponse.json(view(j!)); // idempotent
       if (j!.status !== "review") fail(409, "not_in_review", "Nothing to commit yet");
       const deck = await deckFor(j!);
+      const look = deckLook(deck.slides);
+      const presentation = Object.keys(look).length ? { theme: { ...look, name: "From the deck" }, deck: { ...look, name: "From the deck" } } : undefined;
       const bySlide = new Map(deck.slides.map((x) => [x.n, x]));
       const fileSha = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", await j!.sourceBlob!.arrayBuffer())), (b) => b.toString(16).padStart(2, "0")).join("");
       const coll = db.t.collections.put({ id: uuidv7(), workspaceId: j!.workspaceId, name: j!.defaults.collectionName || j!.sourceFilename, kind: "deck_import", postIds: [], createdBy: ctx.user.id, updatedAt: now() });
@@ -184,7 +259,7 @@ export const importHandlers = [
         }
         const postId = uuidv7();
         const slides = item.slideNumbers.map((n) => bySlide.get(n)).filter((x): x is ParsedSlide => !!x);
-        const blocks = await blocksFor(ctx.org.id, postId, slides);
+        const blocks = await blocksFor(ctx.org.id, postId, slides, j!.defaults.slideDesign ?? "auto");
         const t = now();
         db.t.posts.put({
           id: postId,
@@ -203,7 +278,8 @@ export const importHandlers = [
           version: 1,
           createdAt: t,
           updatedAt: t,
-          counts: { comments: 0, reactions: 0, images: blocks.filter((b) => b.type === "image").length },
+          counts: { comments: 0, reactions: 0, images: blockImageIds(blocks, "content").length },
+          presentation,
           reactions: {},
           collectionIds: [coll.id],
           source: { kind: "import", importJobId: j!.id, fileName: j!.sourceFilename, fileSha256: fileSha, slide: item.slideNumbers[0], slideCount: j!.slideCount },

@@ -5,10 +5,12 @@ import {
   SearchRounded,
   ExpandMoreRounded,
   NotificationsNoneRounded,
-  LibraryBooksOutlined,
+  CollectionsBookmarkOutlined,
+  MenuBookOutlined,
   LogoutRounded,
   MenuRounded,
   PersonOutlineRounded,
+  PublicOutlined,
   ScienceOutlined,
   SlideshowOutlined,
   StarRounded,
@@ -37,12 +39,12 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link as RouterLink, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { API_MODE } from "../api/client";
 import { useLogout, useNotifications, usePins, useRememberWorkspace } from "../api/hooks";
-import { collectionParams, libraryHref } from "../features/collections/libraryLinks";
+import { libraryHref } from "../features/collections/libraryLinks";
 import { KINDS, favoriteDomId } from "../features/collections/concepts";
-import { fromSearchParams, specKey } from "../lib/filterSpec";
 
 const PINS_SHOWN = 10;
 import { UserAvatar } from "../components/ui";
+import { BRAND } from "./brand";
 import { can, useWs, wsPath } from "./session";
 import { useShortcuts } from "./shortcuts";
 import { CommandPalette } from "../features/search/CommandPalette";
@@ -172,6 +174,13 @@ function UserMenu() {
           </MenuItem>
         )}
         <Divider />
+        {/* The public home page (`/` sends signed-in people straight to their workspace). */}
+        <MenuItem onClick={() => go("/about")}>
+          <ListItemIcon>
+            <PublicOutlined fontSize="small" />
+          </ListItemIcon>
+          About {BRAND.name}
+        </MenuItem>
         <MenuItem onClick={() => logout.mutate(undefined, { onSettled: () => navigate("/", { replace: true }) })}>
           <ListItemIcon>
             <LogoutRounded fontSize="small" />
@@ -188,16 +197,16 @@ function Rail({ onNavigate }: { onNavigate?: () => void }) {
   const base = wsPath(org, ws);
   const navigate = useNavigate();
   // The rail shows only what *you* pinned (scale: a workspace may have hundreds of views,
-  // notebooks, and collections; everything else lives in the Library).
+  // notebooks, and collections; the rest are on the Collections / Notebooks pages and in Search).
   const { data: pins = [] } = usePins(org.id, ws.id);
   const { data: notes } = useNotifications(org.id);
   const unread = notes?.some((n) => !n.readAt && n.workspaceId === ws.id);
-  const shownPins = pins.slice(0, PINS_SHOWN);
+  const [allPins, setAllPins] = useState(false);
+  const shownPins = allPins ? pins : pins.slice(0, PINS_SHOWN);
   const location = useLocation();
   const params = new URLSearchParams(location.search);
   const onSearch = location.pathname === `${base}/search`;
-  const pinIsActive = (item: (typeof pins)[number]) =>
-    item.kind !== "notebook" && onSearch && (item.kind === "view" ? params.get("view") === item.id : !params.get("view") && specKey(fromSearchParams(params)) === specKey(fromSearchParams(collectionParams(item.id))));
+  const pinIsActive = (item: (typeof pins)[number]) => (item.kind === "view" ? onSearch && params.get("view") === item.id : location.pathname === libraryHref(base, item));
   const pinActive = shownPins.some(pinIsActive);
   return (
     <Stack sx={{ height: "100%", py: 1 }}>
@@ -228,7 +237,8 @@ function Rail({ onNavigate }: { onNavigate?: () => void }) {
           {/* Search is the all-posts list; it's "current" unless a pinned view/collection is. */}
           <NavItem to={`${base}/search`} icon={<SearchRounded />} label="Search" active={onSearch && !pinActive} onClick={onNavigate} />
           <NavItem to={`${base}/activity`} icon={<NotificationsNoneRounded />} label="Activity" badge={unread} onClick={onNavigate} />
-          <NavItem to={`${base}/library`} icon={<LibraryBooksOutlined />} label="Library" onClick={onNavigate} />
+          <NavItem to={`${base}/collections`} icon={<CollectionsBookmarkOutlined />} label="Collections" onClick={onNavigate} />
+          <NavItem to={`${base}/notebooks`} icon={<MenuBookOutlined />} label="Notebooks" onClick={onNavigate} />
         </List>
         {/* Favorites: what *you* starred (the API calls them pins). Hidden until there's one. */}
         {pins.length > 0 && (
@@ -254,9 +264,9 @@ function Rail({ onNavigate }: { onNavigate?: () => void }) {
               />
             ))}
             {pins.length > PINS_SHOWN && (
-              <Typography component={RouterLink} to={`${base}/library`} onClick={onNavigate} variant="caption" color="text.secondary" sx={{ display: "block", px: 2, py: 0.5 }}>
-                {pins.length - PINS_SHOWN} more in Library
-              </Typography>
+              <Button size="small" onClick={() => setAllPins(!allPins)} sx={{ ml: 1, color: "text.secondary", fontSize: "0.75rem" }}>
+                {allPins ? "Show fewer" : `Show ${pins.length - PINS_SHOWN} more`}
+              </Button>
             )}
           </List>
         )}

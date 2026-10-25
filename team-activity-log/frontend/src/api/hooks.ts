@@ -9,6 +9,9 @@ import {
 } from "@tanstack/react-query";
 import { api, ApiError, del, get, patch, post, put } from "./client";
 import type {
+  ImportSummary,
+  ImportPost,
+  Presentation,
   Collection,
   CollectionEntry,
   Comment,
@@ -129,7 +132,20 @@ export function useLogout() {
 }
 
 export const useUpdateProfile = () =>
-  useSetsMe((v: Partial<Pick<User, "name" | "title" | "bio" | "pronouns" | "timezone" | "avatarUrl">>) => patch<MeResponse>("/me", v));
+  useSetsMe((v: Partial<Pick<User, "name" | "title" | "bio" | "pronouns" | "timezone">>) => patch<MeResponse>("/me", v));
+
+/** Profile photo: the server validates, crops, re-encodes, and stores it (S3 in production). */
+export function useProfilePhoto() {
+  const qc = useQueryClient();
+  const onSuccess = (me: MeResponse) => {
+    qc.setQueryData(qk.me, me);
+    qc.invalidateQueries({ queryKey: ["org"] }); // people lists show the new photo
+  };
+  return {
+    upload: useMutation({ mutationFn: (file: Blob) => api<MeResponse>("PUT", "/me/avatar", file), onSuccess }),
+    remove: useMutation({ mutationFn: () => api<MeResponse>("DELETE", "/me/avatar"), onSuccess }),
+  };
+}
 
 export function useUpdatePreferences() {
   const qc = useQueryClient();
@@ -294,7 +310,7 @@ export const usePost = (orgId: ID, id: ID | undefined) =>
 
 /** Search caches embed post copies; after a post changes, refresh them (and re-fetch lists). */
 export function invalidatePostLists(qc: QueryClient, orgId: ID) {
-  qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === "org" && q.queryKey[1] === orgId && (q.queryKey[4] === "search" || q.queryKey[4] === "drafts" || q.queryKey[4] === "trash") });
+  qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === "org" && q.queryKey[1] === orgId && (q.queryKey[4] === "search" || q.queryKey[4] === "drafts" || q.queryKey[4] === "trash" || q.queryKey[4] === "posts") });
 }
 
 export function useCreateDraft(orgId: ID, wsId: ID) {
@@ -562,8 +578,8 @@ export function useCreateCollection(orgId: ID, wsId: ID) {
 export function useUpdateCollection(orgId: ID, wsId: ID) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, name, postIds }: { id: ID; name?: string; postIds?: ID[] }): Promise<Collection> => {
-      let c = name !== undefined ? await patch<Collection>(`${W(orgId, wsId)}/collections/${id}`, { name }) : undefined;
+    mutationFn: async ({ id, name, postIds, presentation }: { id: ID; name?: string; postIds?: ID[]; presentation?: Presentation | null }): Promise<Collection> => {
+      let c = name !== undefined || presentation !== undefined ? await patch<Collection>(`${W(orgId, wsId)}/collections/${id}`, { ...(name !== undefined ? { name } : {}), ...(presentation !== undefined ? { presentation } : {}) }) : undefined;
       if (postIds) c = await put<Collection>(`${W(orgId, wsId)}/collections/${id}/posts`, { postIds });
       return c!;
     },
@@ -571,7 +587,7 @@ export function useUpdateCollection(orgId: ID, wsId: ID) {
       const key = [...qk.collections(orgId, wsId), v.id];
       await qc.cancelQueries({ queryKey: key });
       const prev = qc.getQueryData<Collection>(key);
-      if (prev) qc.setQueryData<Collection>(key, { ...prev, ...(v.name ? { name: v.name } : {}), ...(v.postIds ? { postIds: v.postIds } : {}) });
+      if (prev) qc.setQueryData<Collection>(key, { ...prev, ...(v.name ? { name: v.name } : {}), ...(v.postIds ? { postIds: v.postIds } : {}), ...(v.presentation !== undefined ? { presentation: v.presentation ?? undefined } : {}) });
       return { prev, key };
     },
     onError: (_e, _v, c) => c?.prev && qc.setQueryData(c.key, c.prev),
@@ -742,6 +758,12 @@ export const useImportJob = (orgId: ID, id: ID | undefined) =>
     enabled: !!id,
     refetchInterval: (q) => (q.state.data && ["uploading", "parsing", "committing"].includes(q.state.data.status) ? 400 : false),
   });
+/** Your recent imports in this workspace, newest first. */
+export const useMyImports = (orgId: ID, wsId: ID) =>
+  useQuery({ queryKey: ["org", orgId, "ws", wsId, "posts", "imports"] as const, queryFn: ({ signal }) => get<ImportSummary[]>(`${W(orgId, wsId)}/imports`, signal) });
+/** Every post an import created (drafts and published), in slide order. */
+export const useImportPosts = (orgId: ID, id: ID | undefined) =>
+  useQuery({ queryKey: [...qk.importJob(orgId, id ?? ""), "posts"] as const, queryFn: ({ signal }) => get<ImportPost[]>(`${O(orgId)}/imports/${id}/posts`, signal), enabled: !!id });
 export function useImportAction(orgId: ID, id: ID) {
   const qc = useQueryClient();
   return useMutation({
@@ -766,6 +788,9 @@ export function useImportAction(orgId: ID, id: ID) {
     },
   });
 }
+
+export const usePlan = (orgId: ID) =>
+  useQuery({ queryKey: ["org", orgId, "plan"], queryFn: ({ signal }) => get<import("./contract").PlanInfo>(`${O(orgId)}/plan`, signal) });
 
 /** Sign-in methods the server has configured (shows the Google button only when it works). */
 export const useAuthProviders = () =>

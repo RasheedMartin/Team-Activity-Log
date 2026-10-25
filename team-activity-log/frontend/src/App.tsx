@@ -33,6 +33,7 @@ const DevPage = lazy(() => import("./features/dev/DevPage"));
 const ExplorePage = lazy(() => import("./features/explore/ExplorePage"));
 const LandingPage = lazy(() => import("./features/landing/LandingPage"));
 const NotebookPage = lazy(() => import("./features/collections/NotebookPage"));
+const CollectionPage = lazy(() => import("./features/collections/CollectionPage"));
 const LibraryPage = lazy(() => import("./features/collections/LibraryPage"));
 
 export const Loading = () => <LinearProgress sx={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 2000, height: 2 }} />;
@@ -74,6 +75,12 @@ const page = (el: ReactNode) => (
   </Suspense>
 );
 
+/** The Library became Collections and Notebooks (owner request); old links land on the right one. */
+function LibraryRedirect() {
+  const kind = new URLSearchParams(useLocation().search).get("kind");
+  return <Navigate to={kind === "notebook" ? "../notebooks" : kind === "view" ? "../search" : "../collections"} replace />;
+}
+
 export function App() {
   return (
     <Routes>
@@ -98,7 +105,10 @@ export function App() {
         <Route path="search" element={<SearchPage />} />
         <Route path="explore" element={<Navigate to=".." replace relative="path" />} />
         <Route path="notebooks/:id" element={page(<NotebookPage />)} />
-        <Route path="library" element={page(<LibraryPage />)} />
+        <Route path="collections/:id" element={page(<CollectionPage />)} />
+        <Route path="collections" element={page(<LibraryPage key="collection" kind="collection" />)} />
+        <Route path="notebooks" element={page(<LibraryPage key="notebook" kind="notebook" />)} />
+        <Route path="library" element={<LibraryRedirect />} />
         <Route path="new" element={page(<ComposerPage />)} />
         <Route path="p/:postId" element={page(<PostDetailPage />)} />
         <Route path="p/:postId/edit" element={page(<ComposerPage />)} />

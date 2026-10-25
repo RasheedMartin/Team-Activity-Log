@@ -21,6 +21,7 @@ from .routes import auth, dev, discussion, health, imports, library, oauth, orgs
 from .search import client as es_client
 from .search.diagnose import explain, identity
 from .search.indexer import ensure_index, run_indexer
+from .security import SecurityMiddleware
 
 log = logging.getLogger("tal")
 
@@ -53,13 +54,23 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     s = get_settings()
-    app = FastAPI(title="Team Activity Log API", version="1.0.0", lifespan=lifespan, docs_url="/v1/docs", openapi_url="/v1/openapi.json")
+    # API docs only outside production (less surface to probe).
+    docs = s.env != "production"
+    app = FastAPI(title="Team Activity Log API", version="1.0.0", lifespan=lifespan, docs_url="/v1/docs" if docs else None, redoc_url=None, openapi_url="/v1/openapi.json" if docs else None)
     app.add_middleware(CORSMiddleware, allow_origins=s.cors_origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+    app.add_middleware(SecurityMiddleware)
     app.add_exception_handler(ApiError, api_error_handler)  # type: ignore[arg-type]
 
     @app.exception_handler(RequestValidationError)
     async def _invalid(_: Request, exc: RequestValidationError):
-        return JSONResponse({"code": "invalid", "message": "The request wasn't understood", "details": exc.errors()[:5]}, status_code=422)
+        # Field locations and messages only: never echo the submitted values back.
+        details = [{"loc": e.get("loc"), "msg": e.get("msg")} for e in exc.errors()[:5]]
+        return JSONResponse({"code": "invalid", "message": "The request wasn't understood", "details": details}, status_code=422)
+
+    @app.exception_handler(Exception)
+    async def _crash(_: Request, exc: Exception):
+        log.exception("unhandled error")
+        return JSONResponse({"code": "internal", "message": "Something went wrong on our side. Try again in a moment."}, status_code=500)
 
     for r in (health, auth, oauth, orgs, posts, search, library, discussion, imports):
         app.include_router(r.router, prefix="/v1")

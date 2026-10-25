@@ -48,3 +48,101 @@ def test_warnings(deck):
 def test_rejects_non_presentations():
     with pytest.raises(PptxError, match="isn't a valid .pptx"):
         parse_pptx(bytes(4000))
+
+
+# ---- formatting (Formatting_2024.pptx, from the same generator) ----
+
+
+@pytest.fixture(scope="module")
+def fmt():
+    return parse_pptx(FIXTURE.with_name("Formatting_2024.pptx").read_bytes())
+
+
+def marks_of(nodes, text):
+    """Marks on the text node with exactly this text."""
+    found = []
+
+    def walk(n):
+        if n.get("type") == "text" and n.get("text") == text:
+            found.append(n.get("marks", []))
+        for c in n.get("content", []):
+            walk(c)
+
+    walk({"type": "doc", "content": nodes})
+    assert found, text
+    return found[0]
+
+
+def test_reading_order_follows_the_slide_not_z_order(fmt):
+    s = fmt.slides[1]
+    assert [k for k, _ in s.parts] == ["text", "image", "text"]
+    first = doc_text({"type": "doc", "content": s.parts[0][1]})
+    assert first.index("Gain stable") < first.index("Right column")  # inherited layout position, then the right column
+    assert s.parts[2][1][0] == {"type": "heading", "attrs": {"level": 3}, "content": [{"type": "text", "text": "Big takeaway"}]}  # 36 pt
+
+
+def test_lists_nest_and_number(fmt):
+    bullets, numbered = fmt.slides[1].content[:2]
+    assert bullets["content"][0]["content"][1]["type"] == "bulletList"  # lvl=1 nests under the item above
+    assert numbered["type"] == "orderedList" and numbered["attrs"] == {"start": 3} and len(numbered["content"]) == 2
+
+
+def test_colors_links_highlight_strike_alignment(fmt):
+    c = fmt.slides[1].content
+    assert marks_of(c, "critical") == [{"type": "textStyle", "attrs": {"color": "#c00000"}}]
+    assert marks_of(c, " accent") == [{"type": "textStyle", "attrs": {"color": "#c55a11"}}]  # theme accent2, lumMod 75%
+    assert marks_of(c, " plain") == []  # black follows the app theme
+    assert marks_of(c, "flagged") == [{"type": "highlight", "attrs": {"color": "#ffff00"}}]
+    assert marks_of(c, " run log") == [{"type": "link", "attrs": {"href": "https://example.test/run"}}]
+    assert marks_of(c, " old value") == [{"type": "strike"}]
+    assert c[-1]["attrs"] == {"textAlign": "center"}
+    assert fmt.slides[0].content == [{"type": "heading", "attrs": {"level": 3, "textAlign": "center"}, "content": [{"type": "text", "text": "Detector group"}]}]
+
+
+def test_tables_charts_and_smartart(fmt):
+    s = fmt.slides[2]
+    table, caption, chart, smart = s.content
+    assert table["content"][0]["content"] == [{"type": "tableHeader", "attrs": {"colspan": 2}, "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Run summary"}]}]}]
+    assert doc_text({"type": "doc", "content": [table]}).split() == ["Run", "summary", "Gain", "1.02", "stable"]
+    assert doc_text(caption) == "Gain by channel"
+    assert doc_text(chart).split() == ["Run", "A", "Run", "B", "Ch", "12", "1.02", "1.01", "Ch", "13", "0.98", "0.97"]
+    assert doc_text(smart).split() == ["Plan", "Build", "Test"]
+    assert s.warnings == ["Chart imported as a table of its data", "SmartArt imported as a list"]
+
+
+def test_matches_the_shared_expectation(fmt):
+    """frontend/src/mock/pptx.test.ts checks the mock parser against the same file, so the two
+    parsers can't drift. After an intended change, regenerate it from this parser."""
+    expected = json.loads(FIXTURE.with_name("Formatting_2024.expected.json").read_text())
+    assert summarize(fmt) == expected
+
+
+def summarize(deck) -> list[dict]:
+    return [
+        {
+            "title": s.title,
+            "warnings": s.warnings,
+            "notes": s.notes,
+            "parts": [{"kind": "text", "content": p} if k == "text" else {"kind": "image", "index": p} for k, p in s.parts],
+            "rich": s.rich,
+            "design": s.design,
+            "designImages": len(s.design_images),
+            "look": s.look,
+        }
+        for s in deck.slides
+    ]
+
+
+def test_designed_slides_keep_table_styles_fonts_and_transparency(fmt):
+    els = fmt.slides[3].design["elements"]
+    code = next(e for e in els if "code" in json.dumps(e.get("doc")))
+    assert marks_of(code["doc"]["content"], "code") == [{"type": "textStyle", "attrs": {"fontFamily": "Courier New"}}]
+    assert code["fontSize"] == 16  # the deck's default text size, not a guess
+    glass = next(e for e in els if e.get("shape") == "ellipse")
+    assert glass["fill"] == "#4472c466"  # 40% opaque
+    table = next(e for e in els if '"table"' in json.dumps(e.get("doc")))["doc"]["content"][0]
+    head, band1, band2, _ = table["content"]
+    assert table["attrs"] == {"borderColor": "#9e9e9e"}
+    assert head["content"][0]["attrs"] == {"colwidth": [144], "background": "#4472c4", "color": "#ffffff"}
+    assert marks_of(head["content"], "Run") == [{"type": "bold"}]  # firstRow is bold in the style
+    assert band1["content"][1]["attrs"]["background"] != band2["content"][1]["attrs"]["background"]  # banded rows

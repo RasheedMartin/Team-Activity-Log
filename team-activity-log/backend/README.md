@@ -7,7 +7,8 @@ Postgres at any time). It implements the same `/v1` contract the frontend's mock
 ## Plug in your Postgres and Elasticsearch
 
 You need Python 3.11+, a Postgres 14+ database, and an Elasticsearch 8.x cluster. No Postgres
-extensions or other services are required: images are stored in Postgres by default.
+extensions or other services are required: images are stored in Postgres by default, or in any
+S3-compatible bucket with `STORAGE=s3` (see `.env.example`).
 
 ```bash
 cd backend
@@ -111,8 +112,8 @@ production (`DEV_MODE=false`), and scenario loading is refused unless `DEV_ALLOW
 | Search, facets, histogram, gallery, Explore | Elasticsearch (`src/tal/search/`) |
 | Keeping search current | Every write adds an **outbox** row in the same transaction; the indexer drains it (in-process by default, or `tal worker`) |
 | Live updates (new comments, reactions) | Server-sent events over Postgres `LISTEN/NOTIFY` (works with many API processes) |
-| Images | Postgres (`asset_blobs`), deduplicated per org by SHA-256, resized variants |
-| Slide import | `src/tal/pptx.py` (stdlib only), same rules as the mock parser, tested on the same deck |
+| Images and profile photos | Postgres (`asset_blobs`) or S3 (`STORAGE=s3`), deduplicated per org by SHA-256, resized variants |
+| Slide import | `src/tal/pptx.py` (stdlib only): text with its formatting in reading order, tables, charts as data, SmartArt, images, notes. Same rules as the mock parser; both are checked against `frontend/e2e/fixtures/Formatting_2024.expected.json` |
 
 If Elasticsearch is down, search returns a clear 503 and everything else keeps working; writes
 queue in the outbox and catch up. `GET /v1/health/ready` reports both stores and the index lag.
@@ -166,6 +167,5 @@ touches your dev data.
 ## Not yet
 
 - OCR for uploaded images (`ocrState: "none"` until an OCR worker is added).
-- S3-compatible object storage as an alternative to Postgres for image bytes.
 - Postgres row-level security as a second tenancy guard (tenancy is enforced in every query today).
-- Billing (plans are in the schema; see `docs/PRICING.md`).
+- Billing (plan limits are enforced; payment isn't wired up yet; see `docs/PRICING.md`).

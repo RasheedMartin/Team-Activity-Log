@@ -1,4 +1,4 @@
-import { CallMergeRounded, CallSplitRounded, CheckCircleRounded, DownloadRounded, ErrorOutlineRounded, SearchRounded, UploadFileOutlined, WarningAmberRounded } from "@mui/icons-material";
+import { CallMergeRounded, CollectionsBookmarkOutlined, CallSplitRounded, CheckCircleRounded, ErrorOutlineRounded, SlideshowRounded, UploadFileOutlined, WarningAmberRounded } from "@mui/icons-material";
 import {
   Alert,
   Box,
@@ -12,6 +12,10 @@ import {
   DialogTitle,
   FormControlLabel,
   LinearProgress,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemText,
   Paper,
   Radio,
   RadioGroup,
@@ -19,12 +23,14 @@ import {
   Step,
   StepLabel,
   Stepper,
+  Tab,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
+  Tabs,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
@@ -33,16 +39,22 @@ import {
 } from "@mui/material";
 import { useEffect, useRef, useState } from "react";
 import { Link as RouterLink, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import type { ImportItem, ImportJob, ImportMode } from "../../api/contract";
-import { useImportAction, useImportJob, useStartImport } from "../../api/hooks";
+import type { ImportItem, ImportJob, ImportMode, ImportSummary, SlideDesignMode } from "../../api/contract";
+import { useImportAction, useImportJob, useImportPosts, useMyImports, useStartImport } from "../../api/hooks";
+import { DraftList } from "../activity/DraftList";
 import { can, useWs, wsPath } from "../../app/session";
 import { useNotify } from "../../components/notify";
 import { TagPicker } from "../../components/Pickers";
 import { EmptyState, PageHeader } from "../../components/ui";
-import { todayISO } from "../../lib/dates";
-import { toSearchParams } from "../../lib/filterSpec";
+import { timeAgo, todayISO } from "../../lib/dates";
 import { errorMessage } from "../../lib/format";
 import { uuidv7 } from "../../lib/ids";
+
+const DESIGNS: { id: SlideDesignMode; title: string; body: string }[] = [
+  { id: "auto", title: "Automatic", body: "Slides with pictures, shapes, or columns keep their design. Text slides become post text." },
+  { id: "slides", title: "Keep the design", body: "Every slide looks like it does in PowerPoint." },
+  { id: "text", title: "Text only", body: "Every slide becomes post text and images." },
+];
 
 const MODES: { id: ImportMode; title: string; body: string }[] = [
   { id: "per_slide", title: "One post per slide", body: "Best for dated lab logs where each slide is an entry." },
@@ -60,6 +72,7 @@ function StartStep({ onStarted }: { onStarted: (job: ImportJob) => void }) {
   const dropped = (useLocation().state as { file?: File } | null)?.file ?? null;
   const [file, setFile] = useState<File | null>(dropped);
   const [mode, setMode] = useState<ImportMode>("per_slide");
+  const [slideDesign, setSlideDesign] = useState<SlideDesignMode>("auto");
   const [tagIds, setTagIds] = useState<string[]>([]);
   const [guessDates, setGuessDates] = useState(true);
   const [baseDate, setBaseDate] = useState(todayISO());
@@ -110,6 +123,18 @@ function StartStep({ onStarted }: { onStarted: (job: ImportJob) => void }) {
         </Box>
       </Box>
 
+      <Box>
+        <Typography variant="h4" sx={{ mb: 1 }}>Keep the slide design?</Typography>
+        <Box role="radiogroup" aria-label="Slide design" sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" }, gap: 1.5 }}>
+          {DESIGNS.map((m) => (
+            <ButtonBase key={m.id} role="radio" aria-checked={slideDesign === m.id} onClick={() => setSlideDesign(m.id)} sx={{ display: "block", textAlign: "left", p: 2, border: 2, borderColor: slideDesign === m.id ? "primary.main" : "divider", borderRadius: 1.5, bgcolor: "background.paper" }}>
+              <Typography sx={{ fontWeight: 600 }}>{m.title}</Typography>
+              <Typography variant="body2" color="text.secondary">{m.body}</Typography>
+            </ButtonBase>
+          ))}
+        </Box>
+      </Box>
+
       <Paper variant="outlined" sx={{ p: 2 }}>
         <Typography variant="h4" sx={{ mb: 1.5 }}>Defaults</Typography>
         <Stack spacing={2}>
@@ -134,7 +159,7 @@ function StartStep({ onStarted }: { onStarted: (job: ImportJob) => void }) {
           variant="contained"
           size="large"
           disabled={!file || start.isPending}
-          onClick={() => file && start.mutate({ file, mode, defaults: { tagIds, baseDate, guessDates, collectionName: collectionName || file.name } }, { onSuccess: onStarted })}
+          onClick={() => file && start.mutate({ file, mode, defaults: { tagIds, baseDate, guessDates, collectionName: collectionName || file.name, slideDesign } }, { onSuccess: onStarted })}
         >
           Start import
         </Button>
@@ -310,35 +335,59 @@ function DoneStep({ job, onNew }: { job: ImportJob; onNew: () => void }) {
   const [confirm, setConfirm] = useState(false);
   const [published, setPublished] = useState(false);
   const r = job.report;
-  const downloadReport = () => {
-    const lines = [
-      `Import report: ${job.sourceFilename}`,
-      `Mode: ${MODES.find((m) => m.id === job.mode)?.title}`,
-      `Created: ${r?.created ?? 0} drafts · Skipped: ${r?.skipped ?? 0} · Warnings: ${r?.warnings ?? 0}`,
-      "",
-      ...job.items.map((i) => `${i.included ? "✓" : "–"} slides ${slideRange(i.slideNumbers)}\t${i.proposedTitle || "(untitled)"}\t${i.proposedDate}${i.dateSource !== "user" ? " (" + i.dateSource + ")" : ""}${i.warnings.length ? "\t⚠ " + i.warnings.join("; ") : ""}`),
-    ];
-    const url = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/plain" }));
-    const a = Object.assign(document.createElement("a"), { href: url, download: `${job.sourceFilename.replace(/\.pptx$/i, "")}-import-report.txt` });
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  };
-  const collectionUrl = job.collectionId ? `${wsPath(org, ws, "/search")}?${toSearchParams({ all: [{ field: "collection", op: "in", value: [job.collectionId] }], sort: "oldest" })}` : wsPath(org, ws);
+  const posts = useImportPosts(org.id, job.id);
+  const mine = (posts.data ?? []).filter((p) => p.status === "draft");
+  const out = (posts.data ?? []).filter((p) => p.status === "published");
+  const [tab, setTab] = useState<"review" | "published">("review");
+  const collectionUrl = job.collectionId ? wsPath(org, ws, `/collections/${job.collectionId}`) : wsPath(org, ws);
   return (
     <Stack spacing={2} alignItems="flex-start">
       <Alert icon={<CheckCircleRounded />} severity="success">
         Created {r?.created ?? 0} drafts from “{job.sourceFilename}”{r?.skipped ? `, skipped ${r.skipped}` : ""}{r?.warnings ? `, with ${r.warnings} warnings to review` : ""}.
       </Alert>
       <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
-        <Button variant="contained" disabled={published || act.isPending} onClick={() => act.mutate({ action: "publishAll" }, { onSuccess: () => (setPublished(true), notify("All imported drafts published")) })}>
+        <Button variant="contained" disabled={published || act.isPending || (!posts.isPending && !mine.length)} onClick={() => act.mutate({ action: "publishAll" }, { onSuccess: () => (setPublished(true), notify("All imported drafts published")) })}>
           {published ? "Published" : "Publish all"}
         </Button>
-        <Button component={RouterLink} to={wsPath(org, ws, "/activity/drafts")}>Review drafts</Button>
-        {published && <Button component={RouterLink} to={collectionUrl} startIcon={<SearchRounded />}>Search these slides</Button>}
-        <Button startIcon={<DownloadRounded />} onClick={downloadReport}>Download report</Button>
+        {(published || out.length > 0) && <Button component={RouterLink} to={collectionUrl} startIcon={<CollectionsBookmarkOutlined />}>Open the deck</Button>}
+        {job.collectionId && (
+          <Tooltip describeChild title="All of this import's slides in Present, where you can also download them as a PowerPoint file">
+            <Button component={RouterLink} to={`${wsPath(org, ws, "/present")}?collection=${job.collectionId}`} startIcon={<SlideshowRounded />}>
+              Present or download
+            </Button>
+          </Tooltip>
+        )}
         <Button onClick={onNew}>Import more slides</Button>
         <Button color="error" onClick={() => setConfirm(true)}>Delete this import</Button>
       </Stack>
+      <Box sx={{ width: "100%" }}>
+        <Tabs value={tab} onChange={(_, v) => setTab(v)} aria-label="Posts from this import" sx={{ mb: 1.5, borderBottom: 1, borderColor: "divider" }}>
+          <Tab value="review" label={`To review (${mine.length})`} />
+          <Tab value="published" label={`Published (${out.length})`} />
+        </Tabs>
+        {tab === "review" ? (
+          <>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+              Open a draft to check it; you come back here when you're done. Select several to publish them together.
+            </Typography>
+            {mine.length ? <DraftList drafts={mine} hideSource /> : <Typography variant="body2" color="text.secondary">Nothing left to review: everything from this import is published or discarded.</Typography>}
+          </>
+        ) : out.length ? (
+          <Paper variant="outlined">
+            <List disablePadding aria-label="Published from this import">
+              {out.map((p, i) => (
+                <ListItem key={p.id} disablePadding divider={i < out.length - 1}>
+                  <ListItemButton component={RouterLink} to={wsPath(org, ws, `/p/${p.id}`)}>
+                    <ListItemText primary={p.title || "Untitled"} secondary={`Slide ${p.source?.slide ?? "?"} · published`} />
+                  </ListItemButton>
+                </ListItem>
+              ))}
+            </List>
+          </Paper>
+        ) : (
+          <Typography variant="body2" color="text.secondary">Nothing published yet. Publish drafts from the To review tab.</Typography>
+        )}
+      </Box>
       <Dialog open={confirm} onClose={() => setConfirm(false)} maxWidth="xs">
         <DialogTitle>Delete this import?</DialogTitle>
         <DialogContent>
@@ -350,6 +399,49 @@ function DoneStep({ job, onNew }: { job: ImportJob; onNew: () => void }) {
         </DialogActions>
       </Dialog>
     </Stack>
+  );
+}
+
+/** Where each recent import got to, unfinished ones first: one click goes back into it. */
+function YourImports({ onOpen }: { onOpen: (id: string) => void }) {
+  const { org, ws } = useWs();
+  const list = useMyImports(org.id, ws.id).data ?? [];
+  if (!list.length) return null;
+  const state = (i: ImportSummary): { label: string; open: boolean } =>
+    i.status === "review"
+      ? { label: "Ready to review: nothing created yet", open: true }
+      : i.status !== "done"
+        ? { label: "Processing", open: true }
+        : i.drafts > 0
+          ? { label: `${i.published} of ${i.published + i.drafts} published · ${i.drafts} left to review`, open: true }
+          : { label: i.published ? `All ${i.published} published` : "Everything discarded", open: false };
+  const sorted = [...list].sort((a, b) => Number(state(b).open) - Number(state(a).open));
+  return (
+    <Box>
+      <Typography variant="h4" sx={{ mb: 1 }}>Your imports</Typography>
+      <Paper variant="outlined">
+        <List disablePadding aria-label="Your imports">
+          {sorted.map((i, k) => {
+            const st = state(i);
+            return (
+              <ListItem key={i.id} disablePadding divider={k < sorted.length - 1}>
+                <ListItemButton onClick={() => onOpen(i.id)}>
+                  <ListItemText
+                    primary={i.sourceFilename}
+                    secondary={
+                      <Box component="span" sx={{ display: "flex", flexWrap: "wrap", columnGap: 1.5 }}>
+                        <Box component="span" sx={{ color: st.open ? "warning.main" : "text.secondary", fontWeight: st.open ? 600 : 400 }}>{st.label}</Box>
+                        <span>{i.slideCount ? `${i.slideCount} slides · ` : ""}{timeAgo(i.createdAt)}</span>
+                      </Box>
+                    }
+                  />
+                </ListItemButton>
+              </ListItem>
+            );
+          })}
+        </List>
+      </Paper>
+    </Box>
   );
 }
 
@@ -372,7 +464,12 @@ export default function ImportPage() {
           </Step>
         ))}
       </Stepper>
-      {step === 0 && <StartStep onStarted={(j) => setParams({ job: j.id })} />}
+      {step === 0 && (
+        <Stack spacing={4}>
+          <StartStep onStarted={(j) => setParams({ job: j.id })} />
+          <YourImports onOpen={(id) => setParams({ job: id })} />
+        </Stack>
+      )}
       {step === 1 && (
         <Paper variant="outlined" sx={{ p: 3 }}>
           {job.data?.status === "failed" ? (

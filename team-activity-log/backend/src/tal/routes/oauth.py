@@ -17,7 +17,7 @@ import hashlib
 import json
 import secrets
 import time
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 import httpx
 from fastapi import APIRouter, Depends, Request
@@ -25,6 +25,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .. import avatars
 from .. import models as m
 from ..config import get_settings
 from ..context import start_session
@@ -64,6 +65,20 @@ def _b64url(b: bytes) -> str:
 def decode_id_token(token: str) -> dict:
     payload = token.split(".")[1]
     return json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+
+
+async def _copy_google_photo(db: AsyncSession, user: m.User, url: str) -> None:
+    """Keep a copy in our storage rather than hotlinking Google (privacy, and a tight CSP).
+    Best effort: a failure here never blocks sign-in."""
+    if urlparse(url).scheme != "https" or not (urlparse(url).hostname or "").endswith(".googleusercontent.com"):
+        return
+    try:
+        async with httpx.AsyncClient(timeout=5, transport=_transport, follow_redirects=False) as client:
+            r = await client.get(url)
+        if r.status_code == 200 and len(r.content) <= avatars.MAX_BYTES:
+            await avatars.set_avatar(db, user, r.content)
+    except Exception:  # noqa: BLE001
+        return
 
 
 @router.get("/auth/providers")
@@ -138,13 +153,13 @@ async def google_callback(request: Request, code: str | None = None, state: str 
     if user and user.deactivated_at:
         return _fail("deactivated")
     if not user:
-        user = m.User(id=uuid7(), email=email, name=str(claims.get("name") or email.split("@")[0]), avatar_url=claims.get("picture"), email_verified_at=now(), timezone="UTC")
+        user = m.User(id=uuid7(), email=email, name=str(claims.get("name") or email.split("@")[0]), email_verified_at=now(), timezone="UTC")
         db.add(user)
         await db.flush()
     if not user.email_verified_at:
         user.email_verified_at = now()  # Google vouched for this address
     if not user.avatar_url and claims.get("picture"):
-        user.avatar_url = claims["picture"]
+        await _copy_google_photo(db, user, str(claims["picture"]))
     if not ident:
         ident = m.Identity(id=uuid7(), user_id=user.id, provider="google", subject=sub, email=email)
         db.add(ident)

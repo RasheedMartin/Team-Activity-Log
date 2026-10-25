@@ -93,21 +93,42 @@ def instance_view(i: m.ImageInstance) -> dict:
     )
 
 
-async def image_views(db: AsyncSession, instance_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, dict]:
+async def image_views(db: AsyncSession, instance_ids: Sequence[uuid.UUID], org_id: uuid.UUID) -> dict[uuid.UUID, dict]:
+    """Image instances *of this org*: an id copied from another tenant's post resolves to nothing."""
     if not instance_ids:
         return {}
-    rows = (await db.execute(select(m.ImageInstance, m.Asset).join(m.Asset, m.Asset.id == m.ImageInstance.asset_id).where(m.ImageInstance.id.in_(instance_ids)))).all()
+    q = select(m.ImageInstance, m.Asset).join(m.Asset, m.Asset.id == m.ImageInstance.asset_id).where(m.ImageInstance.id.in_(instance_ids), m.ImageInstance.org_id == org_id, m.Asset.org_id == org_id)
+    rows = (await db.execute(q)).all()
     return {inst.id: {**instance_view(inst), "asset": asset_view(asset)} for inst, asset in rows}
 
 
-def block_image_ids(blocks: Iterable[dict]) -> list[uuid.UUID]:
-    out = []
+def block_image_ids(blocks: Iterable[dict], content_only: bool = False) -> list[uuid.UUID]:
+    """Image instances a post shows: image blocks and images on designed slides. `content_only`
+    drops slide template art (a logo on every slide), which search and counts leave out."""
+    raw: list = []
     for b in blocks or []:
         if b.get("type") == "image":
-            try:
-                out.append(uuid.UUID(b["imageInstanceId"]))
-            except (KeyError, ValueError):
-                continue
+            raw.append(b.get("imageInstanceId"))
+        elif b.get("type") == "slide":
+            raw += [e.get("imageInstanceId") for e in (b.get("design") or {}).get("elements") or [] if e.get("kind") == "image" and not (content_only and e.get("decorative"))]
+    out = []
+    for x in raw:
+        try:
+            out.append(uuid.UUID(x))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def block_docs(blocks: Iterable[dict]) -> list[dict]:
+    """ProseMirror docs in reading order: text/table blocks and text on designed slides, except
+    template text repeated on every slide (mirrors frontend/src/lib/blocks.ts)."""
+    out: list[dict] = []
+    for b in blocks or []:
+        if b.get("type") in ("text", "table") and b.get("doc"):
+            out.append(b["doc"])
+        elif b.get("type") == "slide":
+            out += [e["doc"] for e in (b.get("design") or {}).get("elements") or [] if e.get("kind") != "image" and e.get("doc") and not e.get("decorative")]
     return out
 
 
@@ -157,6 +178,7 @@ def post_view(p: m.Post, tag_ids: list[str], co_author_ids: list[str], collectio
             "reactions": p.reactions or {},
             "collectionIds": collection_ids,
             "source": p.source,
+            "presentation": p.presentation,
         }
     )
 
@@ -169,7 +191,7 @@ async def post_views(db: AsyncSession, posts: Sequence[m.Post]) -> list[dict]:
 async def post_detail(db: AsyncSession, p: m.Post) -> dict:
     [view] = await post_views(db, [p])
     ids = block_image_ids(p.blocks)
-    imgs = await image_views(db, ids)
+    imgs = await image_views(db, ids, p.org_id)
     return {"post": view, "images": [imgs[i] for i in ids if i in imgs]}
 
 
@@ -211,7 +233,9 @@ def saved_view_view(v: m.SavedView, pinned: bool) -> dict:
 
 
 def collection_view(c: m.CollectionRow, post_ids: list[str]) -> dict:
-    return clean({"id": s(c.id), "workspaceId": s(c.workspace_id), "name": c.name, "kind": c.kind, "postIds": post_ids, "createdBy": s(c.created_by), "updatedAt": iso(c.updated_at), "sourceTagId": s(c.source_tag_id)})
+    return clean(
+        {"id": s(c.id), "workspaceId": s(c.workspace_id), "name": c.name, "kind": c.kind, "postIds": post_ids, "createdBy": s(c.created_by), "updatedAt": iso(c.updated_at), "sourceTagId": s(c.source_tag_id), "presentation": c.presentation}
+    )
 
 
 async def collection_post_ids(db: AsyncSession, collection_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, list[str]]:
