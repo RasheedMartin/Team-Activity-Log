@@ -34,7 +34,8 @@ export function meResponse(u: UserRow): MeResponse {
       if (!org) return [];
       return [{ org, role: m.role, workspaces: accessibleWorkspaces({ user: u, org, membership: m, role: m.role }, true) }];
     });
-  return { user: publicUser(u), preferences, orgs, lastWorkspaceId: db.meta<string>(`lastWs:${u.id}`) };
+  // Mock only: the default persona can try the super admin page (real servers: SUPERADMIN_EMAILS).
+  return { user: publicUser(u), preferences, orgs, lastWorkspaceId: db.meta<string>(`lastWs:${u.id}`), ...(u.name === "Dana Okafor" ? { superAdmin: true } : {}) };
 }
 
 export function sendEmail(to: string, subject: string, body: string, link?: string) {

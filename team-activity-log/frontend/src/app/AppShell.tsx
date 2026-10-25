@@ -164,6 +164,14 @@ function UserMenu() {
             Organization admin
           </MenuItem>
         )}
+        {me.superAdmin && (
+          <MenuItem onClick={() => go("/super")}>
+            <ListItemIcon>
+              <AdminPanelSettingsOutlined fontSize="small" color="error" />
+            </ListItemIcon>
+            Super admin
+          </MenuItem>
+        )}
         {API_MODE === "mock" && (
           <MenuItem onClick={() => go("/dev")}>
             <ListItemIcon>

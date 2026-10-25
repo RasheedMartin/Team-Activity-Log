@@ -108,3 +108,24 @@ async def check() -> str:
         return "Postgres (asset_blobs)"
     await asyncio.to_thread(_s3().head_bucket, Bucket=s.s3_bucket)
     return f"S3 bucket '{s.s3_bucket}'"
+
+
+async def delete_prefix(db: AsyncSession, prefix: str) -> int:
+    """Delete every stored object under a key prefix (an org's files, or everything). Returns a count."""
+    if get_settings().storage == "s3":
+        client, bucket, n = _s3(), get_settings().s3_bucket, 0
+        token = None
+        while True:
+            kw = {"Bucket": bucket, "Prefix": prefix, **({"ContinuationToken": token} if token else {})}
+            page = await asyncio.to_thread(client.list_objects_v2, **kw)
+            keys = [{"Key": o["Key"]} for o in page.get("Contents", [])]
+            for i in range(0, len(keys), 1000):
+                await asyncio.to_thread(client.delete_objects, Bucket=bucket, Delete={"Objects": keys[i : i + 1000], "Quiet": True})
+            n += len(keys)
+            if not page.get("IsTruncated"):
+                return n
+            token = page.get("NextContinuationToken")
+    rows = (await db.execute(select(m.Blob).where(m.Blob.key.like(prefix.replace("%", r"\%") + "%")))).scalars().all()
+    for r in rows:
+        await db.delete(r)
+    return len(rows)

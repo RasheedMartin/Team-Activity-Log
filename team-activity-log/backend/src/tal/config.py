@@ -68,6 +68,8 @@ class Settings(BaseSettings):
 
     # While testing (owner request): pricing hidden, everyone on Free with its limits (no trial),
     # and optionally sign-up only with a code you hand out.
+    superadmin_emails: list[str] = Field(default_factory=list, description="Accounts (verified emails) that can open the super admin page: see every org, delete an org.")
+    allow_wipe: bool = Field(default=False, description="Let super admins delete ALL data from the super admin page. Leave off except when you truly mean it.")
     pricing_public: bool = Field(default=False, description="Show pricing, trials, and upgrades. Off while testing: every org is on Free, with its limits.")
     signup_code: str | None = Field(default=None, description="If set, creating an account (email or Google) needs this code. Invited people never need it.")
     trial_days: int = Field(default=14, ge=0, le=90, description="New organizations get the Team plan free for this many days (0 = no trial). No card needed.")

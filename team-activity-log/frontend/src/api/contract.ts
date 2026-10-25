@@ -84,6 +84,15 @@ export interface MeResponse {
   preferences: UserPreferences;
   orgs: { org: Organization; role: OrgRole; workspaces: Workspace[] }[];
   lastWorkspaceId?: ID;
+  /** Can open the super admin page (SUPERADMIN_EMAILS, verified). */
+  superAdmin?: boolean;
+}
+
+export interface SuperOverview {
+  totals: { users: number; orgs: number; posts: number; storageBytes: number };
+  orgs: { id: ID; name: string; slug: string; plan: string; createdAt: ISODateTime; members: number; posts: number; storageBytes: number }[];
+  /** ALLOW_WIPE is on: "Delete all data" is available. */
+  wipeAllowed: boolean;
 }
 
 // ---- Posts, tags, assets (v2) ----

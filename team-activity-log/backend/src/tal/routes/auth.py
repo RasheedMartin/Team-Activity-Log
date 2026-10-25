@@ -49,7 +49,14 @@ async def me_response(db: AsyncSession, u: m.User) -> dict:
     out: dict[str, Any] = {"user": user_view(u), "preferences": prefs_view(u), "orgs": orgs}
     if u.last_workspace_id:
         out["lastWorkspaceId"] = str(u.last_workspace_id)
+    if is_superadmin(u):
+        out["superAdmin"] = True
     return out
+
+
+def is_superadmin(u: m.User) -> bool:
+    """Listed in SUPERADMIN_EMAILS, with that address verified (so a sign-up can't claim it)."""
+    return bool(u.email_verified_at) and u.email.lower() in {e.strip().lower() for e in get_settings().superadmin_emails if e.strip()}
 
 
 async def send_email(db: AsyncSession, to: str, subject: str, body: str, link: str | None = None) -> None:

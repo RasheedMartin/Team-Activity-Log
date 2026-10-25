@@ -906,3 +906,18 @@ export async function uploadAttachment(orgId: ID, file: File): Promise<import(".
   if (!res.ok) throw new Error((body as { message?: string }).message ?? `Upload failed (${res.status})`);
   return body as import("./contract").AttachmentView;
 }
+
+// ---- super admin ----
+
+export const useSuperOverview = () => useQuery({ queryKey: ["super", "overview"], queryFn: ({ signal }) => get<import("./contract").SuperOverview>("/super/overview", signal), retry: false });
+export function useSuperDeleteOrg() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, confirm }: { id: ID; confirm: string }) => api<{ deleted: string }>("DELETE", `/super/orgs/${id}`, { confirm }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["super"] }),
+  });
+}
+export function useSuperWipe() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (confirm: string) => post<{ wiped: boolean }>("/super/wipe", { confirm }), onSuccess: () => qc.clear() });
+}
