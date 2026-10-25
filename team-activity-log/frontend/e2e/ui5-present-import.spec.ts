@@ -52,7 +52,6 @@ test("every seeded post derives slides without errors", async ({ page }) => {
 
 test("select posts → notebook → reorder → present", async ({ page }) => {
   await openScenario(page, "small");
-  await page.getByRole("button", { name: "Select posts" }).click();
   const boxes = page.getByRole("checkbox", { name: /^Select / });
   await boxes.nth(0).check();
   await boxes.nth(1).check();
@@ -152,7 +151,6 @@ test("no duplicate notebooks; back from a post returns to the notebook", async (
   // The make-notebook dialog refuses a duplicate name.
   const name = await page.getByLabel("Notebook title").inputValue();
   await page.getByRole("link", { name: "Search", exact: true }).click();
-  await page.getByRole("button", { name: "Select posts" }).click();
   await page.getByRole("checkbox", { name: /^Select / }).first().check();
   await page.getByRole("button", { name: "New notebook" }).click();
   await page.getByRole("dialog").getByLabel("Name").fill(name.toUpperCase());
@@ -194,8 +192,7 @@ test("notebook contents land exactly on the entry (reader and continuous)", asyn
     await toc.nth(i).click();
     const id = (await page.locator("[data-nb-section]").nth(i).getAttribute("data-nb-section"))!;
     await expect(page.locator(`#nb-${id}:not([data-nb-loading])`)).toBeVisible(); // it loaded
-    await expect.poll(() => page.evaluate((x) => Math.round(document.getElementById(`nb-${x}`)!.getBoundingClientRect().top), id)).toBeGreaterThan(12);
-    expect(Math.abs((await page.evaluate((x) => Math.round(document.getElementById(`nb-${x}`)!.getBoundingClientRect().top), id)) - 16)).toBeLessThan(4);
+    await expect.poll(() => page.evaluate((x) => Math.abs(Math.round(document.getElementById(`nb-${x}`)!.getBoundingClientRect().top) - 16), id)).toBeLessThan(4);
   }
 });
 

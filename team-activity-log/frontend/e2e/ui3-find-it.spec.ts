@@ -24,6 +24,7 @@ test("v4 Find It end to end", async ({ page }) => {
   expect(afterQuery).toBeLessThan(all);
 
   // Click a histogram bar: select the busiest bucket via keyboard (same code path as a click).
+  await page.getByRole("button", { name: "Timeline" }).click(); // the timeline is opt-in
   const hist = page.getByRole("group", { name: /Posts over time/ });
   await hist.focus();
   await page.keyboard.press("ArrowLeft");

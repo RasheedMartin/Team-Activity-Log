@@ -49,11 +49,13 @@ interface Props {
   /** Selection mode (§W5.2): a checkbox that doesn't navigate. */
   selected?: boolean;
   onToggleSelect?: () => void;
+  /** Show every card's checkbox (something is chosen); otherwise it appears on hover / focus. */
+  selectShown?: boolean;
   /** Router state for the link (where the post was opened from). */
   linkState?: unknown;
 }
 
-export const PostCard = memo(function PostCard({ hit, href, author, tags, focused, comfortable, onTagClick, selected, onToggleSelect, linkState }: Props) {
+export const PostCard = memo(function PostCard({ hit, href, author, tags, focused, comfortable, onTagClick, selected, onToggleSelect, selectShown, linkState }: Props) {
   const theme = useTheme();
   const { post } = hit;
   const body = hit.highlights.find((h) => h.field !== "title");
@@ -87,6 +89,8 @@ export const PostCard = memo(function PostCard({ hit, href, author, tags, focuse
         boxShadow: focused ? `inset 3px 0 0 ${theme.palette.primary.main}` : "none",
         "&:hover": { bgcolor: focused ? "action.selected" : "action.hover" },
         "&:focus-visible": { outlineOffset: -2 },
+        "&:hover .select-box, &:focus-within .select-box": { opacity: 1 },
+        "@media (hover: none)": { "& .select-box": { opacity: 1 } },
       }}
     >
       <Stack direction="row" spacing={2} alignItems="flex-start">
@@ -94,7 +98,8 @@ export const PostCard = memo(function PostCard({ hit, href, author, tags, focuse
           <Checkbox
             checked={!!selected}
             size="small"
-            sx={{ p: 0.25, mt: 0.25, mr: -1 }}
+            className="select-box"
+            sx={{ p: 0.25, mt: 0.25, mr: -1, opacity: selected || selectShown ? 1 : 0, transition: "opacity 120ms" }}
             inputProps={{ "aria-label": `Select ${post.title}` }}
             onChange={onToggleSelect}
             onClick={(e) => e.stopPropagation()}

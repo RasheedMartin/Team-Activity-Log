@@ -1,5 +1,5 @@
-import { CheckBoxOutlined, FilterListRounded, GridViewRounded, TableRowsOutlined, ViewListRounded, ZoomInRounded, ZoomOutRounded } from "@mui/icons-material";
-import { Box, Button, Drawer, IconButton, Link, MenuItem, Skeleton, Stack, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography, useMediaQuery, useTheme } from "@mui/material";
+import { ChevronLeftRounded, CloseRounded, FilterListRounded, GridViewRounded, SortRounded, TableRowsOutlined, TimelineRounded, ViewListRounded, ZoomInRounded, ZoomOutRounded } from "@mui/icons-material";
+import { Box, Button, Checkbox, Drawer, IconButton, Link, Menu, MenuItem, Skeleton, Stack, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography, useMediaQuery, useTheme } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link as RouterLink, useLocation, useNavigate, useNavigationType, useSearchParams } from "react-router-dom";
@@ -144,7 +144,6 @@ export function SearchPage() {
   useEffect(() => setFocused(-1), [params]);
 
   // Selection (§W5.2) survives query changes, so you can gather posts from several searches.
-  const [selecting, setSelecting] = useState(false);
   const [picked, setPicked] = useState<Map<ID, Post>>(new Map());
   const toggleSelected = useCallback((h: SearchHit) => {
     setPicked((m) => {
@@ -154,7 +153,27 @@ export function SearchPage() {
       return n;
     });
   }, []);
-  const selection = useMemo(() => (selecting ? { ids: new Set(picked.keys()), toggle: toggleSelected } : undefined), [selecting, picked, toggleSelected]);
+  // Checkboxes are part of every result (owner request: no separate Select mode).
+  const selection = useMemo(() => ({ ids: new Set(picked.keys()), toggle: toggleSelected }), [picked, toggleSelected]);
+
+  // The timeline (histogram) is opt-in: the page stays calm until someone wants it.
+  const [timeline, setTimeline] = useState(() => {
+    try {
+      return localStorage.getItem("tal.search.timeline") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleTimeline = () =>
+    setTimeline((t) => {
+      try {
+        localStorage.setItem("tal.search.timeline", t ? "0" : "1");
+      } catch {
+        // per-viewer convenience only
+      }
+      return !t;
+    });
+  const [sortAnchor, setSortAnchor] = useState<HTMLElement | null>(null);
 
   // ---- keyboard: j/k move, Enter open, Space peek, Esc close (§A4) ----
   useEffect(() => {
@@ -178,7 +197,6 @@ export function SearchPage() {
         setPeek((p) => (p === id ? null : id));
       } else if (e.key === "x" && focused >= 0) {
         e.preventDefault();
-        setSelecting(true);
         toggleSelected(hits[focused]);
       } else if (e.key === "Escape" && peek) {
         setPeek(null);
@@ -263,6 +281,13 @@ export function SearchPage() {
       onHistField={setHistField}
     />
   );
+  const allPicked = hits.length > 0 && hits.every((h) => picked.has(h.post.id));
+  const pickAll = () =>
+    setPicked((m) => {
+      const n = new Map(m);
+      hits.forEach((h) => (allPicked ? n.delete(h.post.id) : n.set(h.post.id, h.post)));
+      return n;
+    });
   const comfortable = me.preferences.density === "comfortable";
   const dimmed = search.isPlaceholderData || (search.isFetching && !search.isFetchingNextPage && !!first);
 
@@ -270,13 +295,12 @@ export function SearchPage() {
     <Box sx={{ display: "flex", flexDirection: "column", minHeight: "100%", width: "100%" }}>
       {/* Top bar: search · saved views · view mode · sort · filters toggle */}
       <Stack direction="row" spacing={1} alignItems="center" sx={{ px: { xs: 1.5, md: 2 }, pt: 1.5, pb: 1, flexWrap: { xs: "wrap", md: "nowrap" }, rowGap: 1 }}>
-        <Tooltip title="Filters ( [ )">
+        <Tooltip title={`${(wide ? sidebar : mobileFilters) ? "Hide" : "Show"} filters ( [ )`}>
           <IconButton onClick={() => (wide ? toggleSidebar() : setMobileFilters(true))} aria-label="Toggle filters" aria-pressed={wide ? sidebar : mobileFilters} sx={{ color: sidebar && wide ? "primary.main" : "text.secondary" }}>
             <FilterListRounded />
           </IconButton>
         </Tooltip>
         <SearchBar spec={spec} setSpec={setSpec} tags={tagData?.tags ?? []} people={peopleList} />
-        <SavedViewsMenu activeId={activeViewId} onApply={applyView} />
         <ToggleButtonGroup
           size="small"
           exclusive
@@ -298,40 +322,71 @@ export function SearchPage() {
             </ToggleButton>
           </Tooltip>
         </ToggleButtonGroup>
-        {view === "posts" && (
-          <Tooltip describeChild title="Select posts to present, save, or make a notebook (X)">
-            <ToggleButton size="small" value="select" selected={selecting} onChange={() => setSelecting(!selecting)} aria-label="Select posts" sx={{ textTransform: "none", gap: 0.75, px: 1.25, fontWeight: 600 }}>
-              <CheckBoxOutlined fontSize="small" />
-              <Box component="span" sx={{ display: { xs: "none", lg: "inline" } }}>Select</Box>
-            </ToggleButton>
-          </Tooltip>
-        )}
-        <TextField select size="small" value={effectiveSort(spec)} onChange={(e) => setSpec({ ...spec, sort: e.target.value as Sort, cursor: undefined })} sx={{ minWidth: 140, display: { xs: "none", sm: "flex" } }} inputProps={{ "aria-label": "Sort" }}>
-          {SORTS.filter(([s]) => s !== "relevance" || spec.q).map(([s, label]) => <MenuItem key={s} value={s}>{label}</MenuItem>)}
-        </TextField>
       </Stack>
 
       <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: sidebar ? "248px minmax(0, 1fr)" : "minmax(0, 1fr)" }, flex: 1 }}>
         {wide && sidebar && (
           <Box component="aside" aria-label="Filters" sx={{ borderRight: 1, borderColor: "divider", position: "sticky", top: 0, alignSelf: "start", maxHeight: "100dvh", overflow: "auto" }}>
+            <Stack direction="row" alignItems="center" sx={{ px: 2, pt: 1 }}>
+              <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>Filters</Typography>
+              <Tooltip title="Hide filters ( [ )">
+                <IconButton size="small" onClick={toggleSidebar} aria-label="Hide filters"><ChevronLeftRounded fontSize="small" /></IconButton>
+              </Tooltip>
+            </Stack>
             {filters}
           </Box>
         )}
         <Box sx={{ minWidth: 0, px: { xs: 1.5, md: 2 }, pb: 6 }}>
-          <Stack direction="row" alignItems="center" spacing={0.5} sx={{ pt: 1.5 }}>
-            <Typography component="h1" variant="h3">
+          {/* One quiet row: choose all · title (saved searches) · timeline · sort */}
+          <Stack direction="row" alignItems="center" spacing={0.5} useFlexGap sx={{ pt: 1.5, flexWrap: "wrap" }}>
+            {view === "posts" && hits.length > 0 && (
+              <Tooltip title={allPicked ? "Clear the choice" : "Choose all shown posts"}>
+                <Checkbox
+                  size="small"
+                  checked={allPicked}
+                  indeterminate={!allPicked && hits.some((h) => picked.has(h.post.id))}
+                  onChange={pickAll}
+                  inputProps={{ "aria-label": allPicked ? "Clear the choice of shown posts" : "Choose all shown posts" }}
+                  sx={{ ml: { xs: -0.5, md: 0.5 }, mr: 0.5 }}
+                />
+              </Tooltip>
+            )}
+            <Typography component="h1" variant="h3" sx={{ minWidth: 0 }} noWrap>
               {activeView?.name ?? onlyCollection?.name ?? (isEmptySpec(spec) ? "All posts" : "Search results")}
-              {isEmptySpec(spec) && !activeView && (
-                <Typography component="span" variant="body2" color="text.secondary"> · {SORTS.find(([s]) => s === effectiveSort(spec))?.[1].toLowerCase()} first</Typography>
-              )}
             </Typography>
+            <SavedViewsMenu activeId={activeViewId} onApply={applyView} compact />
+            {activeView && (
+              <Tooltip title="Close this saved search">
+                <IconButton size="small" aria-label="Close saved search" onClick={() => navigate(wsPath(org, ws, "/search"))}>
+                  <CloseRounded fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            )}
             {activeView ? (
               <FavoriteButton kind="view" id={activeView.id} name={activeView.name} size="small" />
             ) : onlyCollection ? (
               <FavoriteButton kind={onlyCollection.kind === "notebook" ? "notebook" : "collection"} id={onlyCollection.id} name={onlyCollection.name} size="small" />
             ) : null}
+            <Box sx={{ flex: 1 }} />
+            <Tooltip title={timeline ? "Hide the timeline" : "Show posts over time"}>
+              <ToggleButton size="small" value="timeline" selected={timeline} onChange={toggleTimeline} aria-label="Timeline" sx={{ textTransform: "none", gap: 0.5, px: 1, py: 0.25, border: 0, fontWeight: 600 }}>
+                <TimelineRounded fontSize="small" />
+                <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>Timeline</Box>
+              </ToggleButton>
+            </Tooltip>
+            <Button size="small" color="inherit" startIcon={<SortRounded fontSize="small" />} onClick={(e) => setSortAnchor(e.currentTarget)} aria-haspopup="menu" aria-label={`Sort: ${SORTS.find(([x]) => x === effectiveSort(spec))?.[1]}`} sx={{ fontWeight: 600, color: "text.secondary" }}>
+              {SORTS.find(([x]) => x === effectiveSort(spec))?.[1]}
+            </Button>
+            <Menu anchorEl={sortAnchor} open={!!sortAnchor} onClose={() => setSortAnchor(null)}>
+              {SORTS.filter(([x]) => x !== "relevance" || spec.q).map(([x, label]) => (
+                <MenuItem key={x} selected={x === effectiveSort(spec)} onClick={() => (setSpec({ ...spec, sort: x, cursor: undefined }), setSortAnchor(null))}>
+                  {label}
+                </MenuItem>
+              ))}
+            </Menu>
           </Stack>
-          {/* Histogram strip */}
+          {/* Histogram strip (opt-in: Timeline) */}
+          {timeline && (
           <Box sx={{ pt: 1, pb: 0.5 }}>
             <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5, minHeight: 28 }}>
               <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
@@ -372,6 +427,7 @@ export function SearchPage() {
             )}
             {hist && showTable && <HistogramTable hist={hist} tags={tags} />}
           </Box>
+          )}
 
           <Box sx={{ py: 1 }}>
             <ChipsBar
@@ -480,7 +536,7 @@ export function SearchPage() {
         />
       )}
       <GalleryViewer img={viewer} onClose={() => setViewer(null)} origin={origin} />
-      <SelectionTray selected={[...picked.keys()]} posts={picked} onClear={() => (setPicked(new Map()), setSelecting(false))} />
+      <SelectionTray selected={[...picked.keys()]} posts={picked} onClear={() => setPicked(new Map())} />
     </Box>
   );
 }

@@ -136,6 +136,7 @@ export function ResultsList({ hits, people, tags, focused, setFocused, comfortab
               onTagClick={onTagClick}
               selected={selection?.ids.has(h.post.id)}
               onToggleSelect={selection ? () => selection.toggle(h) : undefined}
+              selectShown={!!selection?.ids.size}
               linkState={origin}
             />
           </Box>
@@ -156,10 +157,11 @@ export function GalleryGrid({ images, onEndReached, onOpen }: { images: GalleryI
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  const cols = Math.max(2, Math.floor(width / 210));
-  const tile = (width - (cols - 1) * 8) / cols;
+  const GAP = 16; // between tiles, across and down
+  const cols = Math.max(2, Math.floor((width + GAP) / (210 + GAP)));
+  const tile = (width - (cols - 1) * GAP) / cols;
   const rows = Math.ceil(images.length / cols);
-  const v = useWindowVirtualizer({ count: rows, estimateSize: () => tile * 0.75 + 52, overscan: 4, scrollMargin });
+  const v = useWindowVirtualizer({ count: rows, estimateSize: () => tile * 0.75 + 52 + GAP, overscan: 4, scrollMargin });
   const items = v.getVirtualItems();
   const last = items[items.length - 1]?.index ?? 0;
   useEffect(() => {
@@ -168,7 +170,7 @@ export function GalleryGrid({ images, onEndReached, onOpen }: { images: GalleryI
   return (
     <Box ref={ref} sx={{ position: "relative", height: v.getTotalSize() }} role="list" aria-label="Images">
       {items.map((row) => (
-        <Stack key={row.index} direction="row" spacing={1} sx={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${row.start - scrollMargin}px)` }}>
+        <Stack key={row.index} direction="row" spacing={`${GAP}px`} sx={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${row.start - scrollMargin}px)` }}>
           {images.slice(row.index * cols, row.index * cols + cols).map((img) => (
             <Box key={img.imageInstanceId} role="listitem" sx={{ display: "flex" }}>
             <Box

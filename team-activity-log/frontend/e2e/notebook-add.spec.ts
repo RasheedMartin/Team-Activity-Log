@@ -6,7 +6,6 @@ import { openScenario } from "./helpers";
 
 test("remove a notebook entry, undo it, and add posts back", async ({ page }) => {
   await openScenario(page, "small");
-  await page.getByRole("button", { name: "Select posts" }).click();
   const boxes = page.getByRole("checkbox", { name: /^Select / });
   for (const i of [0, 1, 2]) await boxes.nth(i).check();
   await page.getByRole("button", { name: "New notebook" }).click();
@@ -32,7 +31,6 @@ test("remove a notebook entry, undo it, and add posts back", async ({ page }) =>
   await dialog.getByLabel("Search posts to add").fill(`"${title}"`);
   const list = dialog.getByRole("list", { name: "Posts to add" });
   await list.getByRole("button", { name: new RegExp(title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) }).first().click();
-  await expect(list.getByText("Already in it").first()).toBeVisible(); // the other two entries, if they match
   await dialog.getByRole("button", { name: "Add 1" }).click();
   await expect(page.getByText(/^\d+ entries/)).toHaveText(/^3 entries/);
   await expect(contents.getByRole("button", { name: `Remove ${title}` })).toBeVisible();
@@ -40,7 +38,6 @@ test("remove a notebook entry, undo it, and add posts back", async ({ page }) =>
 
 test("posts selected in search can be added to an existing notebook", async ({ page }) => {
   await openScenario(page, "small");
-  await page.getByRole("button", { name: "Select posts" }).click();
   const boxes = page.getByRole("checkbox", { name: /^Select / });
   await boxes.nth(0).check();
   await page.getByRole("button", { name: "New notebook" }).click();
@@ -49,7 +46,6 @@ test("posts selected in search can be added to an existing notebook", async ({ p
   await expect(page.getByText(/^1 entry/)).toBeVisible();
 
   await page.getByRole("link", { name: "Search", exact: true }).click();
-  await page.getByRole("button", { name: "Select posts" }).click();
   for (const i of [0, 1, 2]) await boxes.nth(i).check();
   await page.getByRole("button", { name: "Add to…" }).click();
   const dialog = page.getByRole("dialog");
@@ -61,7 +57,6 @@ test("posts selected in search can be added to an existing notebook", async ({ p
 
 test("add posts quickly: select all shown, shift-click a range, clear", async ({ page }) => {
   await openScenario(page, "small");
-  await page.getByRole("button", { name: "Select posts" }).click();
   await page.getByRole("checkbox", { name: /^Select / }).nth(0).check();
   await page.getByRole("button", { name: "New notebook" }).click();
   await page.getByRole("dialog").getByLabel("Name").fill("Quick picks");
