@@ -218,3 +218,9 @@ Tested against four real decks (112 slides: Google Slides exports, an IBM course
   - **Layout:** the posts in order as slide-like cards (a designed slide, else the first picture, else the opening text), each marked Draft or Published.
   - **Actions:** Present, Favorite, Open import (imported decks), and Search within for filtering.
   - **Links:** Library, Favorites in the sidebar, and the import page ("Open the deck") all go here.
+
+## No Library: Collections and Notebooks in the rail (owner request)
+
+- The rail has Collections and Notebooks, each a list page (search by name, sort, "Created by me", rename, delete with undo, star to favorite). Each opens items on their own page. `/library` redirects (`?kind=notebook` goes to Notebooks, `?kind=view` to Search).
+- Saved searches live only in Search's Saved searches menu (server search, star, delete with undo). Favorites still show any starred kind; "Show N more" expands in place.
+- **Back returns to where you came from** (router-state `Origin`): a draft or post opened from a collection page, the drafts list, or an import returns there on Back, Publish, or Discard. Prev/Next in the import banner keep that origin. Exiting Present returns to the collection or notebook it was started from.

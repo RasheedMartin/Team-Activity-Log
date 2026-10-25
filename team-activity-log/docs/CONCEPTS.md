@@ -10,8 +10,7 @@ icons, and one-line definitions is `frontend/src/features/collections/concepts.t
 | **Saved search** | A search you rerun. New posts that match show up on their own. Relative dates stay relative. | Search → Save search | saved-search |
 | **Collection** | A set of posts with its own page: an imported deck (its slides in order), or posts you picked by hand. | Search → Select → New collection | collections-bookmark |
 | **Notebook** | Posts in an order, read start to finish (one entry at a time, or continuous for print). | Search → Select → New notebook, or Home → a tag → Create notebook | menu-book |
-| **Favorites** | Your starred saved searches, collections, and notebooks, shown in the left sidebar. Personal. | The star on any of them | star |
-| **Library** | Every saved search, collection, and notebook in the workspace. | — | library |
+| **Favorites** | Your starred saved searches, collections, and notebooks, shown in the left sidebar. Personal. | The star on any of them (Collections and Notebooks pages, Search's Saved searches menu) | star |
 | **Activity** | What's yours to deal with: mentions & replies, your drafts, and (admins) the recycle bin. | — | bell |
 | **Recycle bin** | Deleted posts (kept 30 days) and hidden posts, with Restore. Admins only. | Delete or hide a post | — |
 | **Import slides** | Turn a PowerPoint deck into posts: slide text with its formatting (colors, highlight, lists, links), speaker notes, tables, charts (as their data), images, in the slide's reading order. Nothing publishes until you say so. | Rail button, or drop a .pptx anywhere | slideshow |

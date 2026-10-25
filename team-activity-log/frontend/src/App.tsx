@@ -75,6 +75,12 @@ const page = (el: ReactNode) => (
   </Suspense>
 );
 
+/** The Library became Collections and Notebooks (owner request); old links land on the right one. */
+function LibraryRedirect() {
+  const kind = new URLSearchParams(useLocation().search).get("kind");
+  return <Navigate to={kind === "notebook" ? "../notebooks" : kind === "view" ? "../search" : "../collections"} replace />;
+}
+
 export function App() {
   return (
     <Routes>
@@ -100,7 +106,9 @@ export function App() {
         <Route path="explore" element={<Navigate to=".." replace relative="path" />} />
         <Route path="notebooks/:id" element={page(<NotebookPage />)} />
         <Route path="collections/:id" element={page(<CollectionPage />)} />
-        <Route path="library" element={page(<LibraryPage />)} />
+        <Route path="collections" element={page(<LibraryPage key="collection" kind="collection" />)} />
+        <Route path="notebooks" element={page(<LibraryPage key="notebook" kind="notebook" />)} />
+        <Route path="library" element={<LibraryRedirect />} />
         <Route path="new" element={page(<ComposerPage />)} />
         <Route path="p/:postId" element={page(<PostDetailPage />)} />
         <Route path="p/:postId/edit" element={page(<ComposerPage />)} />

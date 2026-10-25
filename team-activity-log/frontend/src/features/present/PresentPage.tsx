@@ -35,7 +35,7 @@ function useDeckPostIds(): { ids: string[]; title: string; back: string; collect
   const { data: c } = useCollection(org.id, ws.id, postId ? undefined : collectionId);
   if (postId) return { ids: [postId], title: "", back: wsPath(org, ws, `/p/${postId}`) };
   if (collectionId) {
-    return { ids: c?.postIds ?? [], title: c?.name ?? "", back: c?.kind === "notebook" ? wsPath(org, ws, `/notebooks/${collectionId}`) : wsPath(org, ws), collection: c };
+    return { ids: c?.postIds ?? [], title: c?.name ?? "", back: wsPath(org, ws, c?.kind === "notebook" ? `/notebooks/${collectionId}` : `/collections/${collectionId}`), collection: c };
   }
   return { ids: (params.get("posts") ?? "").split(",").filter(Boolean), title: "Selection", back: wsPath(org, ws) };
 }

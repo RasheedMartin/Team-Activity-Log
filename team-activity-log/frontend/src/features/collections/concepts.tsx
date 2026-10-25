@@ -8,7 +8,7 @@ import type { LibraryKind } from "../../api/contract";
  */
 export const KINDS: Record<LibraryKind, { label: string; plural: string; icon: ReactNode; blurb: string }> = {
   view: { label: "Saved search", plural: "Saved searches", icon: <SavedSearchRounded />, blurb: "A search you rerun. New posts that match show up on their own." },
-  collection: { label: "Collection", plural: "Collections", icon: <CollectionsBookmarkOutlined />, blurb: "Posts you picked by hand." },
+  collection: { label: "Collection", plural: "Collections", icon: <CollectionsBookmarkOutlined />, blurb: "Imported decks, and posts you picked by hand." },
   notebook: { label: "Notebook", plural: "Notebooks", icon: <MenuBookOutlined />, blurb: "Posts in an order, read start to finish." },
 };
 

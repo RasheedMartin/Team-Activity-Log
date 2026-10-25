@@ -1,29 +1,28 @@
 import { expect, test } from "@playwright/test";
 import { openScenario } from "./helpers";
 
-// Scale: hundreds of views/notebooks/collections live in a paged, searchable Library; the rail
-// shows only personal pins.
-test("library at scale: tabs, search, paging, favorites, delete with undo", async ({ page }) => {
+// Collections and Notebooks each have their own page in the rail (owner request, replacing the
+// Library): paged, searchable by name, star to favorite, delete with undo. Saved searches live in
+// Search's menu.
+test("collections and notebooks pages at scale: search, paging, favorites, delete with undo", async ({ page }) => {
   test.setTimeout(120_000);
   await openScenario(page, "busy");
-  await page.getByRole("link", { name: /^Library/ }).click();
-  await expect(page.getByRole("tab", { name: /Saved searches \(\d+\)/ })).toBeVisible();
-  const counts = await page.getByRole("tab").allInnerTexts();
-  const n = (label: string) => Number(counts.find((c) => c.startsWith(label))!.match(/\((\d+)\)/)![1]);
-  expect(n("Saved searches")).toBeGreaterThan(30); // others' private saved searches are excluded
-  expect(n("Notebooks")).toBeGreaterThan(25);
-  expect(n("Collections")).toBeGreaterThan(70);
+  const nav = page.getByRole("navigation", { name: "Workspace" });
+  await expect(nav.getByRole("link", { name: "Library" })).toHaveCount(0);
 
-  // Paged: first page is limited; "Show more" loads the next.
-  const rows = page.getByRole("list", { name: "Library items" }).getByRole("listitem");
-  await expect(rows).toHaveCount(40);
+  await nav.getByRole("link", { name: "Collections" }).click();
+  await expect(page.getByRole("main").getByRole("heading", { name: "Collections" })).toBeVisible();
+  const collections = page.getByRole("list", { name: "Collections" }).getByRole("listitem");
+  await expect(collections).toHaveCount(40); // paged: first page is limited; "Show more" loads the next
   await page.getByRole("button", { name: /Show more/ }).click();
-  await expect(rows).toHaveCount(80);
+  await expect(collections).toHaveCount(80);
+  await collections.first().getByRole("link").click();
+  await expect(page).toHaveURL(/\/collections\/[^/]+$/); // its own page, not Search
 
-  // Tabs + search narrow server-side.
-  await page.getByRole("tab", { name: /Notebooks/ }).click();
+  await nav.getByRole("link", { name: "Notebooks" }).click();
   await expect(page.getByText("Posts in an order, read start to finish.")).toBeVisible(); // each kind says what it is
-  await page.getByLabel("Search the library").fill("notebook 1");
+  const rows = page.getByRole("list", { name: "Notebooks" }).getByRole("listitem");
+  await page.getByLabel("Find notebooks").fill("notebook 1");
   await expect(rows.first()).toContainText("notebook 1");
   const name = (await rows.first().getByRole("link").innerText()).split("\n")[0];
 
@@ -41,6 +40,10 @@ test("library at scale: tabs, search, paging, favorites, delete with undo", asyn
   await expect(page.getByText(`Deleted “${name}” (its posts are kept)`)).toBeVisible();
   await page.getByRole("button", { name: "Undo" }).click();
   await expect(rows.filter({ hasText: name }).first()).toBeVisible();
+
+  // Old Library links land on the right page.
+  await page.goto(page.url().replace(/\/notebooks.*$/, "/library?kind=notebook"));
+  await expect(page).toHaveURL(/\/notebooks$/);
 });
 
 test("the saved-searches menu searches on the server", async ({ page }) => {
@@ -51,4 +54,15 @@ test("the saved-searches menu searches on the server", async ({ page }) => {
   await expect(page.getByRole("menuitem", { name: /calibration/i }).first()).toBeVisible();
   await page.getByRole("menuitem", { name: /calibration/i }).first().click();
   await expect(page).toHaveURL(/view=/);
+});
+
+test("saved searches can be deleted from the menu (with undo)", async ({ page }) => {
+  await openScenario(page, "small");
+  await page.getByRole("button", { name: "Saved searches" }).click();
+  const item = page.getByRole("menuitem", { name: /Open questions/ });
+  await item.getByRole("button", { name: "Delete Open questions" }).click();
+  await expect(page.getByText("Deleted “Open questions”")).toBeVisible();
+  await page.getByRole("button", { name: "Undo" }).click();
+  await page.getByRole("button", { name: "Saved searches" }).click();
+  await expect(page.getByRole("menuitem", { name: /Open questions/ })).toBeVisible();
 });

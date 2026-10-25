@@ -1,6 +1,6 @@
 import { ArrowBackRounded, ChevronLeftRounded, ChevronRightRounded, SlideshowRounded } from "@mui/icons-material";
 import { Box, Button, Stack, Typography } from "@mui/material";
-import { Link as RouterLink } from "react-router-dom";
+import { Link as RouterLink, useLocation } from "react-router-dom";
 import type { ID, PostSource } from "../../api/contract";
 import { useImportPosts } from "../../api/hooks";
 import { useWs, wsPath } from "../../app/session";
@@ -11,6 +11,7 @@ import { useWs, wsPath } from "../../app/session";
  */
 export function ImportTrail({ source, postId }: { source: PostSource; postId: ID }) {
   const { org, ws } = useWs();
+  const location = useLocation(); // Prev/Next keep where the review started, so Back returns there
   const posts = useImportPosts(org.id, source.importJobId);
   const siblings = (posts.data ?? []).filter((d) => d.status === "draft");
   const at = siblings.findIndex((d) => d.id === postId);
@@ -31,7 +32,7 @@ export function ImportTrail({ source, postId }: { source: PostSource; postId: ID
         )}
       </Typography>
       {prev ? (
-        <Button size="small" component={RouterLink} to={edit(prev.id)} startIcon={<ChevronLeftRounded />} aria-label="Previous imported draft">
+        <Button size="small" component={RouterLink} to={edit(prev.id)} state={location.state} startIcon={<ChevronLeftRounded />} aria-label="Previous imported draft">
           Prev
         </Button>
       ) : (
@@ -40,7 +41,7 @@ export function ImportTrail({ source, postId }: { source: PostSource; postId: ID
         </Button>
       )}
       {next ? (
-        <Button size="small" component={RouterLink} to={edit(next.id)} endIcon={<ChevronRightRounded />} aria-label="Next imported draft">
+        <Button size="small" component={RouterLink} to={edit(next.id)} state={location.state} endIcon={<ChevronRightRounded />} aria-label="Next imported draft">
           Next
         </Button>
       ) : (

@@ -5,6 +5,7 @@ import { Link as RouterLink, useNavigate } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import type { DraftSummary } from "../../api/contract";
 import { usePostAction } from "../../api/hooks";
+import { useOrigin } from "../../app/origin";
 import { useWs, wsPath } from "../../app/session";
 import { useNotify } from "../../components/notify";
 import { timeAgo } from "../../lib/dates";
@@ -31,6 +32,7 @@ export function DraftList({ drafts, hideSource }: Props) {
   const action = usePostAction(org.id);
   const notify = useNotify();
   const navigate = useNavigate();
+  const origin = useOrigin("drafts"); // Back from a draft returns to this list
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [problems, setProblems] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -106,7 +108,7 @@ export function DraftList({ drafts, hideSource }: Props) {
             <ListItemIcon sx={{ minWidth: 0, pl: 1 }}>
               <Checkbox edge="start" size="small" checked={selected.has(d.id)} onChange={() => toggle(d.id)} inputProps={{ "aria-label": `Select ${d.title || "untitled draft"}` }} />
             </ListItemIcon>
-            <ListItemButton onClick={() => navigate(wsPath(org, ws, `/p/${d.id}/edit`))} sx={{ pl: 1 }}>
+            <ListItemButton onClick={() => navigate(wsPath(org, ws, `/p/${d.id}/edit`), { state: origin })} sx={{ pl: 1 }}>
               <ListItemText
                 primary={d.title || <Typography component="span" color="text.disabled">Untitled</Typography>}
                 secondary={

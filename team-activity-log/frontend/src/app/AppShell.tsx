@@ -5,7 +5,8 @@ import {
   SearchRounded,
   ExpandMoreRounded,
   NotificationsNoneRounded,
-  LibraryBooksOutlined,
+  CollectionsBookmarkOutlined,
+  MenuBookOutlined,
   LogoutRounded,
   MenuRounded,
   PersonOutlineRounded,
@@ -196,11 +197,12 @@ function Rail({ onNavigate }: { onNavigate?: () => void }) {
   const base = wsPath(org, ws);
   const navigate = useNavigate();
   // The rail shows only what *you* pinned (scale: a workspace may have hundreds of views,
-  // notebooks, and collections; everything else lives in the Library).
+  // notebooks, and collections; the rest are on the Collections / Notebooks pages and in Search).
   const { data: pins = [] } = usePins(org.id, ws.id);
   const { data: notes } = useNotifications(org.id);
   const unread = notes?.some((n) => !n.readAt && n.workspaceId === ws.id);
-  const shownPins = pins.slice(0, PINS_SHOWN);
+  const [allPins, setAllPins] = useState(false);
+  const shownPins = allPins ? pins : pins.slice(0, PINS_SHOWN);
   const location = useLocation();
   const params = new URLSearchParams(location.search);
   const onSearch = location.pathname === `${base}/search`;
@@ -235,7 +237,8 @@ function Rail({ onNavigate }: { onNavigate?: () => void }) {
           {/* Search is the all-posts list; it's "current" unless a pinned view/collection is. */}
           <NavItem to={`${base}/search`} icon={<SearchRounded />} label="Search" active={onSearch && !pinActive} onClick={onNavigate} />
           <NavItem to={`${base}/activity`} icon={<NotificationsNoneRounded />} label="Activity" badge={unread} onClick={onNavigate} />
-          <NavItem to={`${base}/library`} icon={<LibraryBooksOutlined />} label="Library" onClick={onNavigate} />
+          <NavItem to={`${base}/collections`} icon={<CollectionsBookmarkOutlined />} label="Collections" onClick={onNavigate} />
+          <NavItem to={`${base}/notebooks`} icon={<MenuBookOutlined />} label="Notebooks" onClick={onNavigate} />
         </List>
         {/* Favorites: what *you* starred (the API calls them pins). Hidden until there's one. */}
         {pins.length > 0 && (
@@ -261,9 +264,9 @@ function Rail({ onNavigate }: { onNavigate?: () => void }) {
               />
             ))}
             {pins.length > PINS_SHOWN && (
-              <Typography component={RouterLink} to={`${base}/library`} onClick={onNavigate} variant="caption" color="text.secondary" sx={{ display: "block", px: 2, py: 0.5 }}>
-                {pins.length - PINS_SHOWN} more in Library
-              </Typography>
+              <Button size="small" onClick={() => setAllPins(!allPins)} sx={{ ml: 1, color: "text.secondary", fontSize: "0.75rem" }}>
+                {allPins ? "Show fewer" : `Show ${pins.length - PINS_SHOWN} more`}
+              </Button>
             )}
           </List>
         )}

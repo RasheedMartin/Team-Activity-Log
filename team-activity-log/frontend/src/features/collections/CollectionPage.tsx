@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { Link as RouterLink, useParams } from "react-router-dom";
 import type { PostDetail } from "../../api/contract";
 import { useCollection, usePostDetails } from "../../api/hooks";
+import { useOrigin } from "../../app/origin";
 import { useWs, wsPath } from "../../app/session";
 import { RichText } from "../../components/RichText";
 import { SlideCanvas } from "../../components/SlideCanvas";
@@ -39,6 +40,7 @@ export default function CollectionPage() {
   const { org, ws } = useWs();
   const base = wsPath(org, ws);
   const c = useCollection(org.id, ws.id, id);
+  const origin = useOrigin(c.data?.name ?? "collection"); // Back from a post or draft returns here
   const details = usePostDetails(org.id, c.data?.postIds ?? []);
   const loaded = details.filter((q) => q.data).map((q) => q.data!);
   const deck = c.data?.kind === "deck_import";
@@ -89,6 +91,7 @@ export default function CollectionPage() {
                 <ButtonBase
                   component={RouterLink}
                   to={q.data.post.status === "draft" ? `${base}/p/${q.data.post.id}/edit` : `${base}/p/${q.data.post.id}`}
+                  state={origin}
                   sx={{ display: "block", width: "100%", textAlign: "left", borderRadius: 1.5, p: 1, border: 1, borderColor: "divider", bgcolor: "background.paper", "&:hover": { borderColor: "primary.main" } }}
                 >
                   <Box sx={{ pointerEvents: "none" }}>

@@ -36,7 +36,7 @@ test("review imported drafts one by one, and always find the way back", async ({
 
   // The composer's own back arrow and Publish also return to the import, not to Activity.
   await list.getByRole("listitem").first().locator(".MuiListItemButton-root").click();
-  await page.getByRole("button", { name: "Back to import" }).click();
+  await page.getByRole("button", { name: "Back", exact: true }).click(); // opened from the import: back to it
   await expect(page.getByRole("tab", { name: "To review (8)" })).toBeVisible();
   await list.getByRole("listitem").first().locator(".MuiListItemButton-root").click();
   await page.getByRole("button", { name: /^Publish/ }).click();
@@ -122,9 +122,18 @@ test("an imported deck has its own page, like a notebook", async ({ page }) => {
   await expect(cards.nth(1)).toContainText("Cooldown curve");
   await expect(page.getByRole("link", { name: "Open import" })).toHaveAttribute("href", /\/import\?job=/);
   await expect(page.getByRole("link", { name: "Search within" })).toHaveAttribute("href", /\/search\?/);
-  // The Library opens it here too, not in Search.
-  await page.getByRole("link", { name: "Library", exact: true }).click();
+  // A draft opened from here comes back here (not to the import).
+  await cards.nth(1).click(); // open a post from the deck page…
+  await page.getByRole("button", { name: /Back to Lab_Notes_2021/ }).click();
+  await expect(page).toHaveURL(/\/collections\//);
+  // The rail's Collections page lists it, and opens it here too, not in Search.
+  await page.getByRole("navigation", { name: "Workspace" }).getByRole("link", { name: "Collections" }).click();
   await page.getByRole("main").getByRole("link", { name: /Lab_Notes_2021/ }).first().click();
+  await expect(page).toHaveURL(/\/collections\//);
+  // Present from here returns here.
+  await page.getByRole("link", { name: "Present" }).click();
+  await expect(page.getByText(/^1 \/ \d+$/)).toBeVisible();
+  await page.getByRole("button", { name: "Exit presentation" }).click();
   await expect(page).toHaveURL(/\/collections\//);
   await page.setViewportSize({ width: 390, height: 844 });
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);

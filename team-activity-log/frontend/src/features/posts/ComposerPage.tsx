@@ -16,7 +16,8 @@ import {
 import { Alert, Box, Button, Divider, IconButton, InputBase, LinearProgress, Menu, MenuItem, Paper, Skeleton, Stack, TextField, Tooltip, Typography } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useBlocker, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useBlocker, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import type { Origin } from "../../app/origin";
 import { ApiError } from "../../api/client";
 import type { Block, ImageView, Post, PostDetail, Shape } from "../../api/contract";
 import { createImageInstance, patchImageInCaches, qk, uploadImage, useCreateDraft, usePost, usePostAction, useSaveAnnotation, useUpdateImage, useUpdatePost } from "../../api/hooks";
@@ -100,8 +101,10 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
   const notify = useNotify();
   const post = detail.post;
   const isDraft = post.status === "draft";
-  /** Where an imported draft's review started: its import's page. */
-  const importHome = post.source?.kind === "import" ? `${wsPath(org, ws, "/import")}?job=${post.source.importJobId}` : undefined;
+  /** Where Back, Publish, and Discard return: where the draft was opened from (a collection, the
+   *  drafts list, the import), else an imported draft's import. */
+  const origin = (useLocation().state as Origin | null)?.from;
+  const importHome = origin ?? (post.source?.kind === "import" ? `${wsPath(org, ws, "/import")}?job=${post.source.importJobId}` : undefined);
   const update = useUpdatePost(orgId, post.id);
   const action = usePostAction(orgId);
   const updateImage = useUpdateImage(orgId);
@@ -393,7 +396,7 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
       {/* Top bar */}
       <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 2, py: 1, borderBottom: 1, borderColor: "divider", bgcolor: "background.paper", position: "sticky", top: 0, zIndex: 4 }}>
         <Tooltip title="Back">
-          <IconButton onClick={() => navigate(isDraft ? (importHome ?? wsPath(org, ws, "/activity/drafts")) : wsPath(org, ws, `/p/${post.id}`))} aria-label={importHome && isDraft ? "Back to import" : "Back"}>
+          <IconButton onClick={() => navigate(isDraft ? (importHome ?? wsPath(org, ws, "/activity/drafts")) : wsPath(org, ws, `/p/${post.id}`))} aria-label="Back">
             <ArrowBackRounded />
           </IconButton>
         </Tooltip>
