@@ -1,5 +1,5 @@
 import { http, HttpResponse } from "msw";
-import type { Block, ImportItem, ImportJob, ImportMode, SlideDesign, SlideDesignMode } from "../../api/contract";
+import type { Block, ImportItem, ImportJob, ImportMode, ImportPost, SlideDesign, SlideDesignMode } from "../../api/contract";
 import { blockImageIds } from "../../lib/blocks";
 import { uuidv7 } from "../../lib/ids";
 import { doc, heading } from "../../lib/prosemirror";
@@ -185,6 +185,27 @@ export const importHandlers = [
       if (!j || j.orgId !== ctx.org.id || j.userId !== ctx.user.id) fail(404, "not_found", "Import not found");
       return HttpResponse.json(view(j!));
     }, { flaky: false }),
+  ),
+  http.get(
+    "/v1/orgs/:org/imports/:id/posts",
+    route(({ cookies, params }) => {
+      const ctx = orgCtx(cookies, params.org as string);
+      const j = db.t.importJobs.get(params.id as string);
+      if (!j || j.orgId !== ctx.org.id || j.userId !== ctx.user.id) fail(404, "not_found", "Import not found");
+      const list: ImportPost[] = db.t.posts
+        .filter((p) => p.source?.importJobId === j!.id && !p.deletedAt)
+        .map((p) => ({
+          id: p.id,
+          title: p.title,
+          status: (p.status === "published" ? "published" : "draft") as ImportPost["status"],
+          updatedAt: p.updatedAt,
+          imageCount: p.counts.images,
+          workspaceId: p.workspaceId,
+          source: { importJobId: p.source!.importJobId, fileName: p.source!.fileName, slide: p.source!.slide, slideCount: p.source!.slideCount },
+        }))
+        .sort((a, b) => (a.source.slide ?? 0) - (b.source.slide ?? 0));
+      return HttpResponse.json(list);
+    }),
   ),
   http.patch(
     "/v1/orgs/:org/imports/:id",

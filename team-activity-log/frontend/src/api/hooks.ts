@@ -9,6 +9,7 @@ import {
 } from "@tanstack/react-query";
 import { api, ApiError, del, get, patch, post, put } from "./client";
 import type {
+  ImportPost,
   Presentation,
   Collection,
   CollectionEntry,
@@ -308,7 +309,7 @@ export const usePost = (orgId: ID, id: ID | undefined) =>
 
 /** Search caches embed post copies; after a post changes, refresh them (and re-fetch lists). */
 export function invalidatePostLists(qc: QueryClient, orgId: ID) {
-  qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === "org" && q.queryKey[1] === orgId && (q.queryKey[4] === "search" || q.queryKey[4] === "drafts" || q.queryKey[4] === "trash") });
+  qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === "org" && q.queryKey[1] === orgId && (q.queryKey[4] === "search" || q.queryKey[4] === "drafts" || q.queryKey[4] === "trash" || q.queryKey[4] === "posts") });
 }
 
 export function useCreateDraft(orgId: ID, wsId: ID) {
@@ -756,6 +757,9 @@ export const useImportJob = (orgId: ID, id: ID | undefined) =>
     enabled: !!id,
     refetchInterval: (q) => (q.state.data && ["uploading", "parsing", "committing"].includes(q.state.data.status) ? 400 : false),
   });
+/** Every post an import created (drafts and published), in slide order. */
+export const useImportPosts = (orgId: ID, id: ID | undefined) =>
+  useQuery({ queryKey: [...qk.importJob(orgId, id ?? ""), "posts"] as const, queryFn: ({ signal }) => get<ImportPost[]>(`${O(orgId)}/imports/${id}/posts`, signal), enabled: !!id });
 export function useImportAction(orgId: ID, id: ID) {
   const qc = useQueryClient();
   return useMutation({

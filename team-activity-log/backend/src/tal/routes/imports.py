@@ -31,7 +31,7 @@ from ..images import create_asset
 from ..outbox import enqueue
 from ..pptx import ParsedDeck, ParsedSlide, PptxError, deck_look, parse_pptx
 from ..prosemirror import doc, empty_doc, heading
-from ..timeutil import now, today
+from ..timeutil import iso, now, today
 from ..views import block_image_ids, import_job_view
 from .posts import set_tags as set_post_tags
 
@@ -225,6 +225,30 @@ async def upload(org: str, job_id: str, request: Request, u: m.User = Depends(re
 async def get_job(org: str, job_id: str, u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
     ctx = await org_ctx(db, u, org)
     return import_job_view(await _job(ctx, job_id, own=True))
+
+
+@router.get("/orgs/{org}/imports/{job_id}/posts")
+async def job_posts(org: str, job_id: str, u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
+    """Every post this import created that still exists, drafts and published, in slide order:
+    the import page shows what's left to review and what's out."""
+    ctx = await org_ctx(db, u, org)
+    j = await _job(ctx, job_id, own=True)
+    rows = (
+        await db.execute(select(m.Post).where(m.Post.org_id == ctx.org.id, m.Post.deleted_at.is_(None), m.Post.source["importJobId"].astext == str(j.id)))
+    ).scalars().all()  # fmt: skip
+    out = [
+        {
+            "id": str(p.id),
+            "title": p.title,
+            "status": p.status,
+            "updatedAt": iso(p.updated_at),
+            "imageCount": p.image_count,
+            "workspaceId": str(p.workspace_id),
+            "source": {k: (p.source or {}).get(k) for k in ("importJobId", "fileName", "slide", "slideCount")},
+        }
+        for p in rows
+    ]
+    return sorted(out, key=lambda x: x["source"]["slide"] or 0)
 
 
 @router.patch("/orgs/{org}/imports/{job_id}")

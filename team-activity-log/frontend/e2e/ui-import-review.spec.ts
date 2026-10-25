@@ -34,11 +34,29 @@ test("review imported drafts one by one, and always find the way back", async ({
   await trail.getByRole("link", { name: "Back to import" }).click();
   await expect(page.getByText(/Created 8 drafts/)).toBeVisible(); // the import's own page, where we left it
 
+  // The composer's own back arrow and Publish also return to the import, not to Activity.
+  await list.getByRole("listitem").first().locator(".MuiListItemButton-root").click();
+  await page.getByRole("button", { name: "Back to import" }).click();
+  await expect(page.getByRole("tab", { name: "To review (8)" })).toBeVisible();
+  await list.getByRole("listitem").first().locator(".MuiListItemButton-root").click();
+  await page.getByRole("button", { name: /^Publish/ }).click();
+  await expect(page.getByRole("tab", { name: "To review (7)" })).toBeVisible();
+  await page.getByRole("tab", { name: "Published (1)" }).click();
+  await expect(page.getByRole("list", { name: "Published from this import" }).getByText("Cooldown overview")).toBeVisible();
+  await page.getByRole("tab", { name: "To review (7)" }).click();
+
+  // The report is a PDF.
+  const [report] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Download report (PDF)" }).click()]);
+  expect(report.suggestedFilename()).toBe("Lab_Notes_2021 import report.pdf");
+  expect(readFileSync(await report.path()).subarray(0, 5).toString()).toBe("%PDF-");
+  await report.saveAs("test-results/import-report.pdf");
+
   // Select all → publish.
   await page.getByRole("checkbox", { name: "Select all drafts" }).check();
-  await expect(page.getByText("8 selected")).toBeVisible();
-  await page.getByRole("button", { name: "Publish 8" }).click();
-  await expect(page.getByText(/Published 8 posts/)).toBeVisible();
+  await expect(page.getByText("7 selected")).toBeVisible();
+  await page.getByRole("button", { name: "Publish 7" }).click();
+  await expect(page.getByText(/Published 7 posts/)).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Published (8)" })).toBeVisible();
   await expect(page.getByText(/Nothing left to review/)).toBeVisible();
   await expect(page.getByRole("link", { name: "Search these slides" })).toBeVisible();
 });

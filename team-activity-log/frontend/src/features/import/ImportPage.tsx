@@ -12,6 +12,10 @@ import {
   DialogTitle,
   FormControlLabel,
   LinearProgress,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemText,
   Paper,
   Radio,
   RadioGroup,
@@ -19,12 +23,14 @@ import {
   Step,
   StepLabel,
   Stepper,
+  Tab,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
+  Tabs,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
@@ -34,7 +40,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { Link as RouterLink, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import type { ImportItem, ImportJob, ImportMode, SlideDesignMode } from "../../api/contract";
-import { useDrafts, useImportAction, useImportJob, useStartImport } from "../../api/hooks";
+import { useImportAction, useImportJob, useImportPosts, useStartImport } from "../../api/hooks";
 import { DraftList } from "../activity/DraftList";
 import { can, useWs, wsPath } from "../../app/session";
 import { useNotify } from "../../components/notify";
@@ -330,20 +336,17 @@ function DoneStep({ job, onNew }: { job: ImportJob; onNew: () => void }) {
   const [confirm, setConfirm] = useState(false);
   const [published, setPublished] = useState(false);
   const r = job.report;
-  const drafts = useDrafts(org.id, ws.id);
-  const mine = (drafts.data ?? []).filter((d) => d.source?.importJobId === job.id).sort((a, b) => (a.source?.slide ?? 0) - (b.source?.slide ?? 0));
-  const downloadReport = () => {
-    const lines = [
-      `Import report: ${job.sourceFilename}`,
-      `Mode: ${MODES.find((m) => m.id === job.mode)?.title}`,
-      `Created: ${r?.created ?? 0} drafts · Skipped: ${r?.skipped ?? 0} · Warnings: ${r?.warnings ?? 0}`,
-      "",
-      ...job.items.map((i) => `${i.included ? "✓" : "–"} slides ${slideRange(i.slideNumbers)}\t${i.proposedTitle || "(untitled)"}\t${i.proposedDate}${i.dateSource !== "user" ? " (" + i.dateSource + ")" : ""}${i.warnings.length ? "\t⚠ " + i.warnings.join("; ") : ""}`),
-    ];
-    const url = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/plain" }));
-    const a = Object.assign(document.createElement("a"), { href: url, download: `${job.sourceFilename.replace(/\.pptx$/i, "")}-import-report.txt` });
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const posts = useImportPosts(org.id, job.id);
+  const mine = (posts.data ?? []).filter((p) => p.status === "draft");
+  const out = (posts.data ?? []).filter((p) => p.status === "published");
+  const [tab, setTab] = useState<"review" | "published">("review");
+  const downloadReport = async () => {
+    try {
+      const { downloadImportReport } = await import("../../lib/importReport");
+      downloadImportReport(job, posts.data ?? [], MODES.find((m) => m.id === job.mode)?.title ?? job.mode);
+    } catch (e) {
+      notify(`Couldn't make the report: ${errorMessage(e)}`);
+    }
   };
   const collectionUrl = job.collectionId ? `${wsPath(org, ws, "/search")}?${toSearchParams({ all: [{ field: "collection", op: "in", value: [job.collectionId] }], sort: "oldest" })}` : wsPath(org, ws);
   return (
@@ -352,20 +355,41 @@ function DoneStep({ job, onNew }: { job: ImportJob; onNew: () => void }) {
         Created {r?.created ?? 0} drafts from “{job.sourceFilename}”{r?.skipped ? `, skipped ${r.skipped}` : ""}{r?.warnings ? `, with ${r.warnings} warnings to review` : ""}.
       </Alert>
       <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
-        <Button variant="contained" disabled={published || act.isPending || (!drafts.isPending && !mine.length)} onClick={() => act.mutate({ action: "publishAll" }, { onSuccess: () => (setPublished(true), notify("All imported drafts published")) })}>
+        <Button variant="contained" disabled={published || act.isPending || (!posts.isPending && !mine.length)} onClick={() => act.mutate({ action: "publishAll" }, { onSuccess: () => (setPublished(true), notify("All imported drafts published")) })}>
           {published ? "Published" : "Publish all"}
         </Button>
-        {(published || (!drafts.isPending && mine.length < (r?.created ?? 0))) && <Button component={RouterLink} to={collectionUrl} startIcon={<SearchRounded />}>Search these slides</Button>}
-        <Button startIcon={<DownloadRounded />} onClick={downloadReport}>Download report</Button>
+        {(published || out.length > 0) && <Button component={RouterLink} to={collectionUrl} startIcon={<SearchRounded />}>Search these slides</Button>}
+        <Button startIcon={<DownloadRounded />} onClick={() => void downloadReport()}>Download report (PDF)</Button>
         <Button onClick={onNew}>Import more slides</Button>
         <Button color="error" onClick={() => setConfirm(true)}>Delete this import</Button>
       </Stack>
       <Box sx={{ width: "100%" }}>
-        <Typography variant="h4" sx={{ mb: 0.5 }}>Drafts to review</Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          Open one to edit it; each draft links back here. Select several to publish them together.
-        </Typography>
-        {mine.length ? <DraftList drafts={mine} hideSource /> : <Typography variant="body2" color="text.secondary">Nothing left to review: every post from this import is published or discarded.</Typography>}
+        <Tabs value={tab} onChange={(_, v) => setTab(v)} aria-label="Posts from this import" sx={{ mb: 1.5, borderBottom: 1, borderColor: "divider" }}>
+          <Tab value="review" label={`To review (${mine.length})`} />
+          <Tab value="published" label={`Published (${out.length})`} />
+        </Tabs>
+        {tab === "review" ? (
+          <>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+              Open a draft to check it; you come back here when you're done. Select several to publish them together.
+            </Typography>
+            {mine.length ? <DraftList drafts={mine} hideSource /> : <Typography variant="body2" color="text.secondary">Nothing left to review: everything from this import is published or discarded.</Typography>}
+          </>
+        ) : out.length ? (
+          <Paper variant="outlined">
+            <List disablePadding aria-label="Published from this import">
+              {out.map((p, i) => (
+                <ListItem key={p.id} disablePadding divider={i < out.length - 1}>
+                  <ListItemButton component={RouterLink} to={wsPath(org, ws, `/p/${p.id}`)}>
+                    <ListItemText primary={p.title || "Untitled"} secondary={`Slide ${p.source?.slide ?? "?"} · published`} />
+                  </ListItemButton>
+                </ListItem>
+              ))}
+            </List>
+          </Paper>
+        ) : (
+          <Typography variant="body2" color="text.secondary">Nothing published yet. Publish drafts from the To review tab.</Typography>
+        )}
       </Box>
       <Dialog open={confirm} onClose={() => setConfirm(false)} maxWidth="xs">
         <DialogTitle>Delete this import?</DialogTitle>

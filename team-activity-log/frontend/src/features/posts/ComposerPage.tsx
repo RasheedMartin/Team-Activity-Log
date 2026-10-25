@@ -100,6 +100,8 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
   const notify = useNotify();
   const post = detail.post;
   const isDraft = post.status === "draft";
+  /** Where an imported draft's review started: its import's page. */
+  const importHome = post.source?.kind === "import" ? `${wsPath(org, ws, "/import")}?job=${post.source.importJobId}` : undefined;
   const update = useUpdatePost(orgId, post.id);
   const action = usePostAction(orgId);
   const updateImage = useUpdateImage(orgId);
@@ -319,7 +321,8 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
     action.mutate(
       { id: post.id, action: "publish", version: version.current },
       {
-        onSuccess: () => navigate(wsPath(org, ws, `/p/${post.id}`)),
+        // An imported draft goes back to its import, to pick the next one.
+        onSuccess: () => (importHome ? (navigate(importHome), notify(`Published “${f.title || "Untitled"}”`)) : navigate(wsPath(org, ws, `/p/${post.id}`))),
         onError: (e) => setProblems(e instanceof ApiError && Array.isArray((e.details as { problems?: string[] })?.problems) ? (e.details as { problems: string[] }).problems : [errorMessage(e)]),
       },
     );
@@ -336,7 +339,7 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
   const discardDraft = () =>
     action.mutate(
       { id: post.id, action: "delete" },
-      { onSuccess: () => (navigate(wsPath(org, ws, "/activity/drafts")), notify("Draft discarded", () => action.mutate({ id: post.id, action: "restore" }))) },
+      { onSuccess: () => (navigate(importHome ?? wsPath(org, ws, "/activity/drafts")), notify("Draft discarded", () => action.mutate({ id: post.id, action: "restore" }))) },
     );
   const reloadLatest = () => {
     qc.invalidateQueries({ queryKey: qk.post(orgId, post.id) }).then(() => {
@@ -390,7 +393,7 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
       {/* Top bar */}
       <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 2, py: 1, borderBottom: 1, borderColor: "divider", bgcolor: "background.paper", position: "sticky", top: 0, zIndex: 4 }}>
         <Tooltip title="Back">
-          <IconButton onClick={() => navigate(isDraft ? wsPath(org, ws, "/activity/drafts") : wsPath(org, ws, `/p/${post.id}`))} aria-label="Back">
+          <IconButton onClick={() => navigate(isDraft ? (importHome ?? wsPath(org, ws, "/activity/drafts")) : wsPath(org, ws, `/p/${post.id}`))} aria-label={importHome && isDraft ? "Back to import" : "Back"}>
             <ArrowBackRounded />
           </IconButton>
         </Tooltip>

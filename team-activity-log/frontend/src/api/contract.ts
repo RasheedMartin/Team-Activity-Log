@@ -293,6 +293,11 @@ export interface DraftSummary {
   source?: Pick<PostSource, "importJobId" | "fileName" | "slide" | "slideCount">;
 }
 
+/** A post an import created, drafts and published alike (the import page's two lists). */
+export interface ImportPost extends DraftSummary {
+  status: "draft" | "published";
+}
+
 export interface PostPatch {
   version: number;
   title?: string;

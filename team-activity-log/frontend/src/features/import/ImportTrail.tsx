@@ -2,7 +2,7 @@ import { ArrowBackRounded, ChevronLeftRounded, ChevronRightRounded, SlideshowRou
 import { Box, Button, Stack, Typography } from "@mui/material";
 import { Link as RouterLink } from "react-router-dom";
 import type { ID, PostSource } from "../../api/contract";
-import { useDrafts } from "../../api/hooks";
+import { useImportPosts } from "../../api/hooks";
 import { useWs, wsPath } from "../../app/session";
 
 /**
@@ -11,8 +11,8 @@ import { useWs, wsPath } from "../../app/session";
  */
 export function ImportTrail({ source, postId }: { source: PostSource; postId: ID }) {
   const { org, ws } = useWs();
-  const drafts = useDrafts(org.id, ws.id);
-  const siblings = (drafts.data ?? []).filter((d) => d.source?.importJobId === source.importJobId).sort((a, b) => (a.source?.slide ?? 0) - (b.source?.slide ?? 0));
+  const posts = useImportPosts(org.id, source.importJobId);
+  const siblings = (posts.data ?? []).filter((d) => d.status === "draft");
   const at = siblings.findIndex((d) => d.id === postId);
   // A draft just published leaves the list: step relative to its slide instead.
   const prev = at >= 0 ? siblings[at - 1] : [...siblings].reverse().find((d) => (d.source?.slide ?? 0) < source.slide);
