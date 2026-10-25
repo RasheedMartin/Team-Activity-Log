@@ -1,4 +1,4 @@
-import { CollectionsBookmarkOutlined, ManageSearchRounded, SlideshowRounded, UploadFileOutlined } from "@mui/icons-material";
+import { AddRounded, CollectionsBookmarkOutlined, ManageSearchRounded, SlideshowRounded, UploadFileOutlined } from "@mui/icons-material";
 import { Box, Button, ButtonBase, Checkbox, Chip, Skeleton, Stack, Typography } from "@mui/material";
 import { useMemo, useState } from "react";
 import { Link as RouterLink, useParams } from "react-router-dom";
@@ -13,6 +13,7 @@ import { EmptyState, ErrorState } from "../../components/ui";
 import { blockDocs } from "../../lib/blocks";
 import { formatDay } from "../../lib/dates";
 import { docText } from "../../lib/prosemirror";
+import { AddPostsDialog } from "./AddPosts";
 import { FavoriteButton } from "./FavoriteButton";
 import { collectionParams } from "./libraryLinks";
 
@@ -52,6 +53,7 @@ export default function CollectionPage() {
   const notify = useNotify();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+  const [adding, setAdding] = useState(false);
   const ids = c.data?.postIds ?? [];
   const chosen = ids.filter((x) => selected.has(x)); // posts that left the collection drop out of the selection
   const all = chosen.length === ids.length && ids.length > 0;
@@ -115,6 +117,10 @@ export default function CollectionPage() {
               Open import
             </Button>
           )}
+          <Button startIcon={<AddRounded />} onClick={() => setAdding(true)}>
+            Add posts
+          </Button>
+          <AddPostsDialog open={adding} onClose={() => setAdding(false)} collectionId={coll.id} name={coll.name} postIds={coll.postIds} />
           <Button component={RouterLink} to={`${base}/search?${collectionParams(coll.id)}`} startIcon={<ManageSearchRounded />}>
             Search within
           </Button>

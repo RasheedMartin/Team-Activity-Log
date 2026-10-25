@@ -1,4 +1,5 @@
 import {
+  AddRounded,
   ArrowDownwardRounded,
   ArrowUpwardRounded,
   ChevronLeftRounded,
@@ -42,6 +43,7 @@ import { SlideCanvas } from "../../components/SlideCanvas";
 import { EmptyState, TagChip, UserAvatar } from "../../components/ui";
 import { formatDay, formatRange } from "../../lib/dates";
 import { AnnotatedImage } from "../posts/editor/ImageBlock";
+import { AddPostsDialog } from "./AddPosts";
 import { FavoriteButton } from "./FavoriteButton";
 
 /** One notebook entry, rendered like a document section. */
@@ -101,6 +103,7 @@ export default function NotebookPage() {
   const { data: nb, isPending } = useCollection(org.id, ws.id, id);
   const { data: entries = [] } = useCollectionEntries(org.id, ws.id, nb?.id);
   const update = useUpdateCollection(org.id, ws.id);
+  const [adding, setAdding] = useState(false);
   const remove = useDeleteCollection(org.id, ws.id);
   const recreate = useCreateCollection(org.id, ws.id);
   const { data: peopleList = [] } = usePeople(org.id);
@@ -213,7 +216,10 @@ export default function NotebookPage() {
                     <Stack direction="row">
                       <IconButton size="small" onClick={() => move(e.id, -1)} aria-label={`Move ${e.title} up`}><ArrowUpwardRounded sx={{ fontSize: 16 }} /></IconButton>
                       <IconButton size="small" onClick={() => move(e.id, 1)} aria-label={`Move ${e.title} down`}><ArrowDownwardRounded sx={{ fontSize: 16 }} /></IconButton>
-                      <IconButton size="small" onClick={() => update.mutate({ id: nb.id, postIds: nb.postIds.filter((x) => x !== e.id) }, { onError: (err) => notify(`Couldn't remove: ${err.message}`) })} aria-label={`Remove ${e.title}`}><CloseRounded sx={{ fontSize: 16 }} /></IconButton>
+                      <IconButton size="small" onClick={() => {
+                          const before = nb.postIds;
+                          update.mutate({ id: nb.id, postIds: before.filter((x) => x !== e.id) }, { onSuccess: () => notify(`Removed “${e.title || "Untitled"}”`, () => update.mutate({ id: nb.id, postIds: before })), onError: (err) => notify(`Couldn't remove: ${err.message}`) });
+                        }} aria-label={`Remove ${e.title}`}><CloseRounded sx={{ fontSize: 16 }} /></IconButton>
                     </Stack>
                   )
                 }
@@ -240,6 +246,8 @@ export default function NotebookPage() {
           </ToggleButtonGroup>
           <Button size="small" startIcon={<SlideshowRounded />} onClick={() => navigate(`${wsPath(org, ws, "/present")}?collection=${nb.id}`)} disabled={!entries.length}>Present</Button>
           <Button size="small" startIcon={<PrintOutlined />} onClick={() => setParam({ view: "continuous", print: "1" })} disabled={!entries.length}>Print / PDF</Button>
+          <Button size="small" startIcon={<AddRounded />} onClick={() => setAdding(true)}>Add posts</Button>
+          <AddPostsDialog open={adding} onClose={() => setAdding(false)} collectionId={nb.id} name={nb.name} postIds={nb.postIds} />
           <Tooltip describeChild title={editing ? "Done reordering" : "Reorder or remove entries in the contents list"}>
             <Button size="small" startIcon={<EditOutlined />} variant={editing ? "contained" : "text"} onClick={() => setEditing(!editing)}>{editing ? "Done" : "Edit"}</Button>
           </Tooltip>

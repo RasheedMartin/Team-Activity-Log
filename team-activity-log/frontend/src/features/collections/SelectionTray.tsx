@@ -1,4 +1,4 @@
-import { ArrowDownwardRounded, ArrowUpwardRounded, CloseRounded, CollectionsBookmarkOutlined, MenuBookOutlined, SlideshowRounded } from "@mui/icons-material";
+import { ArrowDownwardRounded, ArrowUpwardRounded, CloseRounded, CollectionsBookmarkOutlined, MenuBookOutlined, PlaylistAddRounded, SlideshowRounded } from "@mui/icons-material";
 import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, List, ListItem, ListItemText, Paper, Stack, TextField, Typography } from "@mui/material";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -7,6 +7,7 @@ import { ApiError } from "../../api/client";
 import { useCreateCollection, useLibrary } from "../../api/hooks";
 import { useWs, wsPath } from "../../app/session";
 import { useNotify } from "../../components/notify";
+import { AddToDialog } from "./AddPosts";
 import { KINDS } from "./concepts";
 import { formatDay } from "../../lib/dates";
 import { errorMessage } from "../../lib/format";
@@ -92,6 +93,7 @@ function ArrangeDialog({ posts, action, onClose, onDone }: { posts: Post[]; acti
 
 export function SelectionTray({ selected, posts, onClear }: { selected: ID[]; posts: Map<ID, Post>; onClear: () => void }) {
   const [action, setAction] = useState<Action | null>(null);
+  const [addTo, setAddTo] = useState(false);
   const list = selected.map((id) => posts.get(id)).filter((p): p is Post => !!p);
   if (!selected.length) return null;
   return (
@@ -106,9 +108,11 @@ export function SelectionTray({ selected, posts, onClear }: { selected: ID[]; po
         <Button size="small" variant="contained" startIcon={<SlideshowRounded />} onClick={() => setAction("present")}>Present</Button>
         <Button size="small" startIcon={<CollectionsBookmarkOutlined />} onClick={() => setAction("collection")}>New collection</Button>
         <Button size="small" startIcon={<MenuBookOutlined />} onClick={() => setAction("notebook")}>New notebook</Button>
+        <Button size="small" startIcon={<PlaylistAddRounded />} onClick={() => setAddTo(true)}>Add to…</Button>
         <Box sx={{ flex: 1 }} />
         <Button size="small" color="inherit" onClick={onClear}>Clear</Button>
       </Paper>
+      {addTo && <AddToDialog postIds={selected} onClose={() => setAddTo(false)} onDone={() => (setAddTo(false), onClear())} />}
       {action && <ArrangeDialog posts={list} action={action} onClose={() => setAction(null)} onDone={() => (setAction(null), onClear())} />}
     </>
   );
