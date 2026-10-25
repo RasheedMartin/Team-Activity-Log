@@ -33,8 +33,8 @@ Keep the two in sync (later: the landing page fetches plans from `GET /v1/plans`
 **Academic & nonprofit:** 50% off Team and Business for universities, national labs, and
 registered nonprofits. Research groups are the first market; this removes the budget objection.
 
-**Trial:** Team features free for 14 days on a new org, then it falls back to Free (nothing deleted;
-over-limit orgs become read-only for new uploads until they upgrade or trim).
+**Trial (built):** Team free for 14 days on every new org (`TRIAL_DAYS`), no card needed. Then it falls
+back to Free: nothing is deleted; Free limits block adding more until they upgrade.
 
 ## Billing rules
 
@@ -71,3 +71,19 @@ Free); no grandfathering. Demo scenarios load as Team.
 
 1. Are viewers billable? (Proposed: yes on Team; free read-only *guests* cover outside collaborators.)
 2. Per-seat vs flat per-lab pricing for academia (some PIs prefer one fixed annual invoice).
+
+## Billing (built)
+
+Stripe, over its HTTPS API (`tal/billing.py`); off until `STRIPE_*` settings exist (setup steps in
+`backend/README.md` → Free trial and billing).
+
+- **Upgrade:** Organization admin → Organization → Upgrade (Team or Business, monthly or yearly) opens
+  Stripe Checkout; seats = active members.
+- **Manage:** "Manage billing" opens Stripe's portal (plan, card, invoices, cancel).
+- **State comes from Stripe's signed webhook** (`POST /v1/billing/webhook`, HMAC-verified, 5-minute replay
+  window): active/trialing → that price's plan; past_due → keeps the plan, shows a warning; canceled/unpaid
+  → Free. Handlers set state, so redelivery is harmless.
+- **Seats follow membership:** after a member joins or is removed (and the change is saved), the
+  subscription quantity is updated with prorations.
+- **Not built yet:** Guests, SSO/SCIM, audit log (the pricing page marks them coming soon); invoices for
+  Enterprise (contact sales); academic discount codes (Stripe promotion codes work in Checkout).

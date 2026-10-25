@@ -9,23 +9,23 @@ import {
   SlideshowRounded,
   UploadFileOutlined,
 } from "@mui/icons-material";
-import { Box, Button, Container, Link, Paper, Stack, Typography } from "@mui/material";
+import { Box, Button, ButtonBase, Container, Link, Paper, Stack, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { useMe } from "../../api/hooks";
 import { BRAND } from "../../app/brand";
 import { ACADEMIC_NOTE, PLANS } from "../../app/pricing";
 import { homePath } from "../../app/session";
-import { HeroDemo } from "./HeroDemo";
+import { HeroDemo, type DemoScene } from "./HeroDemo";
 
-const FEATURES: { icon: ReactNode; title: string; body: string }[] = [
-  { icon: <EditNoteRounded />, title: "Write it up", body: "Notes, tables, and plots. Saved as you type." },
-  { icon: <ManageSearchRounded />, title: "Find anything", body: "Posts, comments, even text in images." },
-  { icon: <UploadFileOutlined />, title: "Import slides", body: "Every slide becomes a searchable post." },
-  { icon: <AlternateEmailRounded />, title: "Discuss", body: "Threads, mentions, comments on images." },
-  { icon: <AutoStoriesOutlined />, title: "Notebooks", body: "Posts in order, read start to finish." },
-  { icon: <SlideshowRounded />, title: "Present", body: "Any set of posts, as slides." },
+const FEATURES: { icon: ReactNode; title: string; body: string; scene: DemoScene }[] = [
+  { icon: <EditNoteRounded />, scene: "write", title: "Write it up", body: "Notes, tables, and plots. Saved as you type." },
+  { icon: <ManageSearchRounded />, scene: "search", title: "Find anything", body: "Posts, comments, even text in images." },
+  { icon: <UploadFileOutlined />, scene: "import", title: "Import slides", body: "Every slide becomes a searchable post." },
+  { icon: <AlternateEmailRounded />, scene: "discuss", title: "Discuss", body: "Threads, mentions, comments on images." },
+  { icon: <AutoStoriesOutlined />, scene: "notebook", title: "Notebooks", body: "Posts in order, read start to finish." },
+  { icon: <SlideshowRounded />, scene: "present", title: "Present", body: "Any set of posts, as slides." },
 ];
 
 const STEPS = [
@@ -60,6 +60,8 @@ const Logo = () => (
 /** Public front door (owner request): show what the product does, then send people to sign up or in. */
 export default function LandingPage() {
   const { data: me } = useMe();
+  const [scene, setScene] = useState<DemoScene>("write");
+  const feature = FEATURES.find((f) => f.scene === scene)!;
   const appCta = me ? (
     <Button variant="contained" component={RouterLink} to={homePath(me)} endIcon={<ArrowForwardRounded />}>Open your workspace</Button>
   ) : null;
@@ -127,14 +129,46 @@ export default function LandingPage() {
         </Container>
 
         <Section id="features" eyebrow="Features" title="From “I ran it” to “here's what we learned”">
-          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr", md: "repeat(3, 1fr)" }, gap: 2 }}>
-            {FEATURES.map((f) => (
-              <Paper key={f.title} variant="outlined" sx={{ p: 3, borderRadius: 2, transition: "border-color 150ms, transform 150ms", "&:hover": { borderColor: "primary.main" }, "@media (prefers-reduced-motion: no-preference)": { "&:hover": { transform: "translateY(-2px)" } } }}>
-                <Box aria-hidden sx={{ width: 40, height: 40, borderRadius: 2, display: "grid", placeItems: "center", mb: 2, color: "primary.main", bgcolor: (t) => alpha(t.palette.primary.main, 0.1) }}>{f.icon}</Box>
-                <Typography component="h3" variant="h3" sx={{ mb: 0.75 }}>{f.title}</Typography>
-                <Typography variant="body2" color="text.secondary">{f.body}</Typography>
-              </Paper>
-            ))}
+          {/* Feature cards beside the demo they play (above it on phones), so it's never a scroll away. */}
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "minmax(0, 1fr) minmax(0, 1.1fr)" }, gap: { xs: 2, md: 4 }, alignItems: "start" }}>
+            <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: { xs: 1, sm: 1.5 } }}>
+              {FEATURES.map((f) => {
+                const on = scene === f.scene;
+                return (
+                  <Paper
+                    key={f.title}
+                    component={ButtonBase}
+                    variant="outlined"
+                    onClick={() => setScene(f.scene)}
+                    aria-pressed={on}
+                    aria-controls="feature-demo"
+                    sx={{
+                      p: { xs: 1.5, sm: 2.5 },
+                      borderRadius: 2,
+                      display: "block",
+                      textAlign: "left",
+                      width: "100%",
+                      height: "100%",
+                      borderColor: on ? "primary.main" : undefined,
+                      bgcolor: (t) => (on ? alpha(t.palette.primary.main, 0.06) : undefined),
+                      transition: "border-color 150ms, background-color 150ms",
+                      "&:hover": { borderColor: "primary.main" },
+                      "&.Mui-focusVisible": { outline: 2, outlineColor: "primary.main", outlineOffset: 2 },
+                    }}
+                  >
+                    <Box aria-hidden sx={{ width: { xs: 32, sm: 40 }, height: { xs: 32, sm: 40 }, borderRadius: 2, display: "grid", placeItems: "center", mb: { xs: 1, sm: 1.5 }, color: on ? "primary.contrastText" : "primary.main", bgcolor: (t) => (on ? t.palette.primary.main : alpha(t.palette.primary.main, 0.1)) }}>{f.icon}</Box>
+                    <Typography component="h3" variant="h3" sx={{ mb: { sm: 0.5 }, fontSize: { xs: "0.95rem", sm: undefined } }}>{f.title}</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ display: { xs: "none", sm: "block" } }}>{f.body}</Typography>
+                  </Paper>
+                );
+              })}
+            </Box>
+            <Box id="feature-demo" sx={{ position: { md: "sticky" }, top: { md: 84 } }}>
+              <Typography aria-live="polite" color="text.secondary" sx={{ display: { sm: "none" }, mb: 1, fontSize: "0.9rem" }}>
+                <Box component="strong" sx={{ color: "text.primary" }}>{feature.title}.</Box> {feature.body}
+              </Typography>
+              <HeroDemo scene={scene} />
+            </Box>
           </Box>
         </Section>
 

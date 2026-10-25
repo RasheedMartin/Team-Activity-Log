@@ -792,6 +792,17 @@ export function useImportAction(orgId: ID, id: ID) {
 export const usePlan = (orgId: ID) =>
   useQuery({ queryKey: ["org", orgId, "plan"], queryFn: ({ signal }) => get<import("./contract").PlanInfo>(`${O(orgId)}/plan`, signal) });
 
+/** Upgrade (Stripe Checkout) or manage billing (Stripe portal): both hand the browser to Stripe. */
+export function useBilling(orgId: ID) {
+  return useMutation({
+    mutationFn: async (v: { action: "checkout"; plan: "team" | "business"; interval: "month" | "year" } | { action: "portal" }) => {
+      const r = await post<{ url: string }>(`${O(orgId)}/billing/${v.action}`, v.action === "checkout" ? { plan: v.plan, interval: v.interval } : {});
+      window.location.assign(r.url);
+      return r;
+    },
+  });
+}
+
 /** Sign-in methods the server has configured (shows the Google button only when it works). */
 export const useAuthProviders = () =>
   useQuery({ queryKey: ["auth", "providers"], queryFn: ({ signal }) => get<{ google: boolean }>("/auth/providers", signal), staleTime: Infinity, retry: false });

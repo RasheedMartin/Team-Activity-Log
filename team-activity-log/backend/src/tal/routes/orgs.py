@@ -11,8 +11,8 @@ from fastapi import APIRouter, Body, Depends, Request, Response
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .. import billing, plans
 from .. import models as m
-from .. import plans
 from .. import sanitize as clean
 from ..config import get_settings
 from ..context import OrgCtx, accessible_workspaces, current_user, hash_password, org_ctx, require_user, start_session, token_hash, verify_password
@@ -131,7 +131,9 @@ async def create_org(body: dict = Body(...), u: m.User = Depends(require_user), 
     slug = slugify(clean.text(body.get("slug"), "slug", 60) or name)
     if not slug or await slug_taken(db, slug):
         fail(409, "slug_taken", "That URL is taken, try another")
-    org = m.Organization(id=uuid7(), name=name, slug=slug, plan=get_settings().new_org_plan)
+    s = get_settings()
+    trial = now() + dt.timedelta(days=s.trial_days) if s.new_org_plan == "free" and s.trial_days else None
+    org = m.Organization(id=uuid7(), name=name, slug=slug, plan=s.new_org_plan, trial_ends_at=trial)
     db.add(org)
     await db.flush()
     ws_name = clean.text(body.get("workspaceName"), "workspaceName", 100) or "General"
@@ -223,6 +225,7 @@ async def remove_member(org: str, user_id: str, u: m.User = Depends(require_user
     ws = select(m.Workspace.id).where(m.Workspace.org_id == ctx.org.id)
     await db.execute(delete(m.WorkspaceMember).where(m.WorkspaceMember.user_id == mem.user_id, m.WorkspaceMember.workspace_id.in_(ws)))
     await db.delete(mem)
+    billing.after_commit_sync_seats(db, ctx.org.id)
     return Response(status_code=204)
 
 
@@ -399,6 +402,7 @@ async def accept_invite(token: str, request: Request, response: Response, body: 
         mem.status = "active"
     else:
         db.add(m.Membership(id=uuid7(), org_id=org_id, user_id=user.id, role=role, status="active"))
+    billing.after_commit_sync_seats(db, org_id)
     have = set((await db.execute(select(m.WorkspaceMember.workspace_id).where(m.WorkspaceMember.user_id == user.id))).scalars())
     for w in ws_ids:
         if w not in have:
