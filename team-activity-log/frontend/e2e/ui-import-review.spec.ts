@@ -39,6 +39,7 @@ test("review imported drafts one by one, and always find the way back", async ({
   await page.getByRole("button", { name: "Back", exact: true }).click(); // opened from the import: back to it
   await expect(page.getByRole("tab", { name: "To review (8)" })).toBeVisible();
   await list.getByRole("listitem").first().locator(".MuiListItemButton-root").click();
+  await expect(trail).toContainText("slide 1 of 8"); // the composer has settled (a click mid-render can be lost)
   await page.getByRole("button", { name: /^Publish/ }).click();
   await expect(page.getByRole("tab", { name: "To review (7)" })).toBeVisible();
   await page.getByRole("tab", { name: "Published (1)" }).click();

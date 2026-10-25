@@ -325,7 +325,8 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
       { id: post.id, action: "publish", version: version.current },
       {
         // An imported draft goes back to its import, to pick the next one.
-        onSuccess: () => (importHome ? (navigate(importHome), notify(`Published “${f.title || "Untitled"}”`)) : navigate(wsPath(org, ws, `/p/${post.id}`))),
+        // (Published now, so the unsaved-changes guard would apply: we're leaving on purpose.)
+        onSuccess: () => ((leaving.current = true), setDirty(false), importHome ? (navigate(importHome), notify(`Published “${f.title || "Untitled"}”`)) : navigate(wsPath(org, ws, `/p/${post.id}`))),
         onError: (e) => setProblems(e instanceof ApiError && Array.isArray((e.details as { problems?: string[] })?.problems) ? (e.details as { problems: string[] }).problems : [errorMessage(e)]),
       },
     );

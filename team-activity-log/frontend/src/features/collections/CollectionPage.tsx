@@ -12,6 +12,7 @@ import { useNotify } from "../../components/notify";
 import { EmptyState, ErrorState } from "../../components/ui";
 import { blockDocs } from "../../lib/blocks";
 import { formatDay } from "../../lib/dates";
+import { useRangeSelect } from "../../lib/useRangeSelect";
 import { docText } from "../../lib/prosemirror";
 import { AddPostsDialog } from "./AddPosts";
 import { FavoriteButton } from "./FavoriteButton";
@@ -59,7 +60,7 @@ export default function CollectionPage() {
   const all = chosen.length === ids.length && ids.length > 0;
   const chosenDrafts = loaded.filter((d) => selected.has(d.post.id) && d.post.status === "draft").map((d) => d.post.id);
   const onlyDrafts = chosen.every((x) => chosenDrafts.includes(x));
-  const toggle = (x: string) => setSelected((s) => (s.has(x) ? new Set([...s].filter((y) => y !== x)) : new Set([...s, x])));
+  const toggle = useRangeSelect(ids, selected, setSelected); // Shift-click picks a range
   const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
   // Bulk actions use the same post actions as everywhere else, so Activity, Search, and the
@@ -151,7 +152,7 @@ export default function CollectionPage() {
                 <Checkbox
                   size="small"
                   checked={selected.has(q.data.post.id)}
-                  onChange={() => toggle(q.data!.post.id)}
+                  onChange={(e) => toggle(q.data!.post.id, (e.nativeEvent as MouseEvent).shiftKey)}
                   inputProps={{ "aria-label": `Select ${q.data.post.title || "untitled post"}` }}
                   sx={{ position: "absolute", top: 12, left: 12, zIndex: 1, p: 0.5, bgcolor: "background.paper", borderRadius: 1, boxShadow: 1, "&:hover": { bgcolor: "background.paper" } }}
                 />

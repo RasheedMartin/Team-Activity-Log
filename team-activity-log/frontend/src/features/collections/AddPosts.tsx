@@ -1,10 +1,11 @@
 import { CollectionsBookmarkOutlined, MenuBookOutlined, SearchRounded } from "@mui/icons-material";
-import { Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, InputAdornment, List, ListItemButton, ListItemIcon, ListItemText, Radio, Skeleton, TextField, Typography } from "@mui/material";
+import { Button, Checkbox, Stack, Dialog, DialogActions, DialogContent, DialogTitle, InputAdornment, List, ListItemButton, ListItemIcon, ListItemText, Radio, Skeleton, TextField, Typography } from "@mui/material";
 import { useDeferredValue, useState } from "react";
 import type { ID } from "../../api/contract";
 import { useCollection, useLibrary, useSearch, useUpdateCollection } from "../../api/hooks";
 import { useWs } from "../../app/session";
 import { useNotify } from "../../components/notify";
+import { useRangeSelect } from "../../lib/useRangeSelect";
 
 // Owner request: a post removed from a notebook (or never in it) can be added from the notebook
 // itself, and posts selected in search can join a notebook or collection that already exists.
@@ -15,17 +16,20 @@ export function AddPostsDialog({ open, onClose, collectionId, name, postIds }: {
   const { org, ws } = useWs();
   const [q, setQ] = useState("");
   const query = useDeferredValue(q.trim());
-  const [picked, setPicked] = useState<ID[]>([]);
+  const [picked, setPicked] = useState<Set<ID>>(new Set()); // kept across searches, so you can pick from several
   const results = useSearch(org.id, ws.id, { q: query || undefined, sort: query ? "relevance" : "newest" }, open);
   const hits = results.data?.pages.flatMap((p) => p.hits) ?? [];
   const update = useUpdateCollection(org.id, ws.id);
   const notify = useNotify();
   const inside = new Set(postIds);
-  const close = () => (setPicked([]), setQ(""), onClose());
+  const shown = hits.map((h) => h.post.id).filter((x) => !inside.has(x));
+  const allShown = shown.length > 0 && shown.every((x) => picked.has(x));
+  const pick = useRangeSelect(hits.map((h) => h.post.id), picked, setPicked, (x) => !inside.has(x));
+  const close = () => (setPicked(new Set()), setQ(""), onClose());
   const add = () =>
     update.mutate(
       { id: collectionId, postIds: [...postIds, ...picked] },
-      { onSuccess: () => (notify(`Added ${picked.length} post${picked.length === 1 ? "" : "s"} to “${name}”`, () => update.mutate({ id: collectionId, postIds })), close()), onError: (e) => notify(`Couldn't add: ${e.message}`) },
+      { onSuccess: () => (notify(`Added ${picked.size} post${picked.size === 1 ? "" : "s"} to “${name}”`, () => update.mutate({ id: collectionId, postIds })), close()), onError: (e) => notify(`Couldn't add: ${e.message}`) },
     );
 
   return (
@@ -42,7 +46,20 @@ export function AddPostsDialog({ open, onClose, collectionId, name, postIds }: {
           InputProps={{ startAdornment: <InputAdornment position="start"><SearchRounded fontSize="small" /></InputAdornment> }}
           sx={{ mt: 1, mb: 1 }}
         />
-        {!query && <Typography variant="caption" color="text.secondary">Newest first. Search to find older posts.</Typography>}
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ minHeight: 36 }}>
+          <Checkbox
+            size="small"
+            checked={allShown}
+            indeterminate={!allShown && shown.some((x) => picked.has(x))}
+            disabled={!shown.length}
+            onChange={() => setPicked(new Set(allShown ? [...picked].filter((x) => !shown.includes(x)) : [...picked, ...shown]))}
+            inputProps={{ "aria-label": allShown ? "Deselect all shown" : "Select all shown" }}
+          />
+          <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
+            {picked.size ? `${picked.size} picked` : query ? "Select all shown" : "Newest first · Shift-click picks a range"}
+          </Typography>
+          {picked.size > 0 && <Button size="small" onClick={() => setPicked(new Set())}>Clear</Button>}
+        </Stack>
         {results.isPending ? (
           [0, 1, 2].map((i) => <Skeleton key={i} height={48} />)
         ) : !hits.length ? (
@@ -51,9 +68,9 @@ export function AddPostsDialog({ open, onClose, collectionId, name, postIds }: {
           <List dense aria-label="Posts to add" sx={{ maxHeight: 360, overflow: "auto" }}>
             {hits.map(({ post: p }) => {
               const already = inside.has(p.id);
-              const on = already || picked.includes(p.id);
+              const on = already || picked.has(p.id);
               return (
-                <ListItemButton key={p.id} disabled={already} onClick={() => setPicked(on ? picked.filter((x) => x !== p.id) : [...picked, p.id])}>
+                <ListItemButton key={p.id} disabled={already} onClick={(e) => pick(p.id, e.shiftKey)} onMouseDown={(e) => e.shiftKey && e.preventDefault() /* no text selection */}>
                   <ListItemIcon sx={{ minWidth: 36 }}>
                     <Checkbox edge="start" size="small" checked={on} tabIndex={-1} disableRipple inputProps={{ "aria-label": p.title || "Untitled" }} />
                   </ListItemIcon>
@@ -67,8 +84,8 @@ export function AddPostsDialog({ open, onClose, collectionId, name, postIds }: {
       </DialogContent>
       <DialogActions>
         <Button onClick={close}>Cancel</Button>
-        <Button variant="contained" disabled={!picked.length || update.isPending} onClick={add}>
-          {picked.length ? `Add ${picked.length}` : "Add"}
+        <Button variant="contained" disabled={!picked.size || update.isPending} onClick={add}>
+          {picked.size ? `Add ${picked.size}` : "Add"}
         </Button>
       </DialogActions>
     </Dialog>

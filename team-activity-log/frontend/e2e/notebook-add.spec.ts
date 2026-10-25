@@ -58,3 +58,29 @@ test("posts selected in search can be added to an existing notebook", async ({ p
   await dialog.getByRole("button", { name: "Add", exact: true }).click();
   await expect(page.getByText(/Added 2 posts to “Grows later”/)).toBeVisible(); // the first was already in it
 });
+
+test("add posts quickly: select all shown, shift-click a range, clear", async ({ page }) => {
+  await openScenario(page, "small");
+  await page.getByRole("button", { name: "Select posts" }).click();
+  await page.getByRole("checkbox", { name: /^Select / }).nth(0).check();
+  await page.getByRole("button", { name: "New notebook" }).click();
+  await page.getByRole("dialog").getByLabel("Name").fill("Quick picks");
+  await page.getByRole("button", { name: "Create notebook" }).click();
+  await expect(page.getByText(/^1 entry/)).toBeVisible();
+
+  await page.getByRole("button", { name: "Add posts" }).click();
+  const dialog = page.getByRole("dialog");
+  const rows = dialog.getByRole("list", { name: "Posts to add" }).getByRole("button");
+  await expect(rows.nth(5)).toBeVisible();
+  // Shift-click: rows 2 through 5 (the one already in it is skipped).
+  await rows.nth(2).click();
+  await rows.nth(5).click({ modifiers: ["Shift"] });
+  await expect(dialog.getByText("4 picked")).toBeVisible();
+  await dialog.getByRole("button", { name: "Clear" }).click();
+  // Select all shown: everything not already in it.
+  const free = (await rows.count()) - (await dialog.getByText("Already in it").count());
+  await dialog.getByRole("checkbox", { name: "Select all shown" }).check();
+  await expect(dialog.getByText(`${free} picked`)).toBeVisible();
+  await dialog.getByRole("button", { name: `Add ${free}` }).click();
+  await expect(page.getByText(/^\d+ entries/)).toHaveText(new RegExp(`^${free + 1} entries`));
+});
