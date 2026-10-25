@@ -39,7 +39,7 @@ import { errorMessage } from "../../lib/format";
 import { KINDS } from "./concepts";
 import { FavoriteButton } from "./FavoriteButton";
 import { libraryHref } from "./libraryLinks";
-import { ImportSlidesButton, NewNotebookButton } from "./NewNotebook";
+import { ImportDocumentButton, ImportSlidesButton, NewNotebookButton } from "./NewNotebook";
 
 
 function RenameDialog({ item, onClose }: { item: LibraryItem; onClose: () => void }) {
@@ -164,7 +164,7 @@ export default function LibraryPage({ kind }: { kind: Exclude<LibraryKind, "view
 
   return (
     <Box sx={{ maxWidth: 960, width: "100%", mx: "auto", px: { xs: 1.5, sm: 3 }, py: 3 }}>
-      <PageHeader title={KINDS[kind].plural} sub={KINDS[kind].blurb} actions={kind === "notebook" ? <NewNotebookButton /> : <ImportSlidesButton />} />
+      <PageHeader title={KINDS[kind].plural} sub={KINDS[kind].blurb} actions={kind === "notebook" ? <Stack direction="row" spacing={1}><ImportDocumentButton /><NewNotebookButton /></Stack> : <ImportSlidesButton />} />
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mb: 2 }}>
         <TextField
           placeholder="Search by name"
@@ -194,7 +194,7 @@ export default function LibraryPage({ kind }: { kind: Exclude<LibraryKind, "view
       ) : !items.length ? (
         <EmptyState
           title={debounced || mine || shared ? "Nothing matches" : `No ${KINDS[kind].plural.toLowerCase()} yet`}
-          body={debounced || mine ? "Try a different name or clear the filters." : kind === "collection" ? "Import slides to make one per deck, or select posts in Search and choose New collection." : "Make one with New notebook and write in it, or select posts in Search and choose New notebook."}
+          body={debounced || mine ? "Try a different name or clear the filters." : kind === "collection" ? "Import a PowerPoint deck to make one. Each slide becomes a searchable post." : "Make one with New notebook and write in it, or select posts in Search and choose New notebook."}
         />
       ) : (
         <Paper variant="outlined" sx={{ opacity: lib.isPlaceholderData ? 0.6 : 1 }}>

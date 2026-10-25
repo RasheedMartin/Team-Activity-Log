@@ -6,7 +6,7 @@ import { useCorrectOcr } from "../../api/hooks";
 import { useNotify } from "../../components/notify";
 import { errorMessage } from "../../lib/format";
 
-const ENGINE: Record<string, string> = { tesseract: "Read by the built-in engine", google: "Read by Google Cloud Vision", azure: "Read by Azure AI Vision", aws: "Read by AWS Textract", person: "Corrected by a person", mock: "Sample text (mock mode doesn't read images)" };
+const ENGINE: Record<string, string> = { tesseract: "Read by the built-in engine", google: "Read by Google Cloud Vision", azure: "Read by Azure AI Vision", aws: "Read by AWS Textract", person: "Corrected by a person", mock: "Sample text (mock mode doesn't read images)", textLayer: "Text from the PDF" };
 
 /** "Text in this image": what OCR read (search uses it), with a way to correct it. */
 export function ImageText({ orgId, asset, readOnly }: { orgId: ID; asset: Asset; readOnly: boolean }) {

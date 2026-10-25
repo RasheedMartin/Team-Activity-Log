@@ -106,6 +106,7 @@ class Settings(BaseSettings):
     public_app_url: str = Field(default="http://localhost:5173", description="Base for links in emails.")
     run_indexer: bool = Field(default=True, description="Run the outbox → Elasticsearch indexer inside the API process.")
     secret_key: str | None = Field(default=None, description="Encrypts stored third-party keys (e.g. an org's cloud OCR key). Long random string; changing it makes saved keys unreadable.")
+    keep_originals: bool = Field(default=True, description="Keep each imported file (slides, PDF, Word) in storage, downloadable from its deck or notebook.")
     ocr_enabled: bool = Field(default=True, description="Read text in images (OCR) in the background worker.")
     tesseract_cmd: str = Field(default="tesseract", description="The Tesseract binary (built-in OCR engine).")
     ocr_languages: str = Field(default="eng", description="Tesseract languages, e.g. eng+deu (each needs its language pack).")

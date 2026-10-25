@@ -206,6 +206,12 @@ async def _view_of(db: AsyncSession, c: m.CollectionRow, viewer: uuid.UUID, ctx:
     await db.flush()
     view = collection_view(c, (await collection_post_ids(db, [c.id], viewer))[c.id])
     view["members"] = await access.members(db, c)
+    # Made by an import (a deck, or a document as a notebook): its source, for "Download original".
+    # Several imports can extend one deck or notebook: every file it came from, oldest first.
+    jobs = (await db.execute(select(m.ImportJobRow).where(m.ImportJobRow.collection_id == c.id, m.ImportJobRow.status == "done").order_by(m.ImportJobRow.created_at))).scalars().all()
+    if jobs:
+        view["sources"] = [{"importJobId": str(x.id), "fileName": x.source_filename, "fileKind": (x.defaults or {}).get("fileKind") or "pptx", "originalKept": bool((x.defaults or {}).get("originalKept"))} for x in jobs]
+        view["source"] = view["sources"][0]
     if ctx is not None:
         view["myRole"] = await access.role_in(db, ctx, c)
     return view

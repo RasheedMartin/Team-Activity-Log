@@ -12,7 +12,7 @@ const FIXTURE = readFileSync(path.join(path.dirname(new URL(import.meta.url).pat
 
 async function importPerSlide(page: Page) {
   await openImport(page);
-  await page.getByLabel("PowerPoint file").setInputFiles({ name: "Lab_Notes_2021.pptx", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", buffer: FIXTURE });
+  await page.getByLabel("File to import").setInputFiles({ name: "Lab_Notes_2021.pptx", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", buffer: FIXTURE });
   await page.getByRole("radio", { name: /One post per slide/ }).click();
   await page.getByRole("button", { name: "Start import" }).click();
   await page.getByRole("button", { name: /^Create \d+ drafts$/ }).click({ timeout: 20_000 });
@@ -106,7 +106,7 @@ test("an unfinished import is easy to get back to", async ({ page }) => {
   await openScenario(page, "small");
   // Uploaded and parsed, but left at review without creating anything.
   await openImport(page);
-  await page.getByLabel("PowerPoint file").setInputFiles({ name: "Left_halfway.pptx", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", buffer: FIXTURE });
+  await page.getByLabel("File to import").setInputFiles({ name: "Left_halfway.pptx", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", buffer: FIXTURE });
   await page.getByRole("button", { name: "Start import" }).click();
   await expect(page.getByRole("button", { name: /^Create \d+ drafts$/ })).toBeVisible({ timeout: 20_000 });
   // And one committed with drafts still to review.
@@ -136,7 +136,9 @@ test("an imported deck has its own page, like a notebook", async ({ page }) => {
   await expect(links.nth(1)).toContainText("Cooldown curve");
   await page.getByRole("button", { name: "More deck actions" }).click();
   await expect(page.getByRole("menuitem", { name: /Delete this import/ })).toBeVisible();
-  await page.keyboard.press("Escape");
+  const download = page.waitForEvent("download"); // the original deck is kept (provenance)
+  await page.getByRole("menuitem", { name: /^Download original/ }).click();
+  expect((await download).suggestedFilename()).toBe("Lab_Notes_2021.pptx");
   // A post opened from here comes back here.
   await links.nth(1).click();
   await page.getByRole("button", { name: /Back to Lab_Notes_2021/ }).click();
@@ -229,7 +231,7 @@ test("importing the same deck again points to the one already in the workspace",
   await openScenario(page, "small");
   await importPerSlide(page);
   await openImport(page);
-  await page.getByLabel("PowerPoint file").setInputFiles({ name: "Lab_Notes_2021 (1).pptx", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", buffer: FIXTURE });
+  await page.getByLabel("File to import").setInputFiles({ name: "Lab_Notes_2021 (1).pptx", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", buffer: FIXTURE });
   await page.getByRole("button", { name: "Start import" }).click();
   const notice = page.getByRole("alert").filter({ hasText: /already imported this deck/ });
   await expect(notice).toContainText("You already imported this deck");
@@ -240,7 +242,7 @@ test("importing the same deck again points to the one already in the workspace",
 test("a deck can be kept to yourself at import", async ({ page }) => {
   await openScenario(page, "small");
   await openImport(page);
-  await page.getByLabel("PowerPoint file").setInputFiles({ name: "Mine_only.pptx", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", buffer: FIXTURE });
+  await page.getByLabel("File to import").setInputFiles({ name: "Mine_only.pptx", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", buffer: FIXTURE });
   await page.getByRole("button", { name: "Start import" }).click();
   await page.getByRole("checkbox", { name: /Share this deck with the workspace/ }).uncheck({ timeout: 20_000 });
   await page.getByRole("button", { name: /^Create \d+ drafts$/ }).click();

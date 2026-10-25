@@ -8,16 +8,19 @@ import {
   CloseRounded,
   DeleteOutlineRounded,
   EditNoteRounded,
+  FileDownloadOutlined,
   EditOutlined,
   LinkRounded,
   LockOutlined,
   PersonAddAltRounded,
   SellOutlined,
+  UploadFileOutlined,
   MoreHorizRounded,
   PrintOutlined,
   SlideshowRounded,
 } from "@mui/icons-material";
 import {
+  Alert,
   Box,
   Button,
   Checkbox,
@@ -49,10 +52,11 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link as RouterLink, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { CollectionEntry, ID, PostDetail, Tag, User } from "../../api/contract";
-import { useCollection, useCollectionEntries, useCreateCollection, useCreateDraft, useDeleteCollection, usePeople, usePostAction, usePostDetails, useTags, useUpdateCollection } from "../../api/hooks";
+import { useCollection, useCollectionEntries, useCreateCollection, useCreateDraft, useDeleteCollection, useImportAction, usePeople, usePostAction, usePostDetails, useTags, useUpdateCollection } from "../../api/hooks";
 import type { Origin } from "../../app/origin";
 import { isTypingTarget } from "../../app/shortcuts";
 import { useWs, wsPath } from "../../app/session";
+import { downloadFile } from "../../api/client";
 import { useNotify } from "../../components/notify";
 import { RichText } from "../../components/RichText";
 import { SlideCanvas } from "../../components/SlideCanvas";
@@ -182,6 +186,7 @@ export default function NotebookPage() {
   const [sharing, setSharing] = useState(false);
   const [followAnchor, setFollowAnchor] = useState<HTMLElement | null>(null);
   const [more, setMore] = useState<HTMLElement | null>(null);
+  const publishImport = useImportAction(org.id, nb?.source?.importJobId ?? "");
   // Roles (owner request): everyone views; editors write and arrange; owners also share and delete.
   const canEdit = nb?.myRole !== "viewer";
   const isOwner = nb?.myRole === "owner" || nb?.myRole === undefined;
@@ -282,6 +287,7 @@ export default function NotebookPage() {
     update.mutate({ id: nb.id, postIds: order }, { onError: (e) => notify(`Couldn't reorder: ${e.message}`) });
   };
   const mine = entries.filter((e) => e.authorId === me.user.id).length;
+  const myDrafts = entries.filter((e) => e.authorId === me.user.id && e.status === "draft").length;
   // "Write a page": a new draft that's already this notebook's last page; back returns here.
   const writePage = () =>
     createPage.mutate({ collectionId: nb.id }, {
@@ -403,6 +409,16 @@ export default function NotebookPage() {
             {isOwner && <MenuItem onClick={() => (setMore(null), setSharing(true))}><ListItemIcon><PersonAddAltRounded fontSize="small" /></ListItemIcon>Share…</MenuItem>}
             <MenuItem onClick={() => (setMore(null), void navigator.clipboard.writeText(`${window.location.origin}${location.pathname}`).then(() => notify("Link copied. Anyone who can see this notebook can open it."), () => notify("Couldn't copy the link")))}><ListItemIcon><LinkRounded fontSize="small" /></ListItemIcon>Copy link</MenuItem>
             <MenuItem disabled={!entries.length} onClick={() => (setMore(null), setParam({ view: "continuous", print: "1" }))}><ListItemIcon><PrintOutlined fontSize="small" /></ListItemIcon>Print / PDF</MenuItem>
+            {canEdit && (
+              <MenuItem component={RouterLink} to={`${wsPath(org, ws, "/import")}?for=document&into=${nb.id}`} onClick={() => setMore(null)}>
+                <ListItemIcon><UploadFileOutlined fontSize="small" /></ListItemIcon>Import a document into this notebook
+              </MenuItem>
+            )}
+            {(nb.sources ?? []).filter((x) => x.originalKept).map((src) => (
+              <MenuItem key={src.importJobId} onClick={() => (setMore(null), void downloadFile(`/orgs/${org.id}/imports/${src.importJobId}/original`, src.fileName).catch((e) => notify(e.message)))}>
+                <ListItemIcon><FileDownloadOutlined fontSize="small" /></ListItemIcon>Download original ({src.fileName})
+              </MenuItem>
+            ))}
             {isOwner && <Divider />}
             {isOwner && <MenuItem sx={{ color: "error.main" }} onClick={() => (setMore(null), setDeleteMine(false), setConfirmDelete(true))}><ListItemIcon><DeleteOutlineRounded fontSize="small" color="error" /></ListItemIcon>Delete notebook…</MenuItem>}
           </Menu>
@@ -443,6 +459,15 @@ export default function NotebookPage() {
           inputProps={{ "aria-label": "Notebook title" }}
           sx={{ fontSize: "2rem", fontWeight: 700, letterSpacing: "-0.02em" }}
         />
+        {nb.source && myDrafts > 0 && (
+          <Alert
+            severity="info"
+            sx={{ mb: 2 }}
+            action={<Button size="small" variant="contained" disabled={publishImport.isPending} onClick={() => publishImport.mutate({ action: "publishAll" }, { onSuccess: () => notify(`Published ${myDrafts} page${myDrafts === 1 ? "" : "s"}`), onError: (e) => notify(e.message) })}>Publish all</Button>}
+          >
+            {myDrafts} page{myDrafts === 1 ? "" : "s"} from “{nb.source.fileName}” {myDrafts === 1 ? "is a draft" : "are drafts"}: only you can see {myDrafts === 1 ? "it" : "them"} until published.
+          </Alert>
+        )}
         <Typography color="text.secondary" sx={{ mb: 3 }}>
           {entries.length} {entries.length === 1 ? "entry" : "entries"}
           {range && ` · ${formatRange(range.from, range.to)}`}

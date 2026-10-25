@@ -223,7 +223,7 @@ export interface ImageMetadata {
   dpi?: number;
   colorSpace?: string;
   hasAlpha?: boolean;
-  sourceKind: "upload" | "paste" | "screenshot" | "pptx_import";
+  sourceKind: "upload" | "paste" | "screenshot" | "pptx_import" | "document_import";
 }
 export type ImageType = "chart" | "photo" | "screenshot" | "diagram" | "table";
 
@@ -332,6 +332,7 @@ export interface ImportSummary {
   createdAt: ISODateTime;
   /** The deck (collection) its posts went into, once drafts are created: where it's reviewed. */
   collectionId?: ID | null;
+  fileKind?: ImportFileKind;
   drafts: number;
   published: number;
 }
@@ -589,6 +590,10 @@ export interface Collection {
   members?: { userId: ID; role: CollectionRole }[];
   /** The caller's role: owner if they created it, else what an owner granted (viewer by default). */
   myRole?: CollectionRole;
+  /** Made by an import: the file it came from (decks, and documents imported as notebooks). */
+  source?: { importJobId: ID; fileName: string; fileKind: ImportFileKind; originalKept: boolean };
+  /** Every import that added to it (several can extend one deck or notebook), oldest first. */
+  sources?: { importJobId: ID; fileName: string; fileKind: ImportFileKind; originalKept: boolean }[];
   /** A notebook following its sourceTagId: newly published posts with the tag are appended. */
   followsTag?: boolean;
   /** "workspace": everyone in it can view (default); "people": only those it's shared with. */
@@ -652,6 +657,8 @@ export interface ImportItem {
   postId?: ID;
 }
 /** The same file already imported in this workspace (one source of truth per deck). */
+export type ImportFileKind = "pptx" | "pdf" | "docx";
+
 export interface ImportDuplicate {
   jobId: ID;
   by: string; // "you" or a name
@@ -671,7 +678,19 @@ export interface ImportJob {
   sourceFilename: string;
   sourceBytes: number;
   slideCount: number;
-  defaults: { tagIds: ID[]; baseDate?: ISODate; guessDates: boolean; collectionName: string; slideDesign?: SlideDesignMode };
+  defaults: {
+    tagIds: ID[];
+    baseDate?: ISODate;
+    guessDates: boolean;
+    collectionName: string;
+    slideDesign?: SlideDesignMode;
+    /** Set by the server from the file name: slides become a deck; PDF and Word a notebook. */
+    fileKind?: ImportFileKind;
+    /** Add to this existing deck (slides) or notebook (documents) instead of making a new one. */
+    intoId?: ID;
+    /** The original file is kept and downloadable (GET …/imports/:id/original). */
+    originalKept?: boolean;
+  };
   items: ImportItem[];
   collectionId?: ID;
   error?: string;

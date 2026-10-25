@@ -11,18 +11,21 @@ import asyncio
 import datetime as dt
 import hashlib
 import logging
+import re
 import uuid
 
 from fastapi import APIRouter, Body, Depends, Request, Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .. import collection_access, plans, storage
 from .. import models as m
-from .. import plans
 from .. import sanitize as clean
 from ..config import get_settings
 from ..context import OrgCtx, org_ctx, require_user, ws_ctx
 from ..db import get_db, sessionmaker
+from ..docs import PARSERS as DOC_PARSERS
+from ..docs import DocumentError
 from ..errors import fail
 from ..events import emit
 from ..httputil import read_limited
@@ -34,6 +37,23 @@ from ..prosemirror import doc, empty_doc, heading
 from ..timeutil import iso, now, today
 from ..views import block_image_ids, import_job_view
 from .posts import set_tags as set_post_tags
+
+# What can be imported (owner request): slides become decks; PDF and Word become notebooks.
+FILE_KINDS = {".pptx": "pptx", ".pdf": "pdf", ".docx": "docx"}
+ORIGINAL_MIME = {"pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation", "pdf": "application/pdf", "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
+
+
+def file_kind(j: m.ImportJobRow) -> str:
+    return (j.defaults or {}).get("fileKind") or "pptx"
+
+
+def _parse(kind: str, data: bytes, on_progress=None) -> ParsedDeck:
+    return DOC_PARSERS[kind](data, on_progress) if kind in DOC_PARSERS else parse_pptx(data, on_progress)
+
+
+def original_key(j: m.ImportJobRow) -> str:
+    """Originals are kept per org by content, so the same file imported twice is stored once."""
+    return storage.user_key("originals", str(j.org_id), j.source_sha256 or str(j.id))
 
 router = APIRouter()
 log = logging.getLogger("tal.imports")
@@ -126,7 +146,7 @@ async def _deck(db: AsyncSession, j: m.ImportJobRow) -> ParsedDeck:
     src = await db.get(m.ImportSource, j.id)
     if not src:
         fail(410, "source_gone", "The uploaded file is no longer available. Start the import again.")
-    return await asyncio.to_thread(parse_pptx, src.data)
+    return await asyncio.to_thread(_parse, file_kind(j), src.data)
 
 
 async def parse_job(job_id: uuid.UUID) -> None:
@@ -136,22 +156,23 @@ async def parse_job(job_id: uuid.UUID) -> None:
 
     async with sessionmaker()() as db:
         src = await db.get(m.ImportSource, job_id)
-        if not src:
+        job = await db.get(m.ImportJobRow, job_id)
+        if not src or not job:
             return
-        data = src.data
+        data, kind = src.data, file_kind(job)
     try:
-        deck = await asyncio.to_thread(parse_pptx, data, lambda f: loop.call_soon_threadsafe(progress.append, f))
+        deck = await asyncio.to_thread(_parse, kind, data, lambda f: loop.call_soon_threadsafe(progress.append, f))
         async with sessionmaker()() as db:
             j = await db.get(m.ImportJobRow, job_id)
             if j and j.status == "parsing":
                 j.status, j.progress, j.slide_count = "review", 1.0, len(deck.slides)
                 j.items = items_for(j.mode, deck, j.defaults)
                 await db.commit()
-    except PptxError as e:
+    except (PptxError, DocumentError) as e:
         await _fail_job(job_id, str(e))
     except Exception:  # noqa: BLE001
         log.exception("import %s failed", job_id)
-        await _fail_job(job_id, "Something went wrong reading this presentation. Try re-saving it from PowerPoint.")
+        await _fail_job(job_id, "Something went wrong reading this presentation. Try re-saving it from PowerPoint." if kind == "pptx" else "Something went wrong reading this document. Try saving it again (as PDF or .docx) and re-importing.")
 
 
 async def _fail_job(job_id: uuid.UUID, message: str) -> None:
@@ -190,6 +211,7 @@ async def my_imports(org: str, ws: str, u: m.User = Depends(require_user), db: A
             "slideCount": j.slide_count,
             "createdAt": iso(j.created_at),
             "collectionId": str(j.collection_id) if j.collection_id else None,
+            "fileKind": (j.defaults or {}).get("fileKind") or "pptx",
             "drafts": counts.get((str(j.id), "draft"), 0),
             "published": counts.get((str(j.id), "published"), 0),
         }
@@ -201,11 +223,12 @@ async def my_imports(org: str, ws: str, u: m.User = Depends(require_user), db: A
 async def start(org: str, ws: str, body: dict = Body(...), u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
     ctx = await ws_ctx(db, u, org, ws, "member")
     filename = clean.text(body.get("filename"), "filename", 255, required=True, label="File name") or ""
-    if not filename.lower().endswith(".pptx"):
-        fail(415, "unsupported_type", "Choose a .pptx file (PowerPoint 2007 or newer)")
+    kind = next((k for ext, k in FILE_KINDS.items() if filename.lower().endswith(ext)), None)
+    if not kind:
+        fail(415, "unsupported_type", "Choose a PowerPoint (.pptx), PDF, or Word (.docx) file")
     await plans.check_can_import(db, ctx.org)
     if int(body.get("bytes") or 0) > get_settings().max_import_bytes:
-        fail(413, "too_large", "This deck is too large to import")
+        fail(413, "too_large", "This file is too large to import")
     mode = body.get("mode") or "per_slide"
     if mode not in ("per_slide", "whole_deck", "by_section"):
         fail(422, "invalid", "Unknown import mode")
@@ -228,6 +251,9 @@ async def start(org: str, ws: str, body: dict = Body(...), u: m.User = Depends(r
             "collectionName": clean.text(defaults.get("collectionName"), "collectionName", 300) or "",
             # "auto": slides whose layout carries meaning stay designed, text slides become post text
             "slideDesign": defaults.get("slideDesign") if defaults.get("slideDesign") in SLIDE_DESIGN_MODES else "auto",
+            "fileKind": kind,
+            # Extend an existing deck (slides) or notebook (documents) instead of making a new one.
+            "intoId": str(parse_uuid(defaults.get("intoId"))) if parse_uuid(defaults.get("intoId")) else None,
         },
         items=[],
     )
@@ -349,7 +375,7 @@ async def _design_block(db: AsyncSession, ctx: OrgCtx, post_id: uuid.UUID, sl: P
     for e in sl.design["elements"]:  # type: ignore[index]
         if e["kind"] == "image":
             img = sl.design_images[e["image"]]
-            asset, _ = await create_asset(db, ctx.org.id, img.data, img.name, "pptx_import", ctx.user.id)
+            asset, _ = await create_asset(db, ctx.org.id, img.data, img.name, "pptx_import" if img.text is None and not img.name.startswith("page-") else "document_import", ctx.user.id, ocr_text=img.text)
             inst = m.ImageInstance(id=uuid7(), org_id=ctx.org.id, asset_id=asset.id, post_id=post_id, tags=[], custom_fields={}, caption=None if e.get("decorative") else f"Slide {sl.n}")
             db.add(inst)
             e = {k: v for k, v in e.items() if k != "image"} | {"imageInstanceId": str(inst.id)}
@@ -358,7 +384,7 @@ async def _design_block(db: AsyncSession, ctx: OrgCtx, post_id: uuid.UUID, sl: P
     return {"id": str(uuid7()), "type": "slide", "design": design, **({"notes": sl.notes} if sl.notes else {})}
 
 
-async def blocks_for(db: AsyncSession, ctx: OrgCtx, post_id: uuid.UUID, slides: list[ParsedSlide], design_mode: str = "auto") -> list[dict]:
+async def blocks_for(db: AsyncSession, ctx: OrgCtx, post_id: uuid.UUID, slides: list[ParsedSlide], design_mode: str = "auto", unit: str = "Slide") -> list[dict]:
     """Per slide: a designed-slide block when its layout is kept, otherwise a break (with presenter
     notes), a heading when several slides, then text and images in the slide's reading order."""
     blocks: list[dict] = []
@@ -376,8 +402,8 @@ async def blocks_for(db: AsyncSession, ctx: OrgCtx, post_id: uuid.UUID, slides: 
                 blocks.append({"id": str(uuid7()), "type": "text", "doc": clean.doc(doc(*payload))})
                 continue
             img = sl.images[payload]
-            asset, _ = await create_asset(db, ctx.org.id, img.data, img.name, "pptx_import", ctx.user.id)
-            inst = m.ImageInstance(id=uuid7(), org_id=ctx.org.id, asset_id=asset.id, post_id=post_id, tags=[], custom_fields={}, caption=f"Slide {sl.n}")
+            asset, _ = await create_asset(db, ctx.org.id, img.data, img.name, "pptx_import" if img.text is None and not img.name.startswith("page-") else "document_import", ctx.user.id, ocr_text=img.text)
+            inst = m.ImageInstance(id=uuid7(), org_id=ctx.org.id, asset_id=asset.id, post_id=post_id, tags=[], custom_fields={}, caption=f"{unit} {sl.n}")
             db.add(inst)
             blocks.append({"id": str(uuid7()), "type": "image", "imageInstanceId": str(inst.id)})
     return blocks
@@ -400,8 +426,24 @@ async def commit(org: str, job_id: str, body: dict = Body(default={}), u: m.User
     by_slide = {x.n: x for x in deck.slides}
     look = deck_look(deck.slides)
     t = now()
-    coll = m.CollectionRow(id=uuid7(), org_id=ctx.org.id, workspace_id=j.workspace_id, name=j.defaults.get("collectionName") or j.source_filename, kind="deck_import", created_by=u.id, created_at=t, updated_at=t, visibility="people" if (body or {}).get("visibility") == "people" else "workspace")
-    db.add(coll)
+    kind = file_kind(j)
+    target = parse_uuid(j.defaults.get("intoId"))
+    if target:
+        # Owner request: add to an existing deck or notebook (one you can edit, of the right kind).
+        coll = await db.get(m.CollectionRow, target)
+        if not coll or coll.workspace_id != j.workspace_id or coll.kind != ("deck_import" if kind == "pptx" else "notebook"):
+            fail(422, "invalid", "That deck or notebook can't take this import")
+        await collection_access.require(db, await ws_ctx(db, u, org, str(j.workspace_id)), coll, "editor")
+        start = (await db.scalar(select(func.max(m.CollectionPost.position)).where(m.CollectionPost.collection_id == coll.id)))
+        start = start + 1 if start is not None else 0
+        coll.updated_at = t
+    else:
+        name = j.defaults.get("collectionName") or j.source_filename
+        if kind != "pptx":  # documents become notebooks, whose names are unique in a workspace
+            name = await _free_notebook_name(db, j.workspace_id, name)
+        coll = m.CollectionRow(id=uuid7(), org_id=ctx.org.id, workspace_id=j.workspace_id, name=name, kind="deck_import" if kind == "pptx" else "notebook", created_by=u.id, created_at=t, updated_at=t, visibility="people" if (body or {}).get("visibility") == "people" else "workspace")
+        db.add(coll)
+        start = 0
     await db.flush()
     items, created = [], 0
     for item in j.items:
@@ -430,22 +472,56 @@ async def commit(org: str, job_id: str, body: dict = Body(default={}), u: m.User
         )
         db.add(p)
         await db.flush()
-        blocks = await blocks_for(db, ctx, post_id, slides, j.defaults.get("slideDesign") or "auto")
+        blocks = await blocks_for(db, ctx, post_id, slides, j.defaults.get("slideDesign") or "auto", "Slide" if kind == "pptx" else "Page" if kind == "pdf" else "Part")
         p.blocks = blocks or [{"id": str(uuid7()), "type": "text", "doc": empty_doc()}]
         p.presentation = clean.presentation({"theme": {**look, "name": "From the deck"}, "deck": {**look, "name": "From the deck"}}) if look else None
         p.image_count = len(block_image_ids(blocks, content_only=True))
         await set_post_tags(db, ctx, p, j.defaults.get("tagIds") or [])
-        db.add(m.CollectionPost(collection_id=coll.id, post_id=post_id, position=created))
+        db.add(m.CollectionPost(collection_id=coll.id, post_id=post_id, position=start + created))
         created += 1
         items.append({**item, "postId": str(post_id)})
     j.items = items
     j.status, j.collection_id = "done", coll.id
     j.report = {"created": created, "skipped": sum(1 for i in j.items if not i.get("included")), "warnings": sum(len(i.get("warnings") or []) for i in j.items)}
-    # The original deck leaves temp storage at commit (§W5.4).
+    # The original leaves temp storage at commit. Owner decision (provenance): it's kept, in
+    # object storage, deduplicated per org by content, downloadable with the deck or notebook.
     src = await db.get(m.ImportSource, j.id)
     if src:
+        if get_settings().keep_originals:
+            await storage.put_key(db, original_key(j), ORIGINAL_MIME.get(kind, "application/octet-stream"), src.data)
+            j.defaults = {**j.defaults, "originalKept": True}
         await db.delete(src)
     return import_job_view(j)
+
+
+async def _free_notebook_name(db: AsyncSession, ws_id: uuid.UUID, name: str) -> str:
+    taken = {n.lower() for n in (await db.execute(select(m.CollectionRow.name).where(m.CollectionRow.workspace_id == ws_id, m.CollectionRow.kind == "notebook"))).scalars()}
+    if name.lower() not in taken:
+        return name
+    k = 2
+    while f"{name} ({k})".lower() in taken:
+        k += 1
+    return f"{name} ({k})"
+
+
+@router.get("/orgs/{org}/imports/{job_id}/original")
+async def download_original(org: str, job_id: str, u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
+    """The file as it was imported: anyone who can see its deck or notebook (provenance)."""
+    ctx = await org_ctx(db, u, org)
+    j = await db.get(m.ImportJobRow, parse_uuid(job_id)) if parse_uuid(job_id) else None
+    if not j or j.org_id != ctx.org.id or not (j.defaults or {}).get("originalKept"):
+        fail(404, "not_found", "The original file isn't available")
+    if j.user_id != u.id:
+        c = await db.get(m.CollectionRow, j.collection_id) if j.collection_id else None
+        wctx = await ws_ctx(db, u, org, str(j.workspace_id)) if c else None
+        if not c or not wctx or await collection_access.role_in(db, wctx, c) == "none":
+            fail(404, "not_found", "The original file isn't available")
+    got = await storage.get_key(db, original_key(j))
+    if not got:
+        fail(404, "not_found", "The original file isn't available")
+    mime, data = got
+    safe = re.sub(r'[^\w .()-]', "_", j.source_filename)[:200]
+    return Response(content=data, media_type=mime, headers={"Content-Disposition": f'attachment; filename="{safe}"', "Cache-Control": "private, no-store"})
 
 
 @router.post("/orgs/{org}/imports/{job_id}/publish-all")
@@ -475,8 +551,17 @@ async def delete_import(org: str, job_id: str, u: m.User = Depends(require_user)
         p.deleted_at = now()
     enqueue(db, ctx.org.id, ids)
     if j.collection_id:
+        # The deck/notebook goes only if this import was all it held (others may have extended it).
+        others = await db.scalar(select(func.count()).select_from(m.ImportJobRow).where(m.ImportJobRow.collection_id == j.collection_id, m.ImportJobRow.id != j.id, m.ImportJobRow.status == "done"))
+        manual = await db.scalar(select(func.count()).select_from(m.CollectionPost).where(m.CollectionPost.collection_id == j.collection_id, m.CollectionPost.post_id.not_in(ids or [uuid.uuid4()])))
         c = await db.get(m.CollectionRow, j.collection_id)
-        if c:
+        if c and not others and not manual:
             await db.delete(c)
     j.status, j.error = "failed", "Import deleted"
+    # Its original goes too, unless another import in the org kept the same file.
+    if (j.defaults or {}).get("originalKept"):
+        others = await db.scalar(select(func.count()).select_from(m.ImportJobRow).where(m.ImportJobRow.org_id == j.org_id, m.ImportJobRow.source_sha256 == j.source_sha256, m.ImportJobRow.id != j.id, m.ImportJobRow.status == "done"))
+        if not others:
+            await storage.delete_key(db, original_key(j))
+        j.defaults = {**j.defaults, "originalKept": False}
     return Response(status_code=204)

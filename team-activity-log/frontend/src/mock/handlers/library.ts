@@ -32,7 +32,14 @@ const seesPost = (id: ID, me?: ID) => {
 const live = (c: Collection, me?: ID): Collection => ({ ...c, postIds: c.postIds.filter((id) => seesPost(id, me)) });
 
 /** A collection as the caller sees it: their visible posts, its members, and their role. */
-const view = (c: Collection, ctx: Pick<OrgCtx, "user" | "role">): Collection => ({ ...live(c, ctx.user.id), visibility: c.visibility ?? "workspace", members: membersOf(c), myRole: roleIn(ctx, c) as CollectionRole });
+const view = (c: Collection, ctx: Pick<OrgCtx, "user" | "role">): Collection => {
+  // Several imports can extend one deck or notebook: every file it came from, oldest first.
+  const sources = db.t.importJobs
+    .filter((j) => j.collectionId === c.id && j.status === "done")
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((job) => ({ importJobId: job.id, fileName: job.sourceFilename, fileKind: job.defaults.fileKind ?? "pptx", originalKept: !!job.originalBlob }));
+  return { ...live(c, ctx.user.id), visibility: c.visibility ?? "workspace", members: membersOf(c), myRole: roleIn(ctx, c) as CollectionRole, ...(sources.length ? { sources, source: sources[0] } : {}) };
+};
 
 const collectionItem = (c: Collection, me: ID): LibraryItem => ({ kind: kindOf(c), id: c.id, name: c.name, ownerId: c.createdBy, shared: c.visibility !== "people", sharedWithMe: sharedWith(c, me), pinned: isPinned(me, c.workspaceId, kindOf(c), c.id), updatedAt: c.updatedAt ?? "1970-01-01T00:00:00Z", postCount: live(c, me).postIds.length, collectionKind: c.kind });
 const withPinned = (v: SavedView, me: ID): SavedView => ({ ...v, pinned: isPinned(me, v.workspaceId, "view", v.id) });

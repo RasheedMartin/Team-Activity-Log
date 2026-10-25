@@ -288,7 +288,7 @@ export default function PresentPage() {
         </Tooltip>
         <Tooltip title="Download as PowerPoint (.pptx)">
           <span>
-            <IconButton onClick={() => void download()} disabled={exporting || !deck.length} sx={{ color: "inherit" }} aria-label="Download as PowerPoint">
+            <IconButton onClick={() => void download()} disabled={exporting || !deck.length} sx={{ color: "inherit", display: { xs: "none", sm: "inline-flex" } }} aria-label="Download as PowerPoint">
               {exporting ? <CircularProgress size={20} color="inherit" /> : <FileDownloadOutlined />}
             </IconButton>
           </span>
@@ -307,7 +307,7 @@ export default function PresentPage() {
           </Tooltip>
         )}
         <ThemePicker current={deck[index]?.theme ?? themeFor()} deck={(single ?? posts[0]?.data?.post)?.presentation?.deck} scope={themeScope} onPick={pickTheme} />
-        <Tooltip title="Laser pointer (L)"><IconButton onClick={() => setLaser(!laser)} sx={{ color: laser ? "#ff5a5a" : "inherit" }} aria-label="Laser pointer" aria-pressed={laser}><RadioButtonCheckedRounded /></IconButton></Tooltip>
+        <Tooltip title="Laser pointer (L)"><IconButton onClick={() => setLaser(!laser)} sx={{ color: laser ? "#ff5a5a" : "inherit", display: { xs: "none", sm: "inline-flex" } }} aria-label="Laser pointer" aria-pressed={laser}><RadioButtonCheckedRounded /></IconButton></Tooltip>
         <Tooltip describeChild title="Presenter view with notes (P)">
           <Button size="small" startIcon={<OpenInNewRounded />} sx={{ color: "inherit", display: { xs: "none", sm: "inline-flex" } }} onClick={() => window.open(`${location.pathname}?${new URLSearchParams({ ...Object.fromEntries(params), presenter: "1" })}`, "tal-presenter", "width=1100,height=720")}>
             Notes

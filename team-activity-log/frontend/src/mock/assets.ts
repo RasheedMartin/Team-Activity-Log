@@ -62,7 +62,8 @@ const CANNED_OCR: Record<ImageType, string> = {
 };
 
 /** Create (or reuse, by content hash within the org) an image asset from a blob. */
-export async function createAsset(orgId: ID, blob: Blob, filename: string, sourceKind: Asset["metadata"]["sourceKind"]): Promise<{ asset: AssetRow; created: boolean }> {
+/** `knownText`: text that came with the picture (a PDF page's text layer): searchable as is. */
+export async function createAsset(orgId: ID, blob: Blob, filename: string, sourceKind: Asset["metadata"]["sourceKind"], knownText?: string): Promise<{ asset: AssetRow; created: boolean }> {
   const sha = await sha256Hex(blob);
   const existing = db.t.assets.find((a) => a.orgId === orgId && a.sha256 === sha);
   if (existing) return { asset: existing, created: false };
@@ -94,7 +95,7 @@ export async function createAsset(orgId: ID, blob: Blob, filename: string, sourc
   setTimeout(() => {
     const a = db.t.assets.get(row.id);
     if (!a) return;
-    db.t.assets.put({ ...a, processing: "ready", metadata: { ...a.metadata, ocrState: "ready", ocrEngine: "mock", ocrText: sourceKind === "pptx_import" ? a.metadata.ocrText : CANNED_OCR[type] } });
+    db.t.assets.put({ ...a, processing: "ready", metadata: { ...a.metadata, ocrState: "ready", ocrEngine: knownText ? "textLayer" : "mock", ocrText: knownText ?? (sourceKind === "pptx_import" ? a.metadata.ocrText : CANNED_OCR[type]) } });
     db.t.images.filter((i) => i.assetId === row.id && !!i.postId).forEach((i) => reindex(i.postId!));
   }, 1200);
   return { asset: row, created: true };

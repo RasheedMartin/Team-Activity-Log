@@ -1,4 +1,4 @@
-import { AddRounded, ArrowBackRounded, CallMergeRounded, PersonAddAltRounded, CallSplitRounded, CollectionsBookmarkOutlined, DeleteOutlineRounded, MoreVertRounded, SlideshowRounded, UploadFileOutlined, WarningAmberRounded } from "@mui/icons-material";
+import { AddRounded, ArrowBackRounded, FileDownloadOutlined, CallMergeRounded, PersonAddAltRounded, CallSplitRounded, CollectionsBookmarkOutlined, DeleteOutlineRounded, MoreVertRounded, SlideshowRounded, UploadFileOutlined, WarningAmberRounded } from "@mui/icons-material";
 import { Box, Button, ButtonBase, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, ListItemIcon, Menu, MenuItem, Skeleton, Stack, Tab, Tabs, Tooltip, Typography } from "@mui/material";
 import { useMemo, useState } from "react";
 import { Link as RouterLink, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -8,6 +8,7 @@ import { useOrigin } from "../../app/origin";
 import { useWs, wsPath } from "../../app/session";
 import { RichText } from "../../components/RichText";
 import { SlideCanvas } from "../../components/SlideCanvas";
+import { downloadFile } from "../../api/client";
 import { useNotify } from "../../components/notify";
 import { EmptyState, ErrorState } from "../../components/ui";
 import { blockDocs } from "../../lib/blocks";
@@ -175,7 +176,12 @@ export default function CollectionPage() {
             <>
               <IconButton aria-label="More deck actions" onClick={(e) => setMenu(e.currentTarget)}><MoreVertRounded /></IconButton>
               <Menu anchorEl={menu} open={!!menu} onClose={() => setMenu(null)}>
-                <MenuItem component={RouterLink} to={`${base}/import`} onClick={() => setMenu(null)}>
+                {(coll.sources ?? []).filter((x) => x.originalKept).map((src) => (
+                  <MenuItem key={src.importJobId} onClick={() => (setMenu(null), void downloadFile(`/orgs/${org.id}/imports/${src.importJobId}/original`, src.fileName).catch((e) => notify(e.message)))}>
+                    <ListItemIcon><FileDownloadOutlined fontSize="small" /></ListItemIcon>Download original ({src.fileName})
+                  </MenuItem>
+                ))}
+                <MenuItem component={RouterLink} to={`${base}/import?for=slides&into=${coll.id}`} onClick={() => setMenu(null)}>
                   <ListItemIcon><UploadFileOutlined fontSize="small" /></ListItemIcon>Import more slides
                 </MenuItem>
                 <MenuItem onClick={() => (setMenu(null), setConfirmDelete(true))} sx={{ color: "error.main" }}>

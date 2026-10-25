@@ -12,7 +12,7 @@ const EXPECTED_ITEMS: Record<string, number> = { "One post per slide": 8, "One p
 
 async function startImport(page: Page, file: ReturnType<typeof deck>, mode: string) {
   await openImport(page);
-  await page.getByLabel("PowerPoint file").setInputFiles(file);
+  await page.getByLabel("File to import").setInputFiles(file);
   await page.getByRole("radio", { name: new RegExp(mode) }).click();
   await page.getByRole("button", { name: "Start import" }).click();
 }
@@ -213,5 +213,5 @@ test("import slides is easy to find, and a deck dropped anywhere starts an impor
   await page.dispatchEvent("main", "drop", { dataTransfer: dt });
   await expect(page).toHaveURL(/\/import$/);
   await expect(page.getByText("Dropped_Deck.pptx")).toBeVisible();
-  await expect(page.getByLabel("Collection name")).toHaveValue("Dropped_Deck");
+  await expect(page.getByLabel("Deck name")).toHaveValue("Dropped_Deck");
 });

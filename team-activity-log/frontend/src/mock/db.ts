@@ -83,6 +83,8 @@ export interface ImportJobRow extends ImportJob {
   createdAt?: string; // older mock rows lack it: their uuidv7 id carries the time
   /** The uploaded deck, in "temp storage" until commit (§W5.4: originals aren't retained). */
   sourceBlob?: Blob;
+  /** Kept after commit (owner decision: provenance), downloadable from the deck or notebook. */
+  originalBlob?: Blob;
   /** Content hash of the upload: finds the same deck imported before. */
   sourceSha256?: string;
 }

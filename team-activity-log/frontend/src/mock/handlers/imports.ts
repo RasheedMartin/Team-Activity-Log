@@ -5,7 +5,15 @@ import { uuidv7 } from "../../lib/ids";
 import { doc, heading } from "../../lib/prosemirror";
 import { createAsset } from "../assets";
 import { db, type ImportJobRow } from "../db";
+import { parseDocx, parsePdf } from "../docs";
+import { requireRole } from "./collectionAccess";
 import { deckLook, parsePptx, type ParsedDeck, type ParsedSlide } from "../pptx";
+
+// What can be imported (mirrors routes/imports.py): slides → decks; PDF and Word → notebooks.
+type FileKind = "pptx" | "pdf" | "docx";
+const kindOfName = (name: string): FileKind | undefined => (/\.pptx$/i.test(name) ? "pptx" : /\.pdf$/i.test(name) ? "pdf" : /\.docx$/i.test(name) ? "docx" : undefined);
+const fileKind = (j: { defaults: ImportJob["defaults"] }): FileKind => j.defaults.fileKind ?? "pptx";
+const parse = (kind: FileKind, blob: Blob, onProgress?: (f: number) => void) => (kind === "pdf" ? parsePdf(blob, onProgress) : kind === "docx" ? parseDocx(blob, onProgress) : parsePptx(blob, onProgress));
 import { emit, fail, now, orgCtx, reindex, route, workspaceCtx } from "../server";
 
 // The import reads the real .pptx in the browser (src/mock/pptx.ts) so decks can be tried for
@@ -66,7 +74,7 @@ async function deckFor(j: ImportJobRow): Promise<ParsedDeck> {
   const cached = decks.get(j.id);
   if (cached) return cached;
   if (!j.sourceBlob) throw new Error("The uploaded file is no longer available. Start the import again.");
-  const d = await parsePptx(j.sourceBlob);
+  const d = await parse(fileKind(j), j.sourceBlob);
   decks.set(j.id, d);
   return d;
 }
@@ -76,7 +84,7 @@ async function parseJob(jobId: string) {
   if (!j?.sourceBlob) return;
   let last = 0;
   try {
-    const deck = await parsePptx(j.sourceBlob, (f) => {
+    const deck = await parse(fileKind(j), j.sourceBlob, (f) => {
       if (f - last < 0.05 && f < 1) return;
       last = f;
       db.t.importJobs.update(jobId, { progress: 0.1 + f * 0.85 });
@@ -113,7 +121,7 @@ async function designBlock(orgId: string, postId: string, sl: ParsedSlide): Prom
 /** Blocks for one post: per slide a designed-slide block when its layout is kept, otherwise a
  *  break (with presenter notes), heading when several slides, then text and images in the slide's
  *  reading order. */
-async function blocksFor(orgId: string, postId: string, slides: ParsedSlide[], designMode: SlideDesignMode = "auto"): Promise<Block[]> {
+async function blocksFor(orgId: string, postId: string, slides: ParsedSlide[], designMode: SlideDesignMode = "auto", unit = "Slide"): Promise<Block[]> {
   const blocks: Block[] = [];
   for (const [k, sl] of slides.entries()) {
     if (keepsDesign(sl, designMode)) {
@@ -132,8 +140,9 @@ async function blocksFor(orgId: string, postId: string, slides: ParsedSlide[], d
         continue;
       }
       const img = sl.images[part.index];
-      const { asset } = await createAsset(orgId, img.blob, img.name, "pptx_import"); // deduped by hash within the org
-      const inst = db.t.images.put({ id: uuidv7(), assetId: asset.id, postId, tags: [], customFields: {}, caption: `Slide ${sl.n}` });
+      const known = (img as { text?: string }).text;
+      const { asset } = await createAsset(orgId, img.blob, img.name, unit === "Slide" ? "pptx_import" : "document_import", known); // deduped by hash within the org
+      const inst = db.t.images.put({ id: uuidv7(), assetId: asset.id, postId, tags: [], customFields: {}, caption: `${unit} ${sl.n}` });
       blocks.push({ id: uuidv7(), type: "image", imageInstanceId: inst.id });
     }
   }
@@ -146,7 +155,7 @@ export const importHandlers = [
     route(async ({ cookies, params, request }) => {
       const ctx = workspaceCtx(cookies, params.org as string, params.ws as string, "member");
       const body = (await request.json()) as { filename: string; bytes: number; mode: ImportMode; defaults: ImportJob["defaults"] };
-      if (!/\.pptx$/i.test(body.filename)) fail(415, "unsupported_type", "Choose a .pptx file (PowerPoint 2007 or newer)");
+      if (!kindOfName(body.filename)) fail(415, "unsupported_type", "Choose a PowerPoint (.pptx), PDF, or Word (.docx) file");
       const job = db.t.importJobs.put({
         id: uuidv7(),
         userId: ctx.user.id,
@@ -158,7 +167,7 @@ export const importHandlers = [
         sourceFilename: body.filename,
         sourceBytes: body.bytes,
         slideCount: 0,
-        defaults: body.defaults,
+        defaults: { ...body.defaults, fileKind: kindOfName(body.filename) },
         items: [],
         createdAt: now(),
       });
@@ -212,7 +221,7 @@ export const importHandlers = [
         .slice(0, 30)
         .map((j) => {
           const posts = db.t.posts.filter((p) => p.source?.importJobId === j.id && !p.deletedAt);
-          return { id: j.id, sourceFilename: j.sourceFilename, status: j.status, slideCount: j.slideCount, createdAt: j.createdAt, collectionId: j.collectionId, drafts: posts.filter((p) => p.status === "draft").length, published: posts.filter((p) => p.status === "published").length };
+          return { id: j.id, sourceFilename: j.sourceFilename, status: j.status, slideCount: j.slideCount, createdAt: j.createdAt, collectionId: j.collectionId, fileKind: fileKind(j), drafts: posts.filter((p) => p.status === "draft").length, published: posts.filter((p) => p.status === "published").length };
         });
       return HttpResponse.json(list);
     }),
@@ -264,7 +273,21 @@ export const importHandlers = [
       const presentation = Object.keys(look).length ? { theme: { ...look, name: "From the deck" }, deck: { ...look, name: "From the deck" } } : undefined;
       const bySlide = new Map(deck.slides.map((x) => [x.n, x]));
       const fileSha = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", await j!.sourceBlob!.arrayBuffer())), (b) => b.toString(16).padStart(2, "0")).join("");
-      const coll = db.t.collections.put({ id: uuidv7(), workspaceId: j!.workspaceId, name: j!.defaults.collectionName || j!.sourceFilename, kind: "deck_import", postIds: [], createdBy: ctx.user.id, updatedAt: now(), visibility });
+      const kind = fileKind(j!);
+      let name = j!.defaults.collectionName || j!.sourceFilename;
+      if (kind !== "pptx") {
+        // Documents become notebooks, whose names are unique in a workspace.
+        const taken = new Set(db.t.collections.filter((c) => c.workspaceId === j!.workspaceId && c.kind === "notebook").map((c) => c.name.toLowerCase()));
+        for (let k = 2; taken.has(name.toLowerCase()); k++) name = `${j!.defaults.collectionName || j!.sourceFilename} (${k})`;
+      }
+      // Owner request: add to an existing deck or notebook (one you can edit, of the right kind).
+      const target = j!.defaults.intoId ? db.t.collections.get(j!.defaults.intoId) : undefined;
+      if (j!.defaults.intoId) {
+        if (!target || target.workspaceId !== j!.workspaceId || target.kind !== (kind === "pptx" ? "deck_import" : "notebook")) fail(422, "invalid", "That deck or notebook can't take this import");
+        requireRole(ctx, target!, "editor");
+      }
+      const coll = target ?? db.t.collections.put({ id: uuidv7(), workspaceId: j!.workspaceId, name, kind: kind === "pptx" ? "deck_import" : "notebook", postIds: [], createdBy: ctx.user.id, updatedAt: now(), visibility });
+      const before = target ? [...target.postIds] : [];
       const postIds: string[] = [];
       const items: ImportItem[] = [];
       for (const item of j!.items) {
@@ -274,7 +297,7 @@ export const importHandlers = [
         }
         const postId = uuidv7();
         const slides = item.slideNumbers.map((n) => bySlide.get(n)).filter((x): x is ParsedSlide => !!x);
-        const blocks = await blocksFor(ctx.org.id, postId, slides, j!.defaults.slideDesign ?? "auto");
+        const blocks = await blocksFor(ctx.org.id, postId, slides, j!.defaults.slideDesign ?? "auto", kind === "pptx" ? "Slide" : kind === "pdf" ? "Page" : "Part");
         const t = now();
         db.t.posts.put({
           id: postId,
@@ -302,11 +325,11 @@ export const importHandlers = [
         postIds.push(postId);
         items.push({ ...item, postId });
       }
-      db.t.collections.update(coll.id, { postIds });
+      db.t.collections.update(coll.id, { postIds: [...before, ...postIds], updatedAt: now() });
       const report = { created: postIds.length, skipped: j!.items.filter((i) => !i.included).length, warnings: j!.items.reduce((n, i) => n + i.warnings.length, 0) };
       // The original deck leaves temp storage at commit (§W5.4).
       decks.delete(j!.id);
-      return HttpResponse.json(view(db.t.importJobs.update(j!.id, { status: "done", items, collectionId: coll.id, report, sourceBlob: undefined })!));
+      return HttpResponse.json(view(db.t.importJobs.update(j!.id, { status: "done", items, collectionId: coll.id, report, sourceBlob: undefined, originalBlob: j!.sourceBlob, defaults: { ...j!.defaults, originalKept: true } })!));
     }),
   ),
   http.post(
@@ -340,9 +363,24 @@ export const importHandlers = [
           reindex(p.id);
         }
       });
-      if (j!.collectionId) db.t.collections.delete(j!.collectionId);
+      if (j!.collectionId) {
+        // The deck/notebook goes only if this import was all it held (others may have extended it).
+        const mine = new Set(j!.items.map((i) => i.postId).filter(Boolean));
+        const c = db.t.collections.get(j!.collectionId);
+        const others = db.t.importJobs.filter((x) => x.collectionId === j!.collectionId && x.id !== j!.id && x.status === "done").length > 0;
+        if (c && !others && c.postIds.every((id) => mine.has(id))) db.t.collections.delete(c.id);
+      }
       db.t.importJobs.update(j!.id, { status: "failed", error: "Import deleted" });
       return new HttpResponse(null, { status: 204 });
+    }),
+  ),
+  http.get(
+    "/v1/orgs/:org/imports/:id/original",
+    route(({ cookies, params }) => {
+      const ctx = orgCtx(cookies, params.org as string);
+      const j = db.t.importJobs.get(params.id as string);
+      if (!j || j.orgId !== ctx.org.id || !j.originalBlob) fail(404, "not_found", "The original file isn't available");
+      return new HttpResponse(j!.originalBlob, { headers: { "Content-Type": j!.originalBlob!.type || "application/octet-stream", "Content-Disposition": `attachment; filename="${j!.sourceFilename.replace(/"/g, "")}"` } });
     }),
   ),
 ];

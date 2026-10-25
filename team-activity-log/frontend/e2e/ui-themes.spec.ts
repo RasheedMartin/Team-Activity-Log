@@ -30,7 +30,7 @@ test("pick a theme in Present; it's saved with the post", async ({ page }) => {
 test("an imported deck's text slides present in the deck's look", async ({ page }) => {
   await openScenario(page, "small");
   await openImport(page);
-  await page.getByLabel("PowerPoint file").setInputFiles({ name: "Formatting_2024.pptx", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", buffer: FIXTURE });
+  await page.getByLabel("File to import").setInputFiles({ name: "Formatting_2024.pptx", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", buffer: FIXTURE });
   await page.getByRole("radio", { name: /One post for the deck/ }).click();
   await page.getByRole("radio", { name: /^Text only/ }).click();
   await page.getByRole("button", { name: "Start import" }).click();

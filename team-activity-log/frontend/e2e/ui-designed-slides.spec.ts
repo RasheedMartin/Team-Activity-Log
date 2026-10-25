@@ -12,7 +12,7 @@ const FIXTURE = readFileSync(path.join(path.dirname(new URL(import.meta.url).pat
 async function importDeck(page: Page, design: "Automatic" | "Keep the design") {
   await openScenario(page, "small");
   await openImport(page);
-  await page.getByLabel("PowerPoint file").setInputFiles({ name: "Formatting_2024.pptx", mimeType: PPTX_MIME, buffer: FIXTURE });
+  await page.getByLabel("File to import").setInputFiles({ name: "Formatting_2024.pptx", mimeType: PPTX_MIME, buffer: FIXTURE });
   await page.getByRole("radio", { name: /One post for the deck/ }).click();
   await page.getByRole("radio", { name: new RegExp(`^${design}`) }).click();
   await page.getByRole("button", { name: "Start import" }).click();

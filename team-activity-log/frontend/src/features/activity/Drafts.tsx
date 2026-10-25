@@ -4,7 +4,7 @@ import { Link as RouterLink, useNavigate } from "react-router-dom";
 import { useDrafts, useMyImports } from "../../api/hooks";
 import { useWs, wsPath } from "../../app/session";
 import { EmptyState, ErrorState, Kbd } from "../../components/ui";
-import { deckHref } from "../collections/libraryLinks";
+import { importHome } from "../collections/libraryLinks";
 import { DraftList } from "./DraftList";
 import { ActivityPanel } from "./Section";
 
@@ -42,11 +42,11 @@ export default function DraftsTab() {
               <List disablePadding aria-label="Unfinished imports">
                 {decks.map((i, k) => (
                   <ListItem key={i.id} disablePadding divider={k < decks.length - 1}>
-                    <ListItemButton component={RouterLink} to={deckHref(base, i.collectionId!, true)}>
+                    <ListItemButton component={RouterLink} to={importHome(base, i.collectionId!, i.fileKind, true)}>
                       <ListItemIcon sx={{ minWidth: 40 }}><UploadFileOutlined sx={{ color: "primary.main" }} /></ListItemIcon>
                       <ListItemText
                         primary={i.sourceFilename}
-                        secondary={<Typography component="span" variant="body2" sx={{ color: "warning.main", fontWeight: 600 }}>{i.drafts} of {i.drafts + i.published} slides to review</Typography>}
+                        secondary={<Typography component="span" variant="body2" sx={{ color: "warning.main", fontWeight: 600 }}>{i.drafts} of {i.drafts + i.published} {i.fileKind === "pdf" || i.fileKind === "docx" ? "pages" : "slides"} to review</Typography>}
                       />
                       <ChevronRightRounded sx={{ color: "text.secondary" }} />
                     </ListItemButton>

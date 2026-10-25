@@ -38,12 +38,21 @@ export function NewNotebookButton() {
   );
 }
 
-/** Decks page (owner request): importing slides starts here, where its decks live. */
+/** Imports start where their results live (owner decision): slides on Decks, PDF and Word on
+ *  Notebooks. Same import flow, scoped by `for`. */
 export function ImportSlidesButton() {
   const { org, ws } = useWs();
   return (
-    <Button variant="contained" startIcon={<UploadFileOutlined />} component={RouterLink} to={wsPath(org, ws, "/import")}>
+    <Button variant="contained" startIcon={<UploadFileOutlined />} component={RouterLink} to={`${wsPath(org, ws, "/import")}?for=slides`}>
       Import slides
+    </Button>
+  );
+}
+export function ImportDocumentButton() {
+  const { org, ws } = useWs();
+  return (
+    <Button startIcon={<UploadFileOutlined />} component={RouterLink} to={`${wsPath(org, ws, "/import")}?for=document`}>
+      Import a document
     </Button>
   );
 }

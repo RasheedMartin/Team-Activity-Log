@@ -40,3 +40,9 @@ export async function notebookAction(page: Page, item: string | RegExp) {
   await page.getByRole("button", { name: "Notebook actions" }).click();
   await page.getByRole("menuitem", { name: item }).click();
 }
+
+/** Importing a PDF or Word file starts on the Notebooks page. */
+export async function openDocumentImport(page: Page) {
+  await page.getByRole("navigation", { name: "Workspace" }).getByRole("link", { name: "Notebooks" }).click();
+  await page.getByRole("main").getByRole("link", { name: "Import a document" }).click();
+}

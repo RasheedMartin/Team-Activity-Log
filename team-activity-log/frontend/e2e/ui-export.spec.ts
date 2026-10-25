@@ -11,7 +11,7 @@ const FIXTURE = readFileSync(path.join(path.dirname(new URL(import.meta.url).pat
 test("download a deck as .pptx: designed slides, text slides, notes, pictures", async ({ page }) => {
   await openScenario(page, "small");
   await openImport(page);
-  await page.getByLabel("PowerPoint file").setInputFiles({ name: "Formatting_2024.pptx", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", buffer: FIXTURE });
+  await page.getByLabel("File to import").setInputFiles({ name: "Formatting_2024.pptx", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", buffer: FIXTURE });
   await page.getByRole("radio", { name: /One post for the deck/ }).click();
   await page.getByRole("radio", { name: /^Automatic/ }).click(); // a mix of designed and text slides
   await page.getByRole("button", { name: "Start import" }).click();
