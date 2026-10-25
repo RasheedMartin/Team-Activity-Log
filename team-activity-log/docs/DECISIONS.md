@@ -214,3 +214,7 @@ Tested against four real decks (112 slides: Google Slides exports, an IBM course
 - **Clipping.** Contents past the slide's edge are clipped in the editor too, as on the saved slide. Only the selection outline and handles extend past the edge.
 - **No lost shapes.** Moving or nudging keeps at least 32 pt of an element (or all of it, if smaller) on the slide. Elements already entirely off it, as some decks have, get a "Bring onto slide" fix under the slide.
 - **Shortcuts.** Delete, arrows, Enter and Escape act on the selection wherever focus is, since a press on the slide doesn't reliably keep focus. They're ignored while typing or inside a menu or dialog. A press outside a slide clears its selection, so only one slide answers. Menus and pickers don't hand focus back to their button.
+- **Collections have their own page** (`/collections/:id`, owner feedback), like notebooks, instead of opening as a filtered search.
+  - **Layout:** the posts in order as slide-like cards (a designed slide, else the first picture, else the opening text), each marked Draft or Published.
+  - **Actions:** Present, Favorite, Open import (imported decks), and Search within for filtering.
+  - **Links:** Library, Favorites in the sidebar, and the import page ("Open the deck") all go here.

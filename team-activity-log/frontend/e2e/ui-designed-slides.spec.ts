@@ -19,8 +19,8 @@ async function importDeck(page: Page, design: "Automatic" | "Keep the design") {
   await page.getByRole("button", { name: /^Create 1 draft$/ }).click({ timeout: 20_000 });
   await page.getByRole("button", { name: "Publish all" }).click();
   await expect(page.getByText("All imported drafts published")).toBeVisible();
-  await page.getByRole("link", { name: "Search these slides" }).click();
-  await page.locator("[data-post-id]").first().getByRole("heading").click();
+  await page.getByRole("link", { name: "Open the deck" }).click();
+  await page.getByRole("list", { name: "Posts in this collection" }).getByRole("link").first().click();
 }
 
 test("keep the design: slides render as laid out, are searchable, and present", async ({ page }) => {

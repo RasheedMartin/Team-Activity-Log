@@ -8,7 +8,7 @@ icons, and one-line definitions is `frontend/src/features/collections/concepts.t
 |---|---|---|---|
 | **Post** | One write-up: text, images, tables, tags. A draft until published. | New post (C), or Import slides | — |
 | **Saved search** | A search you rerun. New posts that match show up on their own. Relative dates stay relative. | Search → Save search | saved-search |
-| **Collection** | Posts you picked by hand. No reading order. An import makes one per deck. | Search → Select → New collection | collections-bookmark |
+| **Collection** | A set of posts with its own page: an imported deck (its slides in order), or posts you picked by hand. | Search → Select → New collection | collections-bookmark |
 | **Notebook** | Posts in an order, read start to finish (one entry at a time, or continuous for print). | Search → Select → New notebook, or Home → a tag → Create notebook | menu-book |
 | **Favorites** | Your starred saved searches, collections, and notebooks, shown in the left sidebar. Personal. | The star on any of them | star |
 | **Library** | Every saved search, collection, and notebook in the workspace. | — | library |

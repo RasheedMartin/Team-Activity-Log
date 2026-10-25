@@ -103,12 +103,13 @@ for (const mode of ["One post per slide", "One post for the deck", "Group by sec
     await expect(page.getByText(new RegExp(`Created ${expected} drafts`))).toBeVisible();
     await page.getByRole("button", { name: "Publish all" }).click();
     await expect(page.getByText("All imported drafts published")).toBeVisible();
-    await page.getByRole("link", { name: "Search these slides" }).click();
-    await expect(page.locator("[data-post-id]").first()).toBeVisible();
+    await page.getByRole("link", { name: "Open the deck" }).click();
+    const cards = page.getByRole("list", { name: "Posts in this collection" }).getByRole("link");
+    await expect(cards).toHaveCount(expected);
     if (mode === "One post per slide") {
       // Real content from the deck, not canned text: slide 2's caption and picture. (Slide 2's
       // post was renamed by the merge/split above.)
-      await page.locator("[data-post-id]").filter({ hasText: "Imported overview (slide 2)" }).first().getByRole("heading").click();
+      await cards.filter({ hasText: "Imported overview (slide 2)" }).first().click();
       await expect(page.getByText("Curve from run 4512")).toBeVisible();
       await expect(page.locator("figure img")).toHaveCount(1);
     }

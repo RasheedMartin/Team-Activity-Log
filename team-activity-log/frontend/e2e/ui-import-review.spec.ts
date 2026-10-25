@@ -55,7 +55,7 @@ test("review imported drafts one by one, and always find the way back", async ({
   await expect(page.getByText(/Published 7 posts/)).toBeVisible();
   await expect(page.getByRole("tab", { name: "Published (8)" })).toBeVisible();
   await expect(page.getByText(/Nothing left to review/)).toBeVisible();
-  await expect(page.getByRole("link", { name: "Search these slides" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open the deck" })).toBeVisible();
 });
 
 test("drafts: select some, publish them; one that can't publish says why", async ({ page }) => {
@@ -107,4 +107,26 @@ test("an unfinished import is easy to get back to", async ({ page }) => {
   await expect(yours.getByRole("listitem").filter({ hasText: "Lab_Notes_2021.pptx" })).toContainText("0 of 8 published · 8 left to review");
   await yours.getByRole("listitem").filter({ hasText: "Left_halfway.pptx" }).getByText(/Ready to review/).click();
   await expect(page.getByRole("button", { name: /^Create \d+ drafts$/ })).toBeVisible(); // back in review, where it was left
+});
+
+test("an imported deck has its own page, like a notebook", async ({ page }) => {
+  await openScenario(page, "small");
+  await importPerSlide(page);
+  await page.getByRole("button", { name: "Publish all" }).click();
+  await page.getByRole("link", { name: "Open the deck" }).click();
+  await expect(page).toHaveURL(/\/collections\//);
+  await expect(page.getByText("Imported slides")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Lab_Notes_2021"); // the collection is named after the file
+  const cards = page.getByRole("list", { name: "Posts in this collection" }).getByRole("link");
+  await expect(cards).toHaveCount(8);
+  await expect(cards.nth(1)).toContainText("Cooldown curve");
+  await expect(page.getByRole("link", { name: "Open import" })).toHaveAttribute("href", /\/import\?job=/);
+  await expect(page.getByRole("link", { name: "Search within" })).toHaveAttribute("href", /\/search\?/);
+  // The Library opens it here too, not in Search.
+  await page.getByRole("link", { name: "Library", exact: true }).click();
+  await page.getByRole("main").getByRole("link", { name: /Lab_Notes_2021/ }).first().click();
+  await expect(page).toHaveURL(/\/collections\//);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await page.screenshot({ path: "test-results/deck-page-phone.png" });
 });

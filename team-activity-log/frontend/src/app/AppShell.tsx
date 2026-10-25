@@ -38,9 +38,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link as RouterLink, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { API_MODE } from "../api/client";
 import { useLogout, useNotifications, usePins, useRememberWorkspace } from "../api/hooks";
-import { collectionParams, libraryHref } from "../features/collections/libraryLinks";
+import { libraryHref } from "../features/collections/libraryLinks";
 import { KINDS, favoriteDomId } from "../features/collections/concepts";
-import { fromSearchParams, specKey } from "../lib/filterSpec";
 
 const PINS_SHOWN = 10;
 import { UserAvatar } from "../components/ui";
@@ -205,8 +204,7 @@ function Rail({ onNavigate }: { onNavigate?: () => void }) {
   const location = useLocation();
   const params = new URLSearchParams(location.search);
   const onSearch = location.pathname === `${base}/search`;
-  const pinIsActive = (item: (typeof pins)[number]) =>
-    item.kind !== "notebook" && onSearch && (item.kind === "view" ? params.get("view") === item.id : !params.get("view") && specKey(fromSearchParams(params)) === specKey(fromSearchParams(collectionParams(item.id))));
+  const pinIsActive = (item: (typeof pins)[number]) => (item.kind === "view" ? onSearch && params.get("view") === item.id : location.pathname === libraryHref(base, item));
   const pinActive = shownPins.some(pinIsActive);
   return (
     <Stack sx={{ height: "100%", py: 1 }}>

@@ -17,8 +17,8 @@ test("download a deck as .pptx: designed slides, text slides, notes, pictures", 
   await page.getByRole("button", { name: "Start import" }).click();
   await page.getByRole("button", { name: /^Create 1 draft$/ }).click({ timeout: 20_000 });
   await page.getByRole("button", { name: "Publish all" }).click();
-  await page.getByRole("link", { name: "Search these slides" }).click();
-  await page.locator("[data-post-id]").first().getByRole("heading").click();
+  await page.getByRole("link", { name: "Open the deck" }).click();
+  await page.getByRole("list", { name: "Posts in this collection" }).getByRole("link").first().click();
   await page.getByRole("button", { name: "Present" }).click();
   await expect(page.getByText(/^1 \/ \d+$/)).toBeVisible();
   const total = Number((await page.getByText(/^1 \/ \d+$/).innerText()).split("/")[1]);

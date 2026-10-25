@@ -1,4 +1,4 @@
-import { CallMergeRounded, CallSplitRounded, CheckCircleRounded, ErrorOutlineRounded, SlideshowRounded, SearchRounded, UploadFileOutlined, WarningAmberRounded } from "@mui/icons-material";
+import { CallMergeRounded, CollectionsBookmarkOutlined, CallSplitRounded, CheckCircleRounded, ErrorOutlineRounded, SlideshowRounded, UploadFileOutlined, WarningAmberRounded } from "@mui/icons-material";
 import {
   Alert,
   Box,
@@ -47,7 +47,6 @@ import { useNotify } from "../../components/notify";
 import { TagPicker } from "../../components/Pickers";
 import { EmptyState, PageHeader } from "../../components/ui";
 import { timeAgo, todayISO } from "../../lib/dates";
-import { toSearchParams } from "../../lib/filterSpec";
 import { errorMessage } from "../../lib/format";
 import { uuidv7 } from "../../lib/ids";
 
@@ -340,7 +339,7 @@ function DoneStep({ job, onNew }: { job: ImportJob; onNew: () => void }) {
   const mine = (posts.data ?? []).filter((p) => p.status === "draft");
   const out = (posts.data ?? []).filter((p) => p.status === "published");
   const [tab, setTab] = useState<"review" | "published">("review");
-  const collectionUrl = job.collectionId ? `${wsPath(org, ws, "/search")}?${toSearchParams({ all: [{ field: "collection", op: "in", value: [job.collectionId] }], sort: "oldest" })}` : wsPath(org, ws);
+  const collectionUrl = job.collectionId ? wsPath(org, ws, `/collections/${job.collectionId}`) : wsPath(org, ws);
   return (
     <Stack spacing={2} alignItems="flex-start">
       <Alert icon={<CheckCircleRounded />} severity="success">
@@ -350,7 +349,7 @@ function DoneStep({ job, onNew }: { job: ImportJob; onNew: () => void }) {
         <Button variant="contained" disabled={published || act.isPending || (!posts.isPending && !mine.length)} onClick={() => act.mutate({ action: "publishAll" }, { onSuccess: () => (setPublished(true), notify("All imported drafts published")) })}>
           {published ? "Published" : "Publish all"}
         </Button>
-        {(published || out.length > 0) && <Button component={RouterLink} to={collectionUrl} startIcon={<SearchRounded />}>Search these slides</Button>}
+        {(published || out.length > 0) && <Button component={RouterLink} to={collectionUrl} startIcon={<CollectionsBookmarkOutlined />}>Open the deck</Button>}
         {job.collectionId && (
           <Tooltip describeChild title="All of this import's slides in Present, where you can also download them as a PowerPoint file">
             <Button component={RouterLink} to={`${wsPath(org, ws, "/present")}?collection=${job.collectionId}`} startIcon={<SlideshowRounded />}>
