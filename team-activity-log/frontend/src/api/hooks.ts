@@ -907,6 +907,75 @@ export async function uploadAttachment(orgId: ID, file: File): Promise<import(".
   return body as import("./contract").AttachmentView;
 }
 
+// ---- sheets ----
+
+type SheetT = import("./contract").Sheet;
+type SheetChartT = import("./contract").SheetChart;
+const sheetKey = (orgId: ID, id: ID) => ["org", orgId, "sheet", id] as const;
+
+export const useSheets = (orgId: ID, wsId: ID, q = "") =>
+  useQuery({
+    queryKey: ["org", orgId, "ws", wsId, "sheets", q],
+    queryFn: ({ signal }) => get<import("./contract").SheetSummary[]>(`${W(orgId, wsId)}/sheets${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ""}`, signal),
+    placeholderData: keepPreviousData,
+  });
+export const useSheet = (orgId: ID, id: ID | undefined) =>
+  useQuery({ queryKey: sheetKey(orgId, id ?? ""), queryFn: ({ signal }) => get<SheetT>(`${O(orgId)}/sheets/${id}`, signal), enabled: !!id, retry: (n, e) => !(e instanceof ApiError && e.status === 404) && n < 2 });
+/** A tab's rows (up to 50,000): fetched once per tab, then sorted and filtered in the browser. */
+export const useSheetRows = (orgId: ID, sheetId: ID | undefined, tabId: ID | undefined) =>
+  useQuery({
+    queryKey: [...sheetKey(orgId, sheetId ?? ""), "rows", tabId],
+    queryFn: ({ signal }) => get<import("./contract").SheetRows>(`${O(orgId)}/sheets/${sheetId}/tabs/${tabId}/rows`, signal),
+    enabled: !!sheetId && !!tabId,
+    staleTime: Infinity,
+  });
+
+/** Import a spreadsheet: the body is the file (.xlsx or .csv). */
+export function useImportSheet(orgId: ID, wsId: ID) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const res = await fetch(`${API_BASE_URL}${W(orgId, wsId)}/sheets?filename=${encodeURIComponent(file.name)}`, { method: "POST", credentials: "include", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((body as { message?: string }).message ?? `Import failed (${res.status})`);
+      return body as SheetT;
+    },
+    onSuccess: (s) => {
+      qc.setQueryData(sheetKey(orgId, s.id), s);
+      qc.invalidateQueries({ queryKey: ["org", orgId, "ws", wsId, "sheets"] });
+    },
+  });
+}
+export function useDeleteSheet(orgId: ID, wsId: ID) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: ID) => del<void>(`${O(orgId)}/sheets/${id}`),
+    onSuccess: (_, id) => {
+      qc.removeQueries({ queryKey: sheetKey(orgId, id) });
+      qc.invalidateQueries({ queryKey: ["org", orgId, "ws", wsId, "sheets"] });
+    },
+  });
+}
+/** Save, change, or delete a chart on a sheet; the sheet's chart list updates in place. */
+export function useSheetChart(orgId: ID, sheetId: ID) {
+  const qc = useQueryClient();
+  const patchSheet = (fn: (charts: SheetChartT[]) => SheetChartT[]) => qc.setQueryData<SheetT>(sheetKey(orgId, sheetId), (s) => (s ? { ...s, charts: fn(s.charts) } : s));
+  return {
+    create: useMutation({
+      mutationFn: (v: { tabId: ID; name: string; spec: import("./contract").SheetChartSpec }) => post<SheetChartT>(`${O(orgId)}/sheets/${sheetId}/charts`, v),
+      onSuccess: (c) => patchSheet((cs) => [...cs, c]),
+    }),
+    update: useMutation({
+      mutationFn: ({ id, ...v }: { id: ID; name?: string; spec?: import("./contract").SheetChartSpec }) => patch<SheetChartT>(`${O(orgId)}/sheets/${sheetId}/charts/${id}`, v),
+      onSuccess: (c) => patchSheet((cs) => cs.map((x) => (x.id === c.id ? c : x))),
+    }),
+    remove: useMutation({
+      mutationFn: (id: ID) => del<void>(`${O(orgId)}/sheets/${sheetId}/charts/${id}`),
+      onSuccess: (_, id) => patchSheet((cs) => cs.filter((x) => x.id !== id)),
+    }),
+  };
+}
+
 // ---- super admin ----
 
 export const useSuperOverview = () => useQuery({ queryKey: ["super", "overview"], queryFn: ({ signal }) => get<import("./contract").SuperOverview>("/super/overview", signal), retry: false });

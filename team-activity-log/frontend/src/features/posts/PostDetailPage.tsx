@@ -335,6 +335,7 @@ function PostView({ post, images, attachments }: { post: Post; images: ImageView
             if (b.type === "slide_break") return <Divider key={b.id} sx={{ borderStyle: "dashed" }} />;
             if (b.type === "slide") return <SlideCanvas key={b.id} design={b.design} images={imgs} />;
             if (b.type === "file") return <FileCard key={b.id} file={attachments.find((a) => a.id === b.attachmentId)} />;
+            if (b.type === "chart") return null;
             const img = imgs.get(b.imageInstanceId);
             if (!img) return null;
             return (

@@ -21,6 +21,10 @@ import type {
   UserPreferences,
   Workspace,
   AttachmentView,
+  SheetChart,
+  SheetSummary,
+  SheetTab,
+  SheetCell,
 } from "../api/contract";
 
 // The mock server's "Postgres": rows live in memory (fast search over 5,000 posts) and are
@@ -97,6 +101,23 @@ export interface AttachmentRow extends AttachmentView {
   blob: Blob;
   createdBy: ID;
 }
+/** Sheets (mirrors sheets / sheet_tabs / sheet_charts). */
+export interface SheetRow extends Omit<SheetSummary, "tabs" | "rows"> {
+  orgId: ID;
+  sha256: string;
+  searchText: string;
+  createdAt: string;
+  blob: Blob;
+}
+export interface SheetTabRow extends SheetTab {
+  sheetId: ID;
+  position: number;
+  rows: SheetCell[][];
+}
+export interface SheetChartRow extends SheetChart {
+  createdBy: ID;
+  createdAt: string;
+}
 export interface DraftOrderRow {
   id: ID;
 }
@@ -122,6 +143,9 @@ interface Rows {
   collections: Collection;
   importJobs: ImportJobRow;
   attachments: AttachmentRow;
+  sheets: SheetRow;
+  sheetTabs: SheetTabRow;
+  sheetCharts: SheetChartRow;
   emails: DevEmail;
   meta: MetaRow;
 }
@@ -147,6 +171,9 @@ const TABLES: TableName[] = [
   "collections",
   "importJobs",
   "attachments",
+  "sheets",
+  "sheetTabs",
+  "sheetCharts",
   "emails",
   "meta",
 ];
@@ -154,7 +181,7 @@ const TABLES: TableName[] = [
 class Persist extends Dexie {
   constructor() {
     super("tal-mock");
-    this.version(2).stores(Object.fromEntries(TABLES.map((t) => [t, "id"]))); // 2: + attachments
+    this.version(3).stores(Object.fromEntries(TABLES.map((t) => [t, "id"]))); // 2: + attachments; 3: + sheets
   }
 }
 

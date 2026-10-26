@@ -20,6 +20,8 @@ import { OrgHomePage, OrgPickerPage } from "./features/orgs/OrgHomePage";
 import { SearchPage } from "./features/search/SearchPage";
 
 const ComposerPage = lazy(() => import("./features/posts/ComposerPage"));
+const SheetsPage = lazy(() => import("./features/sheets/SheetsPage"));
+const SheetPage = lazy(() => import("./features/sheets/SheetPage"));
 const SuperAdminPage = lazy(() => import("./features/superadmin/SuperAdminPage"));
 const PostDetailPage = lazy(() => import("./features/posts/PostDetailPage"));
 const ActivityPage = lazy(() => import("./features/activity/ActivityPage"));
@@ -110,6 +112,8 @@ export function App() {
         <Route path="collections/:id" element={page(<CollectionPage />)} />
         <Route path="collections" element={page(<LibraryPage key="collection" kind="collection" />)} />
         <Route path="notebooks" element={page(<LibraryPage key="notebook" kind="notebook" />)} />
+        <Route path="sheets" element={page(<SheetsPage />)} />
+        <Route path="sheets/:id" element={page(<SheetPage />)} />
         <Route path="library" element={<LibraryRedirect />} />
         <Route path="new" element={page(<ComposerPage />)} />
         <Route path="p/:postId" element={page(<PostDetailPage />)} />

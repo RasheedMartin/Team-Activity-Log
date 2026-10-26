@@ -12,6 +12,7 @@ import {
   PublicOutlined,
   ScienceOutlined,
   SlideshowOutlined,
+  TableChartOutlined,
   StarRounded,
 } from "@mui/icons-material";
 import {
@@ -242,6 +243,7 @@ function Rail({ onNavigate }: { onNavigate?: () => void }) {
           <NavItem to={`${base}/activity`} icon={<NotificationsNoneRounded />} label="Activity" badge={unread} onClick={onNavigate} />
           <NavItem to={`${base}/collections`} icon={<SlideshowOutlined />} label="Decks" onClick={onNavigate} />
           <NavItem to={`${base}/notebooks`} icon={<MenuBookOutlined />} label="Notebooks" onClick={onNavigate} />
+          <NavItem to={`${base}/sheets`} icon={<TableChartOutlined />} label="Sheets" onClick={onNavigate} />
         </List>
         {/* Favorites: what *you* starred (the API calls them pins). Hidden until there's one. */}
         {pins.length > 0 && (

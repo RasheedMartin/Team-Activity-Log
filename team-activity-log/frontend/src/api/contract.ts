@@ -115,7 +115,9 @@ export type Block =
   | { id: ID; type: "slide_break"; notes?: string }
   | { id: ID; type: "slide"; design: SlideDesign; notes?: string }
   /** An attached file (owner request): original downloadable, text searchable. */
-  | { id: ID; type: "file"; attachmentId: ID };
+  | { id: ID; type: "file"; attachmentId: ID }
+  /** A saved chart from a sheet, drawn live from the sheet's data (owner request: Sheets). */
+  | { id: ID; type: "chart"; sheetId: ID; chartId: ID };
 
 /** A file attached to a post. `url` downloads it (people who can see a post holding it). */
 export interface AttachmentView {
@@ -126,6 +128,58 @@ export interface AttachmentView {
   /** Its text was extracted, so search finds what's inside. */
   searchable: boolean;
   url: string;
+}
+
+/** Sheets: an imported spreadsheet, one typed table per tab (backend tal/sheets.py). */
+export interface SheetColumn {
+  key: string; // "c0", "c1", …
+  name: string;
+  type: "number" | "date" | "category" | "text";
+}
+export type SheetCell = number | string | null; // dates are YYYY-MM-DD
+export interface SheetSummary {
+  id: ID;
+  workspaceId: ID;
+  name: string;
+  filename: string;
+  bytes: number;
+  createdBy: ID | null;
+  updatedAt: ISODateTime;
+  tabs: number;
+  rows: number;
+}
+export interface SheetTab {
+  id: ID;
+  name: string;
+  columns: SheetColumn[];
+  rowCount: number;
+  /** Rows past the limit (50,000 per tab) weren't kept. */
+  truncated: boolean;
+}
+export type SheetChartType = "line" | "column" | "bar" | "area" | "scatter" | "pie";
+export type SheetAgg = "sum" | "avg" | "count" | "min" | "max" | "none";
+export interface SheetChartSpec {
+  type: SheetChartType;
+  x: string;
+  y: string[];
+  agg: SheetAgg;
+  groupBy?: string;
+}
+export interface SheetChart {
+  id: ID;
+  sheetId: ID;
+  tabId: ID;
+  name: string;
+  spec: SheetChartSpec;
+}
+export interface Sheet extends SheetSummary {
+  canDelete: boolean;
+  tabList: SheetTab[];
+  charts: SheetChart[];
+}
+export interface SheetRows {
+  columns: SheetColumn[];
+  rows: SheetCell[][];
 }
 
 /**

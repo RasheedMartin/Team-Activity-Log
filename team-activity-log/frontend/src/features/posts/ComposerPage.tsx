@@ -518,7 +518,7 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
             <Stack spacing={1.5}>
               {f.blocks.map((b, i) => (
                 <BlockFrame key={b.id} index={i} count={f.blocks.length} onMove={(d) => move(i, d)} onRemove={b.type === "image" || b.type === "uploading" ? undefined : () => removeBlock(b.id)}>
-                  {b.type === "file" ? (
+                  {b.type === "chart" ? null : b.type === "file" ? (
                     <FileCard file={files[b.attachmentId]} />
                   ) : b.type === "text" || b.type === "table" ? (
                     <Box onFocusCapture={() => (focusedIndex.current = i)}>
