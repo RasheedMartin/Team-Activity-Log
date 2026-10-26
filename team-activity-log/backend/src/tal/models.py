@@ -299,7 +299,7 @@ class CollectionRow(Base):
     created_at: Mapped[dt.datetime] = ts(False, True)
     updated_at: Mapped[dt.datetime] = ts(False, True)
     __table_args__ = (
-        CheckConstraint("kind in ('manual','deck_import','saved_selection','notebook')", name="collections_kind"),
+        CheckConstraint("kind in ('manual','deck_import','deck','saved_selection','notebook')", name="collections_kind"),
         CheckConstraint("visibility in ('workspace','people')", name="collections_visibility"),
         # One notebook per tag (survives renames); unique notebook names per workspace.
         Index("collections_tag_notebook", "workspace_id", "source_tag_id", unique=True, postgresql_where=text("kind = 'notebook' and source_tag_id is not null")),

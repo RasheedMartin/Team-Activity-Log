@@ -115,10 +115,10 @@ async def create_post(org: str, ws: str, body: dict = Body(default={}), u: m.Use
     await db.flush()
     if body.get("tagIds"):
         await set_tags(db, ctx, p, clean.uuid_list(body["tagIds"], "tagIds", 50))
-    if body.get("collectionId"):  # "Write a page" in a notebook: the new post goes at its end
+    if body.get("collectionId"):  # "Write a page" in a notebook, "Add slide" in a deck: it goes at the end
         c = await db.get(m.CollectionRow, parse_uuid(body["collectionId"]))
         if not c or c.workspace_id != ctx.ws.id:
-            fail(404, "not_found", "Notebook not found")
+            fail(404, "not_found", "Notebook or deck not found")
         await collection_access.require(db, ctx, c, "editor")
         last = (await db.execute(select(func.max(m.CollectionPost.position)).where(m.CollectionPost.collection_id == c.id))).scalar()
         db.add(m.CollectionPost(collection_id=c.id, post_id=p.id, position=(last if last is not None else -1) + 1))

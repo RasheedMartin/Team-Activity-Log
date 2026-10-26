@@ -302,8 +302,9 @@ async def entries(org: str, ws: str, cid: str, u: m.User = Depends(require_user)
 async def create_collection(org: str, ws: str, body: dict = Body(...), u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
     ctx = await ws_ctx(db, u, org, ws, "member")
     name = clean.text(body.get("name"), "name", 300, required=True, label="Name") or ""
-    # Hand-picked groups are notebooks now (owner decision); decks come only from imports.
-    kind = "notebook"
+    # Hand-picked groups are notebooks (owner decision). Decks come from imports, or are built
+    # here slide by slide ("deck", owner request: a deck without PowerPoint).
+    kind = "deck" if body.get("kind") == "deck" else "notebook"
     tag_id = parse_uuid(body.get("sourceTagId"))
     if kind == "notebook":
         # One notebook per tag (survives renames), and notebook names are unique.

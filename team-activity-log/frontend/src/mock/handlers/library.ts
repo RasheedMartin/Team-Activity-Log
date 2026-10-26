@@ -20,8 +20,8 @@ function togglePin(userId: ID, wsId: ID, ref: PinRef, on: boolean) {
   setPins(userId, wsId, on ? [...pins, ref] : pins);
 }
 
-// Only imported decks are "collections" now; anything hand-picked (older rows too) is a notebook.
-const kindOf = (c: Collection): LibraryKind => (c.kind === "deck_import" ? "collection" : "notebook");
+// Decks (imported or built) are "collections"; anything hand-picked (older rows too) is a notebook.
+const kindOf = (c: Collection): LibraryKind => (c.kind === "deck_import" || c.kind === "deck" ? "collection" : "notebook");
 const viewItem = (v: SavedView, me: ID): LibraryItem => {
   const alert = alertFor(v.id, me);
   return { kind: "view", id: v.id, name: v.name, ownerId: v.ownerId, shared: v.shared, pinned: isPinned(me, v.workspaceId, "view", v.id), updatedAt: v.updatedAt ?? "1970-01-01T00:00:00Z", filterSpec: v.filterSpec, ...(alert ? { alert } : {}) };
@@ -232,7 +232,7 @@ export const libraryHandlers = [
         if (byTag) fail(409, "exists", `This tag already has a notebook: “${byTag.name}”`, { existingId: byTag.id });
         assertUniqueNotebookName(ctx.ws.id, body.name);
       }
-      const c = db.t.collections.put({ id: uuidv7(), workspaceId: ctx.ws.id, name: body.name.trim(), kind: "notebook", followsTag: !!body.sourceTagId || undefined, postIds: body.postIds ?? [], createdBy: ctx.user.id, updatedAt: now(), sourceTagId: body.sourceTagId });
+      const c = db.t.collections.put({ id: uuidv7(), workspaceId: ctx.ws.id, name: body.name.trim(), kind: body.kind === "deck" ? "deck" : "notebook", followsTag: !!body.sourceTagId || undefined, postIds: body.postIds ?? [], createdBy: ctx.user.id, updatedAt: now(), sourceTagId: body.sourceTagId });
       syncPostCollections(c, []);
       return HttpResponse.json(view(c, ctx), { status: 201 });
     }),

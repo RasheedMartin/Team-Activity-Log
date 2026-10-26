@@ -666,7 +666,8 @@ export interface Collection {
   workspaceId: ID;
   name: string;
   /** "notebook" (owner request): posts stitched into one continuous document, ordered by the user. */
-  kind: "manual" | "deck_import" | "saved_selection" | "notebook";
+  /** "deck_import": slides imported from a file; "deck": built in the app, slide by slide. */
+  kind: "manual" | "deck_import" | "deck" | "saved_selection" | "notebook";
   postIds: ID[];
   createdBy: ID;
   updatedAt?: ISODateTime;

@@ -283,7 +283,7 @@ export const importHandlers = [
       // Owner request: add to an existing deck or notebook (one you can edit, of the right kind).
       const target = j!.defaults.intoId ? db.t.collections.get(j!.defaults.intoId) : undefined;
       if (j!.defaults.intoId) {
-        if (!target || target.workspaceId !== j!.workspaceId || target.kind !== (kind === "pptx" ? "deck_import" : "notebook")) fail(422, "invalid", "That deck or notebook can't take this import");
+        if (!target || target.workspaceId !== j!.workspaceId || !(kind === "pptx" ? ["deck_import", "deck"] : ["notebook"]).includes(target.kind)) fail(422, "invalid", "That deck or notebook can't take this import");
         requireRole(ctx, target!, "editor");
       }
       const coll = target ?? db.t.collections.put({ id: uuidv7(), workspaceId: j!.workspaceId, name, kind: kind === "pptx" ? "deck_import" : "notebook", postIds: [], createdBy: ctx.user.id, updatedAt: now(), visibility });
