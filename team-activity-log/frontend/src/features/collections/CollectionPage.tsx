@@ -219,34 +219,37 @@ export default function CollectionPage() {
         <EmptyState icon={<CollectionsBookmarkOutlined />} title="Nothing here yet" body="Posts added to this collection show up here, in order." />
       ) : (
         <>
-          <Stack direction="row" alignItems="center" spacing={1} useFlexGap sx={{ flexWrap: "wrap", mb: 1.5, minHeight: 40 }}>
-            <Checkbox size="small" checked={all} indeterminate={chosen.length > 0 && !all} onChange={() => setSelected(all ? new Set() : new Set(ids))} inputProps={{ "aria-label": all ? "Deselect all posts" : "Select all posts" }} />
-            <Typography variant="body2" color="text.secondary" sx={{ flex: 1, minWidth: 100 }}>{chosen.length ? `${chosen.length} selected` : "Select all"}</Typography>
-            {chosen.length > 0 && (
-              <>
-                {chosenDrafts.length > 0 && <Button size="small" variant="contained" disabled={busy} onClick={() => void publish()}>Publish {chosenDrafts.length}</Button>}
-                {chosen.length > 1 && onlyDrafts && (
-                  <Tooltip describeChild title="Into the first one, in deck order. You can split them back until it's published.">
-                    <Button
-                      size="small"
-                      startIcon={<CallMergeRounded />}
-                      disabled={busy || combine.isPending}
-                      onClick={() => combine.mutate(chosen, { onSuccess: (d) => (setSelected(new Set([d.post.id])), notify(`Combined ${chosen.length} slides into “${d.post.title || "Untitled"}”`, () => splitDraft.mutate(d.post.id))), onError: (e) => notify(e.message) })}
-                    >
-                      Combine into one post
+          {/* Nothing on this tab (e.g. To review with 0): nothing to select. */}
+          {ids.length > 0 && (
+            <Stack direction="row" alignItems="center" spacing={1} useFlexGap sx={{ flexWrap: "wrap", mb: 1.5, minHeight: 40 }}>
+              <Checkbox size="small" checked={all} indeterminate={chosen.length > 0 && !all} onChange={() => setSelected(all ? new Set() : new Set(ids))} inputProps={{ "aria-label": all ? "Deselect all posts" : "Select all posts" }} />
+              <Typography variant="body2" color="text.secondary" sx={{ flex: 1, minWidth: 100 }}>{chosen.length ? `${chosen.length} selected` : "Select all"}</Typography>
+              {chosen.length > 0 && (
+                <>
+                  {chosenDrafts.length > 0 && <Button size="small" variant="contained" disabled={busy} onClick={() => void publish()}>Publish {chosenDrafts.length}</Button>}
+                  {chosen.length > 1 && onlyDrafts && (
+                    <Tooltip describeChild title="Into the first one, in deck order. You can split them back until it's published.">
+                      <Button
+                        size="small"
+                        startIcon={<CallMergeRounded />}
+                        disabled={busy || combine.isPending}
+                        onClick={() => combine.mutate(chosen, { onSuccess: (d) => (setSelected(new Set([d.post.id])), notify(`Combined ${chosen.length} slides into “${d.post.title || "Untitled"}”`, () => splitDraft.mutate(d.post.id))), onError: (e) => notify(e.message) })}
+                      >
+                        Combine into one post
+                      </Button>
+                    </Tooltip>
+                  )}
+                  {chosen.length === 1 && loaded.find((d) => d.post.id === chosen[0])?.post.source?.mergedFrom?.length ? (
+                    <Button size="small" startIcon={<CallSplitRounded />} disabled={splitDraft.isPending} onClick={() => splitDraft.mutate(chosen[0], { onSuccess: () => (setSelected(new Set()), notify("Split back into separate slides")), onError: (e) => notify(e.message) })}>
+                      Split back
                     </Button>
-                  </Tooltip>
-                )}
-                {chosen.length === 1 && loaded.find((d) => d.post.id === chosen[0])?.post.source?.mergedFrom?.length ? (
-                  <Button size="small" startIcon={<CallSplitRounded />} disabled={splitDraft.isPending} onClick={() => splitDraft.mutate(chosen[0], { onSuccess: () => (setSelected(new Set()), notify("Split back into separate slides")), onError: (e) => notify(e.message) })}>
-                    Split back
-                  </Button>
-                ) : null}
-                {!deck && canEdit && <Button size="small" disabled={busy || update.isPending} onClick={remove}>Remove from collection</Button>}
-                <Button size="small" color="error" disabled={busy} onClick={() => void discard()}>{onlyDrafts ? "Discard" : "Delete"}</Button>
-              </>
-            )}
-          </Stack>
+                  ) : null}
+                  {!deck && canEdit && <Button size="small" disabled={busy || update.isPending} onClick={remove}>Remove from collection</Button>}
+                  <Button size="small" color="error" disabled={busy} onClick={() => void discard()}>{onlyDrafts ? "Discard" : "Delete"}</Button>
+                </>
+              )}
+            </Stack>
+          )}
         <Box component="ol" aria-label="Posts in this collection" sx={{ listStyle: "none", p: 0, m: 0, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 2 }}>
           {details.map((q, i) =>
             q.data && !shows(q.data.post.id) ? null : q.data ? (
