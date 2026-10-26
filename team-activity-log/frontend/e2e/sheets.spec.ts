@@ -57,3 +57,64 @@ test("import a workbook: tabs, sort, filter, column stats, search, download", as
   await page.getByLabel("Find sheets").fill("nothing like this");
   await expect(page.getByText("Nothing matches")).toBeVisible();
 });
+
+test("make a chart from a tab, put it in a post, and it stays live", async ({ page }) => {
+  await openScenario(page, "small");
+  await page.getByRole("navigation", { name: "Workspace" }).getByRole("link", { name: "Sheets" }).click();
+  await page.getByLabel("Spreadsheet to import").setInputFiles({ name: "Gain_Runs.xlsx", mimeType: "application/octet-stream", buffer: XLSX });
+  await expect(page).toHaveURL(/\/sheets\/[^/]+$/, { timeout: 20_000 });
+
+  await page.getByRole("button", { name: "Charts" }).click();
+  await expect(page.getByText("No charts on this tab yet")).toBeVisible();
+  await page.getByRole("button", { name: "New chart" }).click();
+  const builder = page.getByRole("dialog", { name: "New chart" });
+  await builder.getByRole("combobox", { name: "Measure (Y)" }).click();
+  await page.getByRole("option", { name: "Run" }).click(); // deselect the default
+  await page.getByRole("option", { name: "Gain" }).click();
+  await page.keyboard.press("Escape");
+  await builder.getByRole("combobox", { name: "Summarize rows with the same X" }).click();
+  await page.getByRole("option", { name: "Average" }).click();
+  await builder.getByRole("combobox", { name: "Split into a series per" }).click();
+  await page.getByRole("option", { name: "Channel" }).click();
+  await expect(builder.getByRole("img", { name: /line chart of A, B, C/ })).toBeVisible();
+  await builder.getByLabel("Name").fill("Gain by channel");
+  await builder.getByRole("button", { name: "Save chart" }).click();
+  await expect(page.getByRole("button", { name: "Charts (1)" })).toBeVisible();
+  const card = page.getByRole("region", { name: "Gain by channel" });
+  await expect(card.getByRole("img", { name: /line chart/ })).toBeVisible();
+
+  // Into a new post: a draft with the chart, ready to write around.
+  await card.getByRole("button", { name: "Add to a new post" }).click();
+  await expect(page).toHaveURL(/\/p\/[^/]+\/edit$/);
+  await expect(page.getByRole("figure", { name: "Chart: Gain by channel" })).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("Saved", { timeout: 10_000 });
+  await page.getByRole("button", { name: /^Publish/ }).click();
+  await expect(page).toHaveURL(/\/p\/[^/]+$/);
+  const postUrl = page.url();
+  const fig = page.getByRole("figure", { name: "Chart: Gain by channel" });
+  await expect(fig.getByRole("img", { name: /line chart of A, B, C/ })).toBeVisible();
+  await expect(fig.getByRole("link", { name: "Gain_Runs · Runs" })).toBeVisible();
+
+  // Search finds the post by its chart's name.
+  await page.getByRole("link", { name: "Search", exact: true }).click();
+  await page.getByRole("combobox", { name: "Search" }).fill("Gain by channel");
+  await expect(page.locator("[data-post-id]").first()).toBeVisible();
+
+  // The composer can add a saved chart too.
+  await page.getByRole("button", { name: /^New post/ }).click();
+  await expect(page).toHaveURL(/\/edit$/);
+  await page.getByRole("button", { name: "Chart", exact: true }).click();
+  const picker = page.getByRole("dialog", { name: "Add a chart from a sheet" });
+  await picker.getByRole("button", { name: /Gain_Runs/ }).click();
+  await page.getByRole("dialog").getByRole("button", { name: /Gain by channel/ }).click();
+  await expect(page.getByRole("figure", { name: "Chart: Gain by channel" })).toBeVisible();
+
+  // Delete the chart: posts say it's gone instead of breaking.
+  await page.goto(postUrl);
+  await fig.getByRole("link", { name: "Gain_Runs · Runs" }).click();
+  await page.getByRole("button", { name: /^Charts/ }).click();
+  await page.getByRole("button", { name: "Delete Gain by channel" }).click();
+  await expect(page.getByText("No charts on this tab yet")).toBeVisible();
+  await page.goto(postUrl);
+  await expect(page.getByText("This chart is no longer available.", { exact: false })).toBeVisible();
+});

@@ -9,6 +9,7 @@ import {
   DeleteOutlineRounded,
   NotesRounded,
   RadioButtonUncheckedRounded,
+  InsertChartOutlined,
   TableChartOutlined,
   ViewCarouselOutlined,
   WarningAmberRounded, AttachFileRounded } from "@mui/icons-material";
@@ -18,9 +19,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useBlocker, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { Origin } from "../../app/origin";
 import { ApiError } from "../../api/client";
-import type { Block, ImageView, Post, PostDetail, Shape, AttachmentView } from "../../api/contract";
+import type { Block, ImageView, Post, PostDetail, Shape, AttachmentView, SheetChart } from "../../api/contract";
 import { createImageInstance, patchImageInCaches, qk, uploadImage, uploadAttachment, useCreateDraft, useImportJob, usePost, usePostAction, useSaveAnnotation, useUpdateImage, useUpdatePost } from "../../api/hooks";
 import { can, useWs, wsPath } from "../../app/session";
+import { SheetChartBlock } from "../../components/SheetChartBlock";
+import { ChartPicker } from "../sheets/ChartPicker";
 import { FileCard } from "../../components/FileCard";
 import { useNotify } from "../../components/notify";
 import { PeoplePicker, TagPicker } from "../../components/Pickers";
@@ -518,7 +521,9 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
             <Stack spacing={1.5}>
               {f.blocks.map((b, i) => (
                 <BlockFrame key={b.id} index={i} count={f.blocks.length} onMove={(d) => move(i, d)} onRemove={b.type === "image" || b.type === "uploading" ? undefined : () => removeBlock(b.id)}>
-                  {b.type === "chart" ? null : b.type === "file" ? (
+                  {b.type === "chart" ? (
+                    <SheetChartBlock sheetId={b.sheetId} chartId={b.chartId} />
+                  ) : b.type === "file" ? (
                     <FileCard file={files[b.attachmentId]} />
                   ) : b.type === "text" || b.type === "table" ? (
                     <Box onFocusCapture={() => (focusedIndex.current = i)}>
@@ -581,6 +586,7 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
                 insertAt(f.blocks.length, { id, type: "table", doc: emptyTable });
               }}
               onSlide={() => insertAt(f.blocks.length, { id: uuidv7(), type: "slide_break" })}
+              onChart={(c) => insertAt(f.blocks.length, { id: uuidv7(), type: "chart", sheetId: c.sheetId, chartId: c.id })}
               onDesigned={(layout) => insertAt(f.blocks.length, { id: uuidv7(), type: "slide", design: newDesign(layout) })}
               onFiles={(files) => addFiles(files)}
             />
@@ -679,8 +685,9 @@ function SlideBreak({ notes, onNotes, onDesign }: { notes: string; onNotes: (n: 
   );
 }
 
-function AddBar({ onText, onTable, onSlide, onDesigned, onFiles, onAttach }: { onText: () => void; onTable: () => void; onSlide: () => void; onDesigned: (layout: SlideLayout) => void; onFiles: (files: File[]) => void; onAttach: (files: File[]) => void }) {
+function AddBar({ onText, onTable, onSlide, onDesigned, onFiles, onAttach, onChart }: { onText: () => void; onTable: () => void; onSlide: () => void; onDesigned: (layout: SlideLayout) => void; onFiles: (files: File[]) => void; onAttach: (files: File[]) => void; onChart: (c: SheetChart) => void }) {
   const [menu, setMenu] = useState<HTMLElement | null>(null);
+  const [picking, setPicking] = useState(false);
   return (
     <Stack direction="row" spacing={1} sx={{ mt: 2, pt: 1.5, borderTop: 1, borderColor: "divider", flexWrap: "wrap", rowGap: 1 }}>
       <Button size="small" startIcon={<NotesRounded />} onClick={onText}>Text</Button>
@@ -693,6 +700,8 @@ function AddBar({ onText, onTable, onSlide, onDesigned, onFiles, onAttach }: { o
         <input hidden type="file" multiple onChange={(e) => (onAttach(Array.from(e.target.files ?? [])), (e.target.value = ""))} aria-label="File to attach" />
       </Button>
       <Button size="small" startIcon={<TableChartOutlined />} onClick={onTable}>Table</Button>
+      <Button size="small" startIcon={<InsertChartOutlined />} onClick={() => setPicking(true)}>Chart</Button>
+      {picking && <ChartPicker onClose={() => setPicking(false)} onPick={(c) => (setPicking(false), onChart(c))} />}
       <Button size="small" startIcon={<ViewCarouselOutlined />} onClick={onSlide}>Slide break</Button>
       <Button size="small" startIcon={<DashboardCustomizeOutlined />} onClick={(e) => setMenu(e.currentTarget)} aria-haspopup="menu">Designed slide</Button>
       <Menu anchorEl={menu} open={!!menu} onClose={() => setMenu(null)}>

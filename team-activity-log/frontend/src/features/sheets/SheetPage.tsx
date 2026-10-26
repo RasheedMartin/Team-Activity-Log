@@ -1,4 +1,5 @@
 import {
+  AddchartRounded,
   ArrowBackRounded,
   ArrowDownwardRounded,
   ArrowUpwardRounded,
@@ -34,19 +35,23 @@ import {
   Tab,
   Tabs,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
   Typography,
 } from "@mui/material";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link as RouterLink, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import type { SheetCell, SheetColumn } from "../../api/contract";
+import type { SheetCell, SheetChart, SheetColumn } from "../../api/contract";
 import { ApiError, downloadFile } from "../../api/client";
 import { useDeleteSheet, useSheet, useSheetRows } from "../../api/hooks";
-import { useWs, wsPath } from "../../app/session";
+import { can, useWs, wsPath } from "../../app/session";
 import { useNotify } from "../../components/notify";
 import { EmptyState, ErrorState } from "../../components/ui";
 import { errorMessage } from "../../lib/format";
+import { ChartBuilder } from "./ChartBuilder";
+import { ChartsPanel } from "./ChartsPanel";
 import { colIndex, columnStats, fmtCell, view, type Sort } from "../../lib/sheetData";
 
 const ROW_H = 36;
@@ -167,7 +172,7 @@ function Grid({ columns, rows, shown, sort, onHeader }: { columns: SheetColumn[]
  * filter, and summarize column by column. The original file stays downloadable.
  */
 export default function SheetPage() {
-  const { org, ws } = useWs();
+  const { org, ws, role } = useWs();
   const { id } = useParams();
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
@@ -184,12 +189,22 @@ export default function SheetPage() {
   const [colMenu, setColMenu] = useState<{ el: HTMLElement; col: SheetColumn } | null>(null);
   const [more, setMore] = useState<HTMLElement | null>(null);
   const [confirm, setConfirm] = useState(false);
+  const [building, setBuilding] = useState<{ chart?: SheetChart } | null>(null);
+  const charts = params.get("view") === "charts";
+  const go = (patch: { tab?: string; charts?: boolean }) => {
+    const tabId = patch.tab ?? params.get("tab");
+    const next: Record<string, string> = {};
+    if (tabId) next.tab = tabId;
+    if (patch.charts ?? charts) next.view = "charts";
+    setParams(next, { replace: true });
+  };
   const del = useDeleteSheet(org.id, ws.id);
   useEffect(() => {
     const t = setTimeout(() => setDebounced(q), 150);
     return () => clearTimeout(t);
   }, [q]);
   useEffect(() => (setSort(null), setQ(""), setDebounced("")), [tab?.id]);
+  const tabCharts = s?.charts.filter((c) => c.tabId === tab?.id).length ?? 0;
   const shown = useMemo(() => (rows ? view(rows, debounced, sort) : []), [rows, debounced, sort]);
 
   if (sheet.isPending) return <Box sx={{ maxWidth: 1200, mx: "auto", p: 3 }}><Skeleton width={240} height={40} /><Skeleton variant="rounded" height={400} sx={{ mt: 2 }} /></Box>;
@@ -229,13 +244,25 @@ export default function SheetPage() {
       </Stack>
 
       {s.tabList.length > 1 && (
-        <Tabs value={tab?.id ?? false} onChange={(_, v: string) => setParams({ tab: v }, { replace: true })} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile sx={{ mb: 1, minHeight: 40, "& .MuiTab-root": { minHeight: 40, textTransform: "none" } }} aria-label="Tabs">
+        <Tabs value={tab?.id ?? false} onChange={(_, v: string) => go({ tab: v })} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile sx={{ mb: 1, minHeight: 40, "& .MuiTab-root": { minHeight: 40, textTransform: "none" } }} aria-label="Tabs">
           {s.tabList.map((t) => <Tab key={t.id} value={t.id} label={t.name} />)}
         </Tabs>
       )}
       {tab?.truncated && <Alert severity="info" sx={{ mb: 1 }}>This tab had more than 50,000 rows; the first 50,000 were kept. Download the original for the rest.</Alert>}
 
       <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1, flexWrap: "wrap", rowGap: 1 }}>
+        <ToggleButtonGroup exclusive size="small" value={charts ? "charts" : "table"} onChange={(_, v: string | null) => v && go({ charts: v === "charts" })} aria-label="View">
+          <ToggleButton value="table" sx={{ textTransform: "none", px: 1.5 }}>Table</ToggleButton>
+          <ToggleButton value="charts" sx={{ textTransform: "none", px: 1.5 }}>Charts{tabCharts ? ` (${tabCharts})` : ""}</ToggleButton>
+        </ToggleButtonGroup>
+        {charts ? (
+          can(role, "member") && !!rows && !!tabCharts && (
+            <Button size="small" startIcon={<AddchartRounded />} onClick={() => setBuilding({})} sx={{ ml: "auto !important" }}>
+              New chart
+            </Button>
+          )
+        ) : (
+        <>
         <TextField
           size="small"
           placeholder="Filter rows"
@@ -256,18 +283,23 @@ export default function SheetPage() {
         <Typography variant="body2" color="text.secondary" sx={{ ml: "auto !important" }} aria-live="polite">
           {rows ? (debounced ? `${shown.length.toLocaleString()} of ${plural(rows.length, "row")}` : plural(rows.length, "row")) : ""}
         </Typography>
+        </>
+        )}
       </Stack>
 
       {data.error ? (
         <ErrorState error={data.error} onRetry={() => data.refetch()} />
       ) : !rows ? (
         <Skeleton variant="rounded" height={400} />
+      ) : charts ? (
+        <ChartsPanel sheet={s} tabId={tab!.id} rows={rows} columns={columns} onNew={() => setBuilding({})} onEdit={(chart) => setBuilding({ chart })} />
       ) : !shown.length && debounced ? (
         <EmptyState title="No rows match" body="Try other words, or clear the filter." action={<Button onClick={() => setQ("")}>Clear filter</Button>} />
       ) : (
         <Grid columns={columns} rows={rows} shown={shown} sort={sort} onHeader={(el, col) => setColMenu({ el, col })} />
       )}
-      <Typography variant="caption" color="text.disabled" sx={{ display: "block", mt: 0.75 }}>Click a column name to sort it or see what's in it.</Typography>
+      {!charts && <Typography variant="caption" color="text.disabled" sx={{ display: "block", mt: 0.75 }}>Click a column name to sort it or see what's in it.</Typography>}
+      {building && rows && tab && <ChartBuilder sheetId={s.id} tabId={tab.id} columns={columns} rows={rows} chart={building.chart} onClose={() => setBuilding(null)} onSaved={() => go({ charts: true })} />}
 
       <ColumnMenu anchor={colMenu?.el ?? null} col={colMenu?.col ?? null} rows={rows ?? []} shown={shown} sort={sort} onSort={setSort} onClose={() => setColMenu(null)} />
 

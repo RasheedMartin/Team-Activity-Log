@@ -185,7 +185,7 @@ async def publish(org: str, post_id: str, body: dict = Body(default={}), u: m.Us
     problems = []
     if not p.title.strip():
         problems.append("Add a title")
-    if not block_image_ids(p.blocks) and not any(b.get("type") == "file" for b in p.blocks or []) and all(is_doc_empty(d) for d in block_docs(p.blocks)):
+    if not block_image_ids(p.blocks) and not any(b.get("type") in ("file", "chart") for b in p.blocks or []) and all(is_doc_empty(d) for d in block_docs(p.blocks)):
         problems.append("Add some text, an image, or a file")
     imgs = await image_views(db, block_image_ids(p.blocks), p.org_id)
     if any(v["asset"]["processing"] == "failed" for v in imgs.values()):

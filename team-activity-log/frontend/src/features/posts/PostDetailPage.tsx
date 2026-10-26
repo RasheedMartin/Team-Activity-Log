@@ -43,6 +43,7 @@ import { patchImageInCaches, useComments, usePeople, usePost, usePostAction, use
 import { can, useWs, wsPath } from "../../app/session";
 import { AnnotationLayer } from "../../components/AnnotationLayer";
 import { useNotify } from "../../components/notify";
+import { SheetChartBlock } from "../../components/SheetChartBlock";
 import { FileCard } from "../../components/FileCard";
 import { RichText } from "../../components/RichText";
 import { SlideCanvas } from "../../components/SlideCanvas";
@@ -335,7 +336,7 @@ function PostView({ post, images, attachments }: { post: Post; images: ImageView
             if (b.type === "slide_break") return <Divider key={b.id} sx={{ borderStyle: "dashed" }} />;
             if (b.type === "slide") return <SlideCanvas key={b.id} design={b.design} images={imgs} />;
             if (b.type === "file") return <FileCard key={b.id} file={attachments.find((a) => a.id === b.attachmentId)} />;
-            if (b.type === "chart") return null;
+            if (b.type === "chart") return <SheetChartBlock key={b.id} sheetId={b.sheetId} chartId={b.chartId} />;
             const img = imgs.get(b.imageInstanceId);
             if (!img) return null;
             return (
