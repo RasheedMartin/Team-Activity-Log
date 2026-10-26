@@ -6,6 +6,7 @@ import { useUpdateImage } from "../../api/hooks";
 import { useNotify } from "../../components/notify";
 import { formatDay } from "../../lib/dates";
 import { errorMessage } from "../../lib/format";
+import { ImageText } from "./ImageText";
 
 const fmtBytes = (n: number) => (n > 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1e3))} KB`);
 
@@ -43,7 +44,8 @@ export function ImageMetadataDrawer({ orgId, image, open, onClose, readOnly }: {
   const saveCustom = (next: [string, string][]) => save({ id: image.id, customFields: Object.fromEntries(next.filter(([k]) => k.trim()).map(([k, v]) => [k.trim(), v])) });
 
   return (
-    <Drawer anchor="right" open={open} onClose={onClose} slotProps={{ paper: { sx: { width: { xs: "100%", sm: 400 } } } }}>
+    // Above the full-screen image viewer it's opened from (both are modals; a drawer sits lower by default).
+    <Drawer anchor="right" open={open} onClose={onClose} sx={{ zIndex: (t) => t.zIndex.modal + 1 }} slotProps={{ paper: { sx: { width: { xs: "100%", sm: 400 } } } }}>
       <Stack direction="row" alignItems="center" sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: "divider" }}>
         <Typography variant="h3" sx={{ flex: 1 }}>Image details</Typography>
         <IconButton onClick={onClose} aria-label="Close image details"><CloseRounded /></IconButton>
@@ -96,7 +98,6 @@ export function ImageMetadataDrawer({ orgId, image, open, onClose, readOnly }: {
           <Fact k="Filename" v={a.originalFilename} />
           <Fact k="Captured" v={m.exif?.capturedAt ? formatDay(m.exif.capturedAt.slice(0, 10)) : undefined} />
           <Fact k="Camera" v={[m.exif?.cameraMake, m.exif?.cameraModel].filter(Boolean).join(" ")} />
-          <Fact k="Text in image" v={m.ocrState === "pending" ? "Reading…" : m.ocrText} />
           <Fact k="Source" v={m.sourceKind} />
           <Fact k="SHA-256" v={a.sha256.slice(0, 16) + "…"} />
           {a.dominantColors.length > 0 && (
@@ -107,6 +108,7 @@ export function ImageMetadataDrawer({ orgId, image, open, onClose, readOnly }: {
           )}
           <Typography variant="caption" color="text.disabled" sx={{ display: "block", mt: 1 }}>GPS data is removed on upload.</Typography>
         </Box>
+        <ImageText key={a.id} orgId={orgId} asset={a} readOnly={!!readOnly} />
       </Box>
     </Drawer>
   );

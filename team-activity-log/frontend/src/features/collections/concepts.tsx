@@ -1,4 +1,4 @@
-import { CollectionsBookmarkOutlined, MenuBookOutlined, SavedSearchRounded } from "@mui/icons-material";
+import { MenuBookOutlined, SavedSearchRounded, SlideshowOutlined } from "@mui/icons-material";
 import type { ReactNode } from "react";
 import type { LibraryKind } from "../../api/contract";
 
@@ -8,8 +8,9 @@ import type { LibraryKind } from "../../api/contract";
  */
 export const KINDS: Record<LibraryKind, { label: string; plural: string; icon: ReactNode; blurb: string }> = {
   view: { label: "Saved search", plural: "Saved searches", icon: <SavedSearchRounded />, blurb: "A search you rerun. New posts that match show up on their own." },
-  collection: { label: "Collection", plural: "Collections", icon: <CollectionsBookmarkOutlined />, blurb: "Imported decks, and posts you picked by hand." },
-  notebook: { label: "Notebook", plural: "Notebooks", icon: <MenuBookOutlined />, blurb: "Posts in an order, read start to finish." },
+  // "collection" in the API: since the owner's decision, only imported slide decks.
+  collection: { label: "Deck", plural: "Decks", icon: <SlideshowOutlined />, blurb: "Imported slide decks: one shared copy of each, reviewed and presented here." },
+  notebook: { label: "Notebook", plural: "Notebooks", icon: <MenuBookOutlined />, blurb: "Posts in an order: write pages, pull posts in, follow a tag, present, share." },
 };
 
 /** Rail entries carry this id so a new favorite can be pointed out where it landed. */

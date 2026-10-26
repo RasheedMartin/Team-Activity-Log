@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import type { GalleryImage, ID, SearchHit, Tag, User } from "../../api/contract";
 import { useImage, usePost } from "../../api/hooks";
+import { FittedImage } from "./ImageCarousel";
 import { useWs, wsPath } from "../../app/session";
 import { AnnotationLayer } from "../../components/AnnotationLayer";
 import { RichText } from "../../components/RichText";
@@ -136,6 +137,7 @@ export function ResultsList({ hits, people, tags, focused, setFocused, comfortab
               onTagClick={onTagClick}
               selected={selection?.ids.has(h.post.id)}
               onToggleSelect={selection ? () => selection.toggle(h) : undefined}
+              selectShown={!!selection?.ids.size}
               linkState={origin}
             />
           </Box>
@@ -156,10 +158,11 @@ export function GalleryGrid({ images, onEndReached, onOpen }: { images: GalleryI
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  const cols = Math.max(2, Math.floor(width / 210));
-  const tile = (width - (cols - 1) * 8) / cols;
+  const GAP = 16; // between tiles, across and down
+  const cols = Math.max(2, Math.floor((width + GAP) / (210 + GAP)));
+  const tile = (width - (cols - 1) * GAP) / cols;
   const rows = Math.ceil(images.length / cols);
-  const v = useWindowVirtualizer({ count: rows, estimateSize: () => tile * 0.75 + 52, overscan: 4, scrollMargin });
+  const v = useWindowVirtualizer({ count: rows, estimateSize: () => tile * 0.75 + 52 + GAP, overscan: 4, scrollMargin });
   const items = v.getVirtualItems();
   const last = items[items.length - 1]?.index ?? 0;
   useEffect(() => {
@@ -168,17 +171,17 @@ export function GalleryGrid({ images, onEndReached, onOpen }: { images: GalleryI
   return (
     <Box ref={ref} sx={{ position: "relative", height: v.getTotalSize() }} role="list" aria-label="Images">
       {items.map((row) => (
-        <Stack key={row.index} direction="row" spacing={1} sx={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${row.start - scrollMargin}px)` }}>
+        <Stack key={row.index} direction="row" spacing={`${GAP}px`} sx={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${row.start - scrollMargin}px)` }}>
           {images.slice(row.index * cols, row.index * cols + cols).map((img) => (
             <Box key={img.imageInstanceId} role="listitem" sx={{ display: "flex" }}>
             <Box
               component="button"
               onClick={() => onOpen(img)}
               aria-label={`${img.figureLabel ? `${img.figureLabel} ` : ""}${img.caption ?? "Image"} from ${img.postTitle}`}
-              sx={{ width: tile, flexShrink: 0, p: 0, border: 1, borderColor: "divider", borderRadius: 1, overflow: "hidden", bgcolor: "background.paper", cursor: "zoom-in", textAlign: "left", font: "inherit", color: "inherit", "&:hover img": { transform: "scale(1.02)" } }}
+              sx={{ width: tile, flexShrink: 0, p: 0, border: 1, borderColor: "divider", borderRadius: 1, overflow: "hidden", bgcolor: "background.paper", cursor: "zoom-in", textAlign: "left", font: "inherit", color: "inherit", "&:hover .tile-image": { transform: "scale(1.02)" } }}
             >
-              <Box sx={{ aspectRatio: "4 / 3", bgcolor: img.dominantColor ?? "action.hover", overflow: "hidden" }}>
-                <Box component="img" src={img.thumbUrl} alt="" loading="lazy" sx={{ width: "100%", height: "100%", objectFit: "cover", display: "block", transition: "transform 150ms" }} />
+              <Box sx={{ transition: "transform 150ms" }} className="tile-image">
+                <FittedImage img={img} ratio={4 / 3} fit="cover" />
               </Box>
               <Box sx={{ px: 1, py: 0.75 }}>
                 <Typography variant="caption" sx={{ fontWeight: 600 }} noWrap component="div">

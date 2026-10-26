@@ -11,3 +11,10 @@ export function libraryHref(base: string, item: Pick<LibraryItem, "kind" | "id" 
   if (item.kind === "notebook") return `${base}/notebooks/${item.id}`;
   return `${base}/collections/${item.id}`;
 }
+
+/** An imported deck's page, where its slides are reviewed; `review` opens on the drafts left. */
+export const deckHref = (base: string, collectionId: string, review = false) => `${base}/collections/${collectionId}${review ? "?show=review" : ""}`;
+
+/** Where an import's posts live: a deck for slides, a notebook for documents. */
+export const importHome = (base: string, collectionId: string, fileKind?: string, review = false) =>
+  fileKind === "pdf" || fileKind === "docx" ? `${base}/notebooks/${collectionId}` : deckHref(base, collectionId, review);

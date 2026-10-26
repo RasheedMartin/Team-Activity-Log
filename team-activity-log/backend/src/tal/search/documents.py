@@ -14,6 +14,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import models as m
+from ..attachments import block_attachment_ids
+from ..ids import parse_uuid
 from ..prosemirror import doc_text, mentioned_ids
 from ..timeutil import iso
 from ..views import block_docs, block_image_ids
@@ -68,10 +70,24 @@ async def build_documents(db: AsyncSession, post_ids: Sequence[uuid.UUID]) -> tu
         for inst, asset in await db.execute(select(m.ImageInstance, m.Asset).join(m.Asset, m.Asset.id == m.ImageInstance.asset_id).where(m.ImageInstance.id.in_(inst_ids))):
             images[inst.id] = (inst, asset)
 
+    # Attached files: their names and text are part of the post's searchable body.
+    file_ids = [x for p in live for x in (parse_uuid(i) for i in block_attachment_ids(p.blocks)) if x]
+    files = {a.id: a for a in (await db.execute(select(m.Attachment).where(m.Attachment.id.in_(file_ids)))).scalars()} if file_ids else {}
+
+    chart_ids = [x for p in live for b in p.blocks or [] if b.get("type") == "chart" and (x := parse_uuid(b.get("chartId")))]
+    charts = {cid: (cname, sname) for cid, cname, sname in (await db.execute(select(m.SheetChart.id, m.SheetChart.name, m.Sheet.name).join(m.Sheet, m.Sheet.id == m.SheetChart.sheet_id).where(m.SheetChart.id.in_(chart_ids)))).all()} if chart_ids else {}
+
     docs: dict[uuid.UUID, dict] = {}
     for p in live:
         blocks = p.blocks or []
         body = "\n".join(doc_text(d) for d in block_docs(blocks))
+        for b in blocks:  # an embedded chart: its name and its sheet's name are findable
+            if b.get("type") == "chart" and (ch := charts.get(parse_uuid(b.get("chartId")))):
+                body += f"\n{ch[0]}\n{ch[1]}"
+        for fid in (parse_uuid(i) for i in block_attachment_ids(blocks)):
+            a = files.get(fid) if fid else None
+            if a and a.org_id == p.org_id:
+                body += f"\n{a.filename}\n{a.text or ''}"
         imgs = [images[i] for i in block_image_ids(blocks, content_only=True) if i in images and images[i][0].org_id == p.org_id and images[i][1].org_id == p.org_id]
         cs = comments[p.id]
         img_fields = [image_search_fields(inst, asset) for inst, asset in imgs]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import hmac
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, Request, Response
@@ -48,7 +49,14 @@ async def me_response(db: AsyncSession, u: m.User) -> dict:
     out: dict[str, Any] = {"user": user_view(u), "preferences": prefs_view(u), "orgs": orgs}
     if u.last_workspace_id:
         out["lastWorkspaceId"] = str(u.last_workspace_id)
+    if is_superadmin(u):
+        out["superAdmin"] = True
     return out
+
+
+def is_superadmin(u: m.User) -> bool:
+    """Listed in SUPERADMIN_EMAILS, with that address verified (so a sign-up can't claim it)."""
+    return bool(u.email_verified_at) and u.email.lower() in {e.strip().lower() for e in get_settings().superadmin_emails if e.strip()}
 
 
 async def send_email(db: AsyncSession, to: str, subject: str, body: str, link: str | None = None) -> None:
@@ -86,6 +94,9 @@ async def register(request: Request, response: Response, body: dict = Body(...),
     name = clean.text(body.get("name"), "name", 200, required=True, label="Your name") or ""
     email = clean.email(body.get("email"))
     pw = clean.password(body.get("password"))
+    code = get_settings().signup_code
+    if code and not hmac.compare_digest(str(body.get("signupCode") or "").strip(), code):
+        fail(403, "signup_code", "Sign-ups are invite-only right now. Enter the code you were given, or ask a team to invite you.")
     if await find_by_email(db, email):
         fail(409, "email_taken", "An account with this email already exists. Sign in instead.")
     u = m.User(id=uuid7(), name=name, email=email, password_hash=hash_password(pw), timezone=clean.timezone(body.get("timezone")) or "UTC")

@@ -10,6 +10,7 @@ import { useWs, wsPath } from "../../app/session";
 import { useNotify } from "../../components/notify";
 import { timeAgo } from "../../lib/dates";
 import { errorMessage } from "../../lib/format";
+import { useRangeSelect } from "../../lib/useRangeSelect";
 
 /** Why a draft couldn't publish, in the words the publish checklist uses ("Add a title"). */
 function publishProblem(e: unknown): string {
@@ -40,7 +41,7 @@ export function DraftList({ drafts, hideSource }: Props) {
   const chosen = ids.filter((id) => selected.has(id)); // drafts that left the list drop out of the selection
   const all = chosen.length === ids.length && ids.length > 0;
   const some = chosen.length > 0 && !all;
-  const toggle = (id: string) => setSelected((s) => (s.has(id) ? new Set([...s].filter((x) => x !== id)) : new Set([...s, id])));
+  const toggle = useRangeSelect(ids, selected, setSelected); // Shift-click picks a range
 
   const publish = async () => {
     setBusy(true);
@@ -106,7 +107,7 @@ export function DraftList({ drafts, hideSource }: Props) {
             }
           >
             <ListItemIcon sx={{ minWidth: 0, pl: 1 }}>
-              <Checkbox edge="start" size="small" checked={selected.has(d.id)} onChange={() => toggle(d.id)} inputProps={{ "aria-label": `Select ${d.title || "untitled draft"}` }} />
+              <Checkbox edge="start" size="small" checked={selected.has(d.id)} onClick={(e) => toggle(d.id, e.shiftKey)} /* the click carries Shift; change events don't reliably */ onChange={() => undefined} inputProps={{ "aria-label": `Select ${d.title || "untitled draft"}` }} />
             </ListItemIcon>
             <ListItemButton onClick={() => navigate(wsPath(org, ws, `/p/${d.id}/edit`), { state: origin })} sx={{ pl: 1 }}>
               <ListItemText

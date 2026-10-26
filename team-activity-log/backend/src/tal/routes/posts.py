@@ -6,12 +6,12 @@ import datetime as dt
 import uuid
 
 from fastapi import APIRouter, Body, Depends, Request, Response
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .. import collection_access, follow, storage
 from .. import models as m
 from .. import sanitize as clean
-from .. import storage
 from ..config import get_settings
 from ..context import OrgCtx, WsCtx, accessible_workspaces, can_edit_post, org_ctx, require_user, visible_post, ws_ctx
 from ..db import get_db
@@ -21,7 +21,7 @@ from ..httputil import read_limited
 from ..ids import parse_uuid, uuid7
 from ..images import ALLOWED, create_asset
 from ..outbox import enqueue
-from ..prosemirror import empty_doc, is_doc_empty
+from ..prosemirror import doc, empty_doc, heading, is_doc_empty
 from ..timeutil import iso, now, today
 from ..views import asset_view, block_docs, block_image_ids, image_views, post_detail, post_views
 
@@ -115,6 +115,14 @@ async def create_post(org: str, ws: str, body: dict = Body(default={}), u: m.Use
     await db.flush()
     if body.get("tagIds"):
         await set_tags(db, ctx, p, clean.uuid_list(body["tagIds"], "tagIds", 50))
+    if body.get("collectionId"):  # "Write a page" in a notebook: the new post goes at its end
+        c = await db.get(m.CollectionRow, parse_uuid(body["collectionId"]))
+        if not c or c.workspace_id != ctx.ws.id:
+            fail(404, "not_found", "Notebook not found")
+        await collection_access.require(db, ctx, c, "editor")
+        last = (await db.execute(select(func.max(m.CollectionPost.position)).where(m.CollectionPost.collection_id == c.id))).scalar()
+        db.add(m.CollectionPost(collection_id=c.id, post_id=p.id, position=(last if last is not None else -1) + 1))
+        c.updated_at = t
     return await detail(db, p)
 
 
@@ -161,6 +169,9 @@ async def patch_post(org: str, post_id: str, body: dict = Body(...), u: m.User =
     if p.status == "published":
         await snapshot_revision(db, p, u.id)
         await changed(db, p)
+        if "tagIds" in body:
+            await db.flush()
+            await follow.post_published(db, p)  # a newly added tag may be followed by a notebook
     return await detail(db, p)
 
 
@@ -174,8 +185,8 @@ async def publish(org: str, post_id: str, body: dict = Body(default={}), u: m.Us
     problems = []
     if not p.title.strip():
         problems.append("Add a title")
-    if not block_image_ids(p.blocks) and all(is_doc_empty(d) for d in block_docs(p.blocks)):
-        problems.append("Add some text or an image")
+    if not block_image_ids(p.blocks) and not any(b.get("type") in ("file", "chart") for b in p.blocks or []) and all(is_doc_empty(d) for d in block_docs(p.blocks)):
+        problems.append("Add some text, an image, or a file")
     imgs = await image_views(db, block_image_ids(p.blocks), p.org_id)
     if any(v["asset"]["processing"] == "failed" for v in imgs.values()):
         problems.append("Remove or retry failed uploads")
@@ -185,6 +196,7 @@ async def publish(org: str, post_id: str, body: dict = Body(default={}), u: m.Us
     p.status, p.published_at, p.updated_at, p.revision, p.version = "published", t, t, 1, p.version + 1
     await snapshot_revision(db, p, u.id)
     await changed(db, p)
+    await follow.post_published(db, p)  # into notebooks that follow one of its tags
     return await detail(db, p)
 
 
@@ -438,3 +450,85 @@ async def put_annotation(org: str, inst_id: str, body: dict = Body(...), u: m.Us
     await _reindex_parent(db, inst)
     await db.flush()
     return (await image_views(db, [inst.id], ctx.org.id))[inst.id]
+
+
+# ---------------------------------------------------------------- combine / split drafts
+# Owner request: imported slides reviewed on the deck can be combined into one post (as the import's
+# grouping step allows) and split back, any number of times, until it's published. The combined
+# post keeps the first draft; the others are set aside (soft-deleted, marked mergedInto) so a split
+# restores them exactly, in their place in the deck.
+
+
+def _swap_images(node, ids: dict[str, str]):
+    """A copy of a block with its image instance references swapped to the combined post's copies."""
+    if isinstance(node, dict):
+        return {k: (ids.get(v, v) if k == "imageInstanceId" and isinstance(v, str) else _swap_images(v, ids)) for k, v in node.items()}
+    if isinstance(node, list):
+        return [_swap_images(x, ids) for x in node]
+    return node
+
+
+@router.post("/orgs/{org}/posts/combine")
+async def combine(org: str, body: dict = Body(...), u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
+    ctx = await org_ctx(db, u, org, "member")
+    ids = list(dict.fromkeys(str(x) for x in (body.get("postIds") or [])))
+    if len(ids) < 2:
+        fail(422, "invalid", "Pick at least two drafts to combine")
+    posts = [await editable_post(ctx, x) for x in ids]
+    if any(p.status != "draft" for p in posts):
+        fail(422, "invalid", "Only drafts can be combined: unpublish a post first")
+    if len({p.workspace_id for p in posts}) > 1:
+        fail(422, "invalid", "These drafts are in different workspaces")
+    target, rest = posts[0], posts[1:]
+    blocks = list(target.blocks or [])
+    merged = list((target.source or {}).get("mergedFrom") or [])
+    t = now()
+    for p in rest:
+        # Copy the picture references into the combined post (instances belong to one post).
+        copies: dict[str, str] = {}
+        for old in block_image_ids(p.blocks):
+            inst = await db.get(m.ImageInstance, parse_uuid(old))
+            if inst:
+                new = m.ImageInstance(id=uuid7(), org_id=inst.org_id, asset_id=inst.asset_id, post_id=target.id, caption=inst.caption, alt_text=inst.alt_text, figure_label=inst.figure_label, tags=list(inst.tags or []), custom_fields=dict(inst.custom_fields or {}), annotation=inst.annotation)
+                db.add(new)
+                copies[old] = str(new.id)
+        added = [{**_swap_images(b, copies), "id": str(uuid7())} for b in (p.blocks or [])]
+        if not any(b.get("type") == "slide" for b in added):  # plain text slides: say where each one starts
+            added = [{"id": str(uuid7()), "type": "slide_break"}, {"id": str(uuid7()), "type": "text", "doc": clean.doc(doc(heading(p.title)))}, *added] if p.title else [{"id": str(uuid7()), "type": "slide_break"}, *added]
+        blocks += added
+        merged.append({"postId": str(p.id), "title": p.title, "slide": (p.source or {}).get("slide"), "blockIds": [b["id"] for b in added], "imageInstanceIds": list(copies.values())})
+        p.deleted_at, p.version, p.updated_at = t, p.version + 1, t
+        p.source = {**(p.source or {}), "mergedInto": str(target.id)}
+        await changed(db, p)
+    target.blocks, target.image_count = blocks, image_count(blocks)
+    target.source = {**(target.source or {}), "mergedFrom": merged}
+    target.version, target.updated_at = target.version + 1, t
+    await changed(db, target)
+    return await detail(db, target)
+
+
+@router.post("/orgs/{org}/posts/{post_id}/split")
+async def split(org: str, post_id: str, u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
+    """Undo a combine: the set-aside drafts come back as they were; their blocks leave this one."""
+    ctx = await org_ctx(db, u, org, "member")
+    p = await editable_post(ctx, post_id)
+    merged = (p.source or {}).get("mergedFrom") or []
+    if p.status != "draft" or not merged:
+        fail(422, "invalid", "Only a combined draft can be split")
+    drop = {b for x in merged for b in x.get("blockIds", [])}
+    t = now()
+    for x in merged:
+        other = await db.get(m.Post, parse_uuid(x["postId"]))
+        if other and other.org_id == ctx.org.id:
+            other.deleted_at, other.version, other.updated_at = None, other.version + 1, t
+            other.source = {k: v for k, v in (other.source or {}).items() if k != "mergedInto"}
+            await changed(db, other)
+        copies = [parse_uuid(i) for i in x.get("imageInstanceIds", [])]
+        if copies:
+            await db.execute(delete(m.ImageInstance).where(m.ImageInstance.id.in_([c for c in copies if c]), m.ImageInstance.post_id == p.id))
+    p.blocks = [b for b in (p.blocks or []) if b.get("id") not in drop]
+    p.image_count = image_count(p.blocks)
+    p.source = {k: v for k, v in (p.source or {}).items() if k != "mergedFrom"}
+    p.version, p.updated_at = p.version + 1, t
+    await changed(db, p)
+    return await detail(db, p)

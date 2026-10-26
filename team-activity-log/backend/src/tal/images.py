@@ -1,6 +1,6 @@
 """Image intake (§B7): content-hash dedupe per org, real dimensions and dominant color, resized
 variants, bytes stored in Postgres (asset_blobs). Same behavior as frontend/src/mock/assets.ts,
-minus the canned OCR: real OCR is a later worker (ocrState "none" until then).
+minus the canned OCR: new images are queued for the OCR worker (tal.ocr), ocrState "pending".
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import models as m
 from . import plans, storage
+from .config import get_settings
 from .errors import fail
 from .ids import uuid7
 from .timeutil import now
@@ -122,7 +123,7 @@ async def create_asset(
                 blobs.append((name, vmime, out.getvalue()))
     variants.append({"name": "original", "width": width, "height": height})
     detected = guess_type(filename, mime)
-    meta: dict = {"ocrState": "ready" if ocr_text else "none", "detectedType": detected, "sourceKind": source_kind}
+    meta: dict = {"ocrState": "ready" if ocr_text else "pending" if get_settings().ocr_enabled else "none", "detectedType": detected, "sourceKind": source_kind}
     if ocr_text:
         meta["ocrText"] = ocr_text
     if exif:

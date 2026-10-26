@@ -232,7 +232,7 @@ export function CommentEditor({ orgId, postId, people, placeholder, initialDoc, 
         "& .tal-mentions": {},
       }}
     >
-      <Box sx={[proseSx, { px: 1.25, py: 0.75, fontSize: "0.9rem", "& .ProseMirror": { outline: "none", minHeight: open ? 44 : 22 }, "& .ProseMirror p.is-editor-empty:first-of-type::before": { content: "attr(data-placeholder)", color: "text.disabled", float: "left", height: 0, pointerEvents: "none" } }]}>
+      <Box sx={[proseSx, { px: 1.25, py: 0.75, fontSize: "0.9rem", "@media (pointer: coarse)": { fontSize: 16 }, "& .ProseMirror": { outline: "none", minHeight: open ? 44 : 22 }, "& .ProseMirror p.is-editor-empty:first-of-type::before": { content: "attr(data-placeholder)", color: "text.disabled", float: "left", height: 0, pointerEvents: "none" } }]}>
         <EditorContent editor={editor} />
       </Box>
       {images.length > 0 && (

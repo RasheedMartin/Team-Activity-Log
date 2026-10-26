@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
-import type { SlideElement } from "../api/contract";
-import { chartData, num } from "../lib/chartData";
+import type { ChartType, SlideElement } from "../api/contract";
+import { chartData, num, type ChartData } from "../lib/chartData";
 import { RichText } from "./RichText";
 
 // A chart on a designed slide, drawn from the data table in its doc: the header row names the
@@ -61,17 +61,29 @@ interface Tip {
   lines: string[];
 }
 
+/** A chart on a designed slide: its data is the table in its doc. */
 export function SlideChart({ e, background, interactive = true }: { e: Extract<SlideElement, { kind: "chart" }>; background?: string; interactive?: boolean }) {
+  return (
+    <ChartSvg data={chartData(e.doc)} chartType={e.chartType} w={e.w} h={e.h} fontSize={e.fontSize} colors={e.colors} background={background} interactive={interactive}>
+      <RichText doc={e.doc} />
+    </ChartSvg>
+  );
+}
+
+/**
+ * Any chart from categories × series (slides, and charts saved from Sheets), drawn at w×h.
+ * `children` is the data for screen readers (a table), kept visually hidden.
+ */
+export function ChartSvg({ data, chartType, w, h, fontSize, colors, background, interactive = true, children }: { data: ChartData; chartType: ChartType; w: number; h: number; fontSize?: number; colors?: (string | null)[]; background?: string; interactive?: boolean; children?: ReactNode }) {
   const [tip, setTip] = useState<Tip | null>(null);
-  const data = chartData(e.doc);
   const dark = luminance(background ?? "#ffffff") < 0.4;
   const ink = { primary: dark ? "#f0efec" : "#0b0b0b", secondary: dark ? "#c3c2b7" : "#52514e", grid: dark ? "#3a3a38" : "#e4e3df", surface: background ?? (dark ? "#1a1a19" : "#ffffff") };
   const palette = dark ? DARK : LIGHT;
-  const colorAt = (i: number) => e.colors?.[i] ?? palette[i % palette.length];
-  const fs = e.fontSize ?? 12;
-  const W = e.w;
-  const H = e.h;
-  const pie = e.chartType === "pie" || e.chartType === "doughnut";
+  const colorAt = (i: number) => colors?.[i] ?? palette[i % palette.length];
+  const fs = fontSize ?? 12;
+  const W = w;
+  const H = h;
+  const pie = chartType === "pie" || chartType === "doughnut";
   const series = data.series.slice(0, MAX_SERIES);
   const hidden = data.series.length - series.length;
   const legendItems = pie ? data.categories.slice(0, MAX_SERIES) : series.length > 1 ? series.map((s) => s.name) : [];
@@ -91,7 +103,7 @@ export function SlideChart({ e, background, interactive = true }: { e: Extract<S
     const cx = W / 2;
     const cy = top + (H - top) / 2;
     const r = Math.max(4, Math.min(W, H - top) / 2 - 6);
-    const r0 = e.chartType === "doughnut" ? r * 0.6 : 0;
+    const r0 = chartType === "doughnut" ? r * 0.6 : 0;
     let a0 = -Math.PI / 2;
     slices.forEach((v, i) => {
       const a1 = a0 + (v / total) * Math.PI * 2;
@@ -103,10 +115,14 @@ export function SlideChart({ e, background, interactive = true }: { e: Extract<S
       a0 = a1;
     });
   } else {
-    const horizontal = e.chartType === "bar";
-    const scatter = e.chartType === "scatter";
+    const horizontal = chartType === "bar";
+    const scatter = chartType === "scatter";
     const all = series.flatMap((s) => s.values).filter((v): v is number => v !== null);
-    const ys = ticks(Math.min(0, ...all), Math.max(0, ...all));
+    // Bars and areas start at zero (their length is the value). Lines and dots may leave zero out
+    // when every value sits far from it, as Excel does (smallest above 5/6 of the largest).
+    const [mn, mx] = [Math.min(...all), Math.max(...all)];
+    const floating = (chartType === "line" || scatter) && all.length > 0 && (mn > 0 ? mn > (mx * 5) / 6 : mx < 0 && mx < (mn * 5) / 6);
+    const ys = floating ? ticks(mn, mx) : ticks(Math.min(0, ...all), Math.max(0, ...all));
     const lo = ys[0];
     const hi = ys[ys.length - 1];
     const labelW = Math.max(...ys.map((v) => fmt(v).length)) * fs * 0.6 + 6;
@@ -152,7 +168,7 @@ export function SlideChart({ e, background, interactive = true }: { e: Extract<S
         );
       });
     const base = valuePos(Math.max(lo, Math.min(0, hi)));
-    if (e.chartType === "column" || horizontal) {
+    if (chartType === "column" || horizontal) {
       const gap = 2;
       const k = series.length;
       const w = Math.max(1, Math.min(24, (band * 0.8 - gap * (k - 1)) / k));
@@ -171,7 +187,7 @@ export function SlideChart({ e, background, interactive = true }: { e: Extract<S
         const pts = s.values.map((v, i) => (v === null ? null : ([xPos(i), valuePos(v)] as const)));
         if (!scatter) {
           const path = pts.reduce((d, p, i) => (p ? `${d}${d && pts[i - 1] ? "L" : "M"}${p[0]},${p[1]}` : d), "");
-          if (e.chartType === "area") {
+          if (chartType === "area") {
             const valid = pts.filter((p): p is readonly [number, number] => !!p);
             if (valid.length) marks.push(<path key={`a${si}`} d={`${path} L${valid[valid.length - 1][0]},${base} L${valid[0][0]},${base} Z`} fill={colorAt(si)} opacity={0.16} />);
           }
@@ -210,7 +226,7 @@ export function SlideChart({ e, background, interactive = true }: { e: Extract<S
   const tipH = tip ? tip.lines.length * fs * 1.3 + 8 : 0;
   return (
     <div style={{ position: "absolute", inset: 0 }}>
-      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${data.title || "Chart"}: ${e.chartType} chart${series.length ? ` of ${series.map((s) => s.name).join(", ")}` : ""}`} style={{ overflow: "visible", fontFamily: "inherit" }}>
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${data.title || "Chart"}: ${chartType} chart${series.length ? ` of ${series.map((s) => s.name).join(", ")}` : ""}`} style={{ overflow: "visible", fontFamily: "inherit" }}>
         {data.title && <text x={0} y={fs * 1.1} fontSize={fs * 1.15} fontWeight={700} fill={ink.primary}>{data.title}</text>}
         {legend}
         {hidden > 0 && <text x={W} y={fs * 1.1} fontSize={fs * 0.9} fill={ink.secondary} textAnchor="end">+{hidden} more series in the data</text>}
@@ -226,7 +242,7 @@ export function SlideChart({ e, background, interactive = true }: { e: Extract<S
       </svg>
       {/* The numbers, for screen readers (the visual table view is "edit the chart"). */}
       <div style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" }}>
-        <RichText doc={e.doc} />
+        {children}
       </div>
     </div>
   );

@@ -51,6 +51,8 @@ export interface EngineData {
   tags(orgId?: ID): Tag[];
   images(post: Post): EngineImage[];
   comments(postId: ID): Comment[];
+  /** Names and text of files attached to the post (optional: tests may omit it). */
+  fileText?(post: Post): string[];
 }
 export interface EngineContext {
   orgId: ID;
@@ -114,7 +116,9 @@ export class SearchEngine {
 
   private derive(post: Post): Derived {
     const tagText = post.tagIds.map((id) => this.tagNames.get(id) ?? "").join(" ");
-    const blocksText = blockDocs(post.blocks).map(docText).join("\n");
+    // Attached files: their names and text are part of the searchable body (mirrors documents.py).
+    const fileText = this.data.fileText?.(post) ?? [];
+    const blocksText = [...blockDocs(post.blocks).map(docText), ...fileText].join("\n");
     const images = this.data.images(post);
     const comments = this.data.comments(post.id).filter((c) => !c.deletedAt && !c.hidden);
     const imageText = images
@@ -642,12 +646,14 @@ export class SearchEngine {
       postId: d.post.id,
       postTitle: d.post.title,
       thumbUrl: thumb?.url ?? "",
+      imageUrl: (img.asset.variants.find((v) => v.name === "medium") ?? thumb)?.url,
       width: img.asset.width,
       height: img.asset.height,
       blurhash: img.asset.blurhash,
       dominantColor: img.asset.dominantColors[0],
       caption: img.inst.caption,
       figureLabel: img.inst.figureLabel,
+      ...(img.inst.annotation?.shapes.length ? { annotation: img.inst.annotation } : {}),
     };
   }
 

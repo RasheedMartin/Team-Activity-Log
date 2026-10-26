@@ -16,6 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import models as m
+from .config import get_settings
 from .errors import fail
 from .timeutil import now
 
@@ -31,18 +32,21 @@ class Plan:
     storage_bytes: int | None  # pooled per org
     storage_bytes_per_member: int | None  # pooled, grows with members (paid plans)
     imports_per_month: int | None
+    cloud_ocr: bool = False  # bring-your-own-key Google / Azure / AWS OCR instead of built-in Tesseract
 
 
 PLANS: dict[str, Plan] = {
     "free": Plan("Free", members=10, workspaces=1, private_workspaces=False, storage_bytes=2 * GB, storage_bytes_per_member=None, imports_per_month=5),
     "team": Plan("Team", members=None, workspaces=None, private_workspaces=True, storage_bytes=None, storage_bytes_per_member=10 * GB, imports_per_month=None),
-    "business": Plan("Business", members=None, workspaces=None, private_workspaces=True, storage_bytes=None, storage_bytes_per_member=25 * GB, imports_per_month=None),
-    "enterprise": Plan("Enterprise", members=None, workspaces=None, private_workspaces=True, storage_bytes=None, storage_bytes_per_member=None, imports_per_month=None),
+    "business": Plan("Business", members=None, workspaces=None, private_workspaces=True, storage_bytes=None, storage_bytes_per_member=25 * GB, imports_per_month=None, cloud_ocr=True),
+    "enterprise": Plan("Enterprise", members=None, workspaces=None, private_workspaces=True, storage_bytes=None, storage_bytes_per_member=None, imports_per_month=None, cloud_ocr=True),
 }
 
 
 def in_trial(org: m.Organization) -> bool:
     """A Free org inside its Team trial (new orgs get one; no card needed)."""
+    if not get_settings().pricing_public:
+        return False  # testing: no trials, so new orgs can't sidestep Free's limits
     return org.plan == "free" and org.trial_ends_at is not None and org.trial_ends_at > now()
 
 
@@ -154,7 +158,7 @@ async def plan_view(db: AsyncSession, org: m.Organization) -> dict:
     p = plan_of(org)
     s = get_settings()
     trial = None
-    if org.trial_ends_at and org.plan == "free":
+    if org.trial_ends_at and org.plan == "free" and get_settings().pricing_public:
         left = (org.trial_ends_at - now()).total_seconds()
         trial = {"endsAt": org.trial_ends_at.isoformat().replace("+00:00", "Z"), "daysLeft": max(0, int(-(-left // 86400))), "active": left > 0}
     return {

@@ -70,6 +70,7 @@ const SIGN_IN_ERRORS: Record<string, string> = {
   google_failed: "Google sign-in didn't work. Try again, or use your email and password.",
   google_unavailable: "Google sign-in isn't set up on this server yet.",
   deactivated: "This account has been deactivated.",
+  signup_code: "Sign-ups are invite-only right now: create your account with email and your invite code first.",
 };
 
 /** Shown only when the server has Google configured. A full-page redirect (OAuth), not a fetch. */
@@ -190,7 +191,9 @@ export function RegisterPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [signupCode, setSignupCode] = useState("");
   const { data: me } = useMe();
+  const { data: settings } = useAuthProviders();
   if (me && !register.isSuccess) return <Navigate to={homePath(me)} replace />;
   return (
     <AuthLayout title="Create your account" sub="Then set up your organization and first workspace.">
@@ -200,12 +203,13 @@ export function RegisterPage() {
         noValidate
         onSubmit={(e) => {
           e.preventDefault();
-          register.mutate({ name, email, password }, { onSuccess: () => navigate("/verify-sent", { replace: true, state: { email } }) });
+          register.mutate({ name, email, password, ...(settings?.signupCode ? { signupCode } : {}) }, { onSuccess: () => navigate("/verify-sent", { replace: true, state: { email } }) });
         }}
       >
         <TextField label="Full name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} autoFocus required />
         <TextField label="Work email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         <TextField label="Password" type="password" autoComplete="new-password" helperText="At least 8 characters" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        {settings?.signupCode && <TextField label="Invite code" value={signupCode} onChange={(e) => setSignupCode(e.target.value)} helperText="Sign-ups are invite-only for now" required />}
         {register.error && <Alert severity="error">{errorMessage(register.error)}</Alert>}
         <Button type="submit" variant="contained" disabled={register.isPending}>
           Create account

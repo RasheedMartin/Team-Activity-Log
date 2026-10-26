@@ -61,6 +61,7 @@ export function Annotator({ image, open, onClose, onSave, saving }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
   const [textAt, setTextAt] = useState<Pt | null>(null);
   const [text, setText] = useState("");
+  const [editingText, setEditingText] = useState<string | null>(null); // a placed label being changed
   const svgRef = useRef<SVGSVGElement>(null);
   const textInput = useRef<HTMLInputElement>(null);
   const drag = useRef<{ start: Pt; last: Pt; erased: Set<string> } | null>(null);
@@ -99,7 +100,9 @@ export function Annotator({ image, open, onClose, onSave, saving }: Props) {
       // text box, and blurring an empty box closes it before you can type.
       e.preventDefault();
       if (textAt) commitText(); // clicking elsewhere finishes the current label…
-      setTextAt(p); // …and starts the next one there
+      const hit = topHit(p);
+      if (hit?.tool === "text") return editText(hit); // …clicking a label edits it…
+      setTextAt(p); // …and anywhere else starts the next one there
       setText("");
       return;
     }
@@ -165,9 +168,20 @@ export function Annotator({ image, open, onClose, onSave, saving }: Props) {
   };
 
   const commitText = () => {
-    if (textAt && text.trim()) commit([...shapes, { id: uuidv7(), tool: "text", color, opacity, size: relSize, points: [textAt], text: text.trim() }]);
+    if (editingText) {
+      const before = shapes.find((s) => s.id === editingText);
+      if (before && before.text !== text.trim()) commit(text.trim() ? shapes.map((s) => (s.id === editingText ? { ...s, text: text.trim() } : s)) : shapes.filter((s) => s.id !== editingText));
+    } else if (textAt && text.trim()) commit([...shapes, { id: uuidv7(), tool: "text", color, opacity, size: relSize, points: [textAt], text: text.trim() }]);
     setTextAt(null);
     setText("");
+    setEditingText(null);
+  };
+  /** Reopen a placed label in its box (Text tool click, or double-click with any tool). */
+  const editText = (s: Shape) => {
+    setSelected(null);
+    setEditingText(s.id);
+    setTextAt(s.points[0] as Pt);
+    setText(s.text ?? "");
   };
 
   // Focus a new text box once it's on screen (autoFocus alone can lose to the click that made it).
@@ -284,10 +298,15 @@ export function Annotator({ image, open, onClose, onSave, saving }: Props) {
             onPointerMove={onMove}
             onPointerUp={onUp}
             onPointerCancel={onUp}
+            onDoubleClick={(e) => {
+              const r = svgRef.current!.getBoundingClientRect();
+              const hit = topHit([(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]);
+              if (hit?.tool === "text") editText(hit);
+            }}
             role="img"
             aria-label={`Annotation canvas, ${shapes.length} shapes`}
           >
-            {shapes.map((s) => (
+            {shapes.filter((s) => s.id !== editingText).map((s) => (
               <ShapeView key={s.id} s={s} w={W} h={H} selected={s.id === selected} />
             ))}
             {draft && <ShapeView s={draft} w={W} h={H} />}
@@ -308,6 +327,7 @@ export function Annotator({ image, open, onClose, onSave, saving }: Props) {
                     e.stopPropagation(); // close the box, not the whole annotator
                     setTextAt(null);
                     setText("");
+                    setEditingText(null);
                   }
                 }}
                 onBlur={commitText}

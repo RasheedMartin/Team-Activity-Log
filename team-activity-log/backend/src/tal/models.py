@@ -121,6 +121,7 @@ class Organization(Base):
     trial_ends_at: Mapped[dt.datetime | None] = ts()
     storage_quota_bytes: Mapped[int | None] = mapped_column(BigInteger)
     settings: Mapped[dict] = mapped_column(JSONB, server_default="{}")
+    ocr_secret: Mapped[str | None] = mapped_column(Text)  # encrypted cloud OCR keys (tal.ocr.seal); never in a view
     created_at: Mapped[dt.datetime] = ts(False, True)
     __table_args__ = (
         CheckConstraint("plan in ('free','team','business','enterprise')", name="organizations_plan"),
@@ -289,14 +290,88 @@ class CollectionRow(Base):
     created_by: Mapped[uuid.UUID] = fk("users.id", "RESTRICT", False, False)
     source_tag_id: Mapped[uuid.UUID | None] = fk("tags.id", "SET NULL", True, False)
     presentation: Mapped[dict | None] = mapped_column(JSONB)  # {"theme": SlideTheme} for presenting
+    # "workspace": everyone in it can view; "people": only those it's shared with (collection_members).
+    visibility: Mapped[str] = mapped_column(String(12), server_default="workspace")
+    # A notebook following source_tag_id: newly published posts with that tag are appended.
+    follows_tag: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     created_at: Mapped[dt.datetime] = ts(False, True)
     updated_at: Mapped[dt.datetime] = ts(False, True)
     __table_args__ = (
         CheckConstraint("kind in ('manual','deck_import','saved_selection','notebook')", name="collections_kind"),
+        CheckConstraint("visibility in ('workspace','people')", name="collections_visibility"),
         # One notebook per tag (survives renames); unique notebook names per workspace.
         Index("collections_tag_notebook", "workspace_id", "source_tag_id", unique=True, postgresql_where=text("kind = 'notebook' and source_tag_id is not null")),
         Index("collections_notebook_name", "workspace_id", func.lower(text("name")), unique=True, postgresql_where=text("kind = 'notebook'")),
     )
+
+
+class Attachment(Base):
+    """A file attached to a post (owner request): kept in object storage, deduplicated per org by
+    content; `text` is what search reads (extracted from PDF, Word, Excel, CSV, plain text)."""
+
+    __tablename__ = "attachments"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    org_id: Mapped[uuid.UUID] = fk("organizations.id")
+    sha256: Mapped[str] = mapped_column(String(64))
+    filename: Mapped[str] = mapped_column(Text)
+    mime: Mapped[str] = mapped_column(String(200))
+    bytes: Mapped[int] = mapped_column(BigInteger)
+    text: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[uuid.UUID | None] = fk("users.id", "SET NULL", True)
+    created_at: Mapped[dt.datetime] = ts(False, True)
+    __table_args__ = (UniqueConstraint("org_id", "sha256"),)
+
+
+class Sheet(Base):
+    """A spreadsheet imported as data (owner request: Sheets). Tabs hold the tables; charts are
+    saved views of them that posts can embed."""
+
+    __tablename__ = "sheets"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    org_id: Mapped[uuid.UUID] = fk("organizations.id")
+    workspace_id: Mapped[uuid.UUID] = fk("workspaces.id")
+    name: Mapped[str] = mapped_column(String(300))
+    filename: Mapped[str] = mapped_column(Text)
+    sha256: Mapped[str] = mapped_column(String(64))
+    bytes: Mapped[int] = mapped_column(BigInteger)
+    search_text: Mapped[str] = mapped_column(Text, server_default="")
+    created_by: Mapped[uuid.UUID | None] = fk("users.id", "SET NULL", True)
+    created_at: Mapped[dt.datetime] = ts(False, True)
+    updated_at: Mapped[dt.datetime] = ts(False, True)
+
+
+class SheetTab(Base):
+    __tablename__ = "sheet_tabs"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    sheet_id: Mapped[uuid.UUID] = fk("sheets.id")
+    position: Mapped[int] = mapped_column(Integer)
+    name: Mapped[str] = mapped_column(String(300))
+    columns: Mapped[list] = mapped_column(JSONB)  # [{key, name, type}]
+    rows: Mapped[list] = mapped_column(JSONB)  # [[value, …], …] in column order
+    row_count: Mapped[int] = mapped_column(Integer)
+    truncated: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+
+
+class SheetChart(Base):
+    __tablename__ = "sheet_charts"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    sheet_id: Mapped[uuid.UUID] = fk("sheets.id")
+    tab_id: Mapped[uuid.UUID] = fk("sheet_tabs.id")
+    name: Mapped[str] = mapped_column(String(300))
+    spec: Mapped[dict] = mapped_column(JSONB)  # {type, x, y: [keys], groupBy?, agg}
+    created_by: Mapped[uuid.UUID | None] = fk("users.id", "SET NULL", True)
+    created_at: Mapped[dt.datetime] = ts(False, True)
+
+
+class CollectionMember(Base):
+    """Who may change a collection or notebook beyond viewing (everyone in the workspace can view).
+    Its creator is always an owner and has no row; everyone else is a viewer unless listed here."""
+
+    __tablename__ = "collection_members"
+    collection_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("collections.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    role: Mapped[str] = mapped_column(String(10))
+    __table_args__ = (CheckConstraint("role in ('viewer','editor','owner')", name="collection_members_role"),)
 
 
 class CollectionPost(Base):

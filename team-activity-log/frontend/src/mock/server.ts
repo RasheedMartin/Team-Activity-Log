@@ -200,6 +200,17 @@ export const engine = new SearchEngine({
       return inst && asset ? [{ inst, asset: assetView(asset) }] : [];
     }),
   comments: (postId) => commentsByPost().get(postId) ?? [],
+  fileText: (post) =>
+    post.blocks.flatMap((b) => {
+      if (b.type === "chart") {
+        // Like the backend: the chart's name and its sheet's name are searchable with the post.
+        const c = db.t.sheetCharts.get(b.chartId);
+        const s = c ? db.t.sheets.get(c.sheetId) : undefined;
+        return c && s && s.orgId === post.orgId ? [`${c.name}\n${s.name}`] : [];
+      }
+      const a = b.type === "file" ? db.t.attachments.get(b.attachmentId) : undefined;
+      return a && a.orgId === post.orgId ? [`${a.filename}\n${a.text ?? ""}`] : [];
+    }),
 });
 
 // Comments grouped by post, rebuilt lazily when the comments table changes size or is touched.

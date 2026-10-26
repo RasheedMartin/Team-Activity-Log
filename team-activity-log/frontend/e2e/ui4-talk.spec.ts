@@ -11,9 +11,12 @@ async function signInAs(page: Page, name: string) {
 
 async function openDeepThread(page: Page) {
   await page.getByRole("combobox", { name: "Search" }).fill("east side");
-  await expect(page.locator("[data-post-id]").first()).toBeVisible();
-  await page.locator("[data-post-id]").first().click();
-  await expect(page.getByRole("heading", { name: /Discussion/ })).toBeVisible();
+  await expect(page).toHaveURL(/q=east/);
+  // The list can re-render as the search settles (slow CI), swallowing a click: retry the open.
+  await expect(async () => {
+    await page.locator("[data-post-id]").first().click();
+    await expect(page.getByRole("heading", { name: /Discussion/ })).toBeVisible({ timeout: 3_000 });
+  }).toPass({ timeout: 20_000 });
 }
 
 // §W3 done-when: two personas converse live in a deep thread, mention each other, see Activity

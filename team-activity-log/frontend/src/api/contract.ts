@@ -84,6 +84,15 @@ export interface MeResponse {
   preferences: UserPreferences;
   orgs: { org: Organization; role: OrgRole; workspaces: Workspace[] }[];
   lastWorkspaceId?: ID;
+  /** Can open the super admin page (SUPERADMIN_EMAILS, verified). */
+  superAdmin?: boolean;
+}
+
+export interface SuperOverview {
+  totals: { users: number; orgs: number; posts: number; storageBytes: number };
+  orgs: { id: ID; name: string; slug: string; plan: string; createdAt: ISODateTime; members: number; posts: number; storageBytes: number }[];
+  /** ALLOW_WIPE is on: "Delete all data" is available. */
+  wipeAllowed: boolean;
 }
 
 // ---- Posts, tags, assets (v2) ----
@@ -104,7 +113,74 @@ export type Block =
   | { id: ID; type: "image"; imageInstanceId: ID }
   | { id: ID; type: "table"; doc: unknown }
   | { id: ID; type: "slide_break"; notes?: string }
-  | { id: ID; type: "slide"; design: SlideDesign; notes?: string };
+  | { id: ID; type: "slide"; design: SlideDesign; notes?: string }
+  /** An attached file (owner request): original downloadable, text searchable. */
+  | { id: ID; type: "file"; attachmentId: ID }
+  /** A saved chart from a sheet, drawn live from the sheet's data (owner request: Sheets). */
+  | { id: ID; type: "chart"; sheetId: ID; chartId: ID };
+
+/** A file attached to a post. `url` downloads it (people who can see a post holding it). */
+export interface AttachmentView {
+  id: ID;
+  filename: string;
+  mime: string;
+  bytes: number;
+  /** Its text was extracted, so search finds what's inside. */
+  searchable: boolean;
+  url: string;
+}
+
+/** Sheets: an imported spreadsheet, one typed table per tab (backend tal/sheets.py). */
+export interface SheetColumn {
+  key: string; // "c0", "c1", …
+  name: string;
+  type: "number" | "date" | "category" | "text";
+}
+export type SheetCell = number | string | null; // dates are YYYY-MM-DD
+export interface SheetSummary {
+  id: ID;
+  workspaceId: ID;
+  name: string;
+  filename: string;
+  bytes: number;
+  createdBy: ID | null;
+  updatedAt: ISODateTime;
+  tabs: number;
+  rows: number;
+}
+export interface SheetTab {
+  id: ID;
+  name: string;
+  columns: SheetColumn[];
+  rowCount: number;
+  /** Rows past the limit (50,000 per tab) weren't kept. */
+  truncated: boolean;
+}
+export type SheetChartType = "line" | "column" | "bar" | "area" | "scatter" | "pie";
+export type SheetAgg = "sum" | "avg" | "count" | "min" | "max" | "none";
+export interface SheetChartSpec {
+  type: SheetChartType;
+  x: string;
+  y: string[];
+  agg: SheetAgg;
+  groupBy?: string;
+}
+export interface SheetChart {
+  id: ID;
+  sheetId: ID;
+  tabId: ID;
+  name: string;
+  spec: SheetChartSpec;
+}
+export interface Sheet extends SheetSummary {
+  canDelete: boolean;
+  tabList: SheetTab[];
+  charts: SheetChart[];
+}
+export interface SheetRows {
+  columns: SheetColumn[];
+  rows: SheetCell[][];
+}
 
 /**
  * A designed slide: elements placed on a fixed canvas (units are points; 960×540 is 16:9), the
@@ -157,6 +233,13 @@ export interface SlideTheme {
 export interface Presentation {
   theme?: SlideTheme;
   deck?: SlideTheme;
+  /** Slides skipped when presenting and exporting, by slide key (lib/slides). */
+  hidden?: string[];
+  /** Present only designed slides (skip the automatic text slides). */
+  onlyDesigned?: boolean;
+  /** What each automatic title slide shows (all on by default), whether to skip it before a post's
+   *  designed slide, or hide title slides altogether. */
+  titleSlide?: { date?: boolean; author?: boolean; summary?: boolean; tags?: boolean; skipBeforeDesigned?: boolean; hide?: boolean };
 }
 
 export interface PostSource {
@@ -166,6 +249,10 @@ export interface PostSource {
   fileSha256: string;
   slide: number;
   slideCount: number;
+  /** A draft other drafts were combined into (until it's split or published): what to restore. */
+  mergedFrom?: { postId: ID; title: string; slide?: number; blockIds: ID[]; imageInstanceIds: ID[] }[];
+  /** Set aside by a combine: the draft it went into. */
+  mergedInto?: ID;
 }
 
 export interface Post {
@@ -202,14 +289,33 @@ export interface Post {
 export interface ImageMetadata {
   exif?: { capturedAt?: ISODateTime; cameraMake?: string; cameraModel?: string };
   ocrText?: string;
-  ocrState: "pending" | "ready" | "failed" | "none";
+  /** pending → running → ready (text found) | empty | failed; "edited" once a person corrects it. */
+  ocrState: "pending" | "running" | "ready" | "empty" | "failed" | "edited" | "none";
+  /** Which engine read it ("tesseract", "google", "azure", "aws"), or "person" for a correction. */
+  ocrEngine?: string;
+  ocrError?: string;
+  ocrAt?: ISODateTime;
   detectedType?: ImageType;
   dpi?: number;
   colorSpace?: string;
   hasAlpha?: boolean;
-  sourceKind: "upload" | "paste" | "screenshot" | "pptx_import";
+  sourceKind: "upload" | "paste" | "screenshot" | "pptx_import" | "document_import";
 }
 export type ImageType = "chart" | "photo" | "screenshot" | "diagram" | "table";
+
+export type OcrProviderId = "tesseract" | "google" | "azure" | "aws";
+/** Text in images (OCR) for an org: the built-in engine, or a cloud one with the org's own key. */
+export interface OcrSettings {
+  provider: OcrProviderId;
+  /** What's actually used: falls back to "tesseract" if the plan or key no longer allows the choice. */
+  active: OcrProviderId;
+  cloudAllowed: boolean;
+  builtInReady: boolean;
+  providers: { id: OcrProviderId; name: string; cloud: boolean; fields: string[] }[];
+  /** Saved keys, as hints ("…abcd"); secrets never come back. */
+  saved: Partial<Record<OcrProviderId, Record<string, string>>>;
+  counts: Partial<Record<ImageMetadata["ocrState"], number>>;
+}
 
 export interface Asset {
   id: ID;
@@ -281,6 +387,7 @@ export interface PostRevision {
 export interface PostDetail {
   post: Post;
   images: ImageView[];
+  attachments?: AttachmentView[];
 }
 
 export interface DraftSummary {
@@ -300,6 +407,9 @@ export interface ImportSummary {
   status: ImportJob["status"];
   slideCount: number;
   createdAt: ISODateTime;
+  /** The deck (collection) its posts went into, once drafts are created: where it's reviewed. */
+  collectionId?: ID | null;
+  fileKind?: ImportFileKind;
   drafts: number;
   published: number;
 }
@@ -475,12 +585,16 @@ export interface GalleryImage {
   postId: ID;
   postTitle: string;
   thumbUrl: string;
+  /** A larger rendition (for the carousel); falls back to thumbUrl. */
+  imageUrl?: string;
   width: number;
   height: number;
   blurhash?: string;
   dominantColor?: string;
   caption?: string;
   figureLabel?: string;
+  /** Drawn on the thumbnail too, so the grid shows what the post shows. */
+  annotation?: { shapes: Shape[]; version: number };
 }
 
 export interface SearchResponse {
@@ -548,7 +662,21 @@ export interface Collection {
   /** Notebooks made from a tag remember it, so there is one per tag even after a rename. */
   sourceTagId?: ID;
   presentation?: Presentation;
+  /** Everyone in the workspace can view. Editors change contents; owners also share and delete.
+   *  The creator is always first, as owner. */
+  members?: { userId: ID; role: CollectionRole }[];
+  /** The caller's role: owner if they created it, else what an owner granted (viewer by default). */
+  myRole?: CollectionRole;
+  /** Made by an import: the file it came from (decks, and documents imported as notebooks). */
+  source?: { importJobId: ID; fileName: string; fileKind: ImportFileKind; originalKept: boolean };
+  /** Every import that added to it (several can extend one deck or notebook), oldest first. */
+  sources?: { importJobId: ID; fileName: string; fileKind: ImportFileKind; originalKept: boolean }[];
+  /** A notebook following its sourceTagId: newly published posts with the tag are appended. */
+  followsTag?: boolean;
+  /** "workspace": everyone in it can view (default); "people": only those it's shared with. */
+  visibility?: "workspace" | "people";
 }
+export type CollectionRole = "viewer" | "editor" | "owner";
 
 // ---- Library (scale): everything a person can save, searchable and paged ----
 
@@ -565,6 +693,10 @@ export interface LibraryItem {
   postCount?: number;
   collectionKind?: Collection["kind"];
   filterSpec?: FilterSpec;
+  /** Someone else's collection or notebook that was shared with the caller. */
+  sharedWithMe?: boolean;
+  /** The caller's role on a collection or notebook (owner if they made it). */
+  myRole?: CollectionRole;
 }
 export interface LibraryPage {
   items: LibraryItem[];
@@ -583,6 +715,8 @@ export interface CollectionEntry {
   title: string;
   workDate: ISODate;
   authorId: ID;
+  /** Drafts appear only to their author (unfinished, not private). */
+  status: "draft" | "published";
 }
 
 // ---- Import (v5) ----
@@ -601,6 +735,19 @@ export interface ImportItem {
   included: boolean;
   postId?: ID;
 }
+/** The same file already imported in this workspace (one source of truth per deck). */
+export type ImportFileKind = "pptx" | "pdf" | "docx";
+
+export interface ImportDuplicate {
+  jobId: ID;
+  by: string; // "you" or a name
+  at: ISODateTime;
+  /** Its deck, when you can open it (not private to someone else, and something's published). */
+  collectionId?: ID | null;
+  private: boolean;
+  reviewing: boolean;
+}
+
 export interface ImportJob {
   id: ID;
   workspaceId: ID;
@@ -610,11 +757,24 @@ export interface ImportJob {
   sourceFilename: string;
   sourceBytes: number;
   slideCount: number;
-  defaults: { tagIds: ID[]; baseDate?: ISODate; guessDates: boolean; collectionName: string; slideDesign?: SlideDesignMode };
+  defaults: {
+    tagIds: ID[];
+    baseDate?: ISODate;
+    guessDates: boolean;
+    collectionName: string;
+    slideDesign?: SlideDesignMode;
+    /** Set by the server from the file name: slides become a deck; PDF and Word a notebook. */
+    fileKind?: ImportFileKind;
+    /** Add to this existing deck (slides) or notebook (documents) instead of making a new one. */
+    intoId?: ID;
+    /** The original file is kept and downloadable (GET …/imports/:id/original). */
+    originalKept?: boolean;
+  };
   items: ImportItem[];
   collectionId?: ID;
   error?: string;
   report?: { created: number; skipped: number; warnings: number };
+  duplicateOf?: ImportDuplicate;
 }
 
 // ---- Plans (docs/PRICING.md; enforced by the server) ----

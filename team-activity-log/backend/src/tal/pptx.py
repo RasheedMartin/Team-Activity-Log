@@ -72,6 +72,7 @@ class ParsedImage:
     name: str
     data: bytes
     mime: str
+    text: str | None = None  # text already known (a PDF page's text layer): searchable without OCR
 
 
 @dataclass

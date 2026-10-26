@@ -141,7 +141,8 @@ export function SaveViewDialog({ open, onClose, spec, existing, onSaved }: { ope
 }
 
 /** The saved-searches menu searches them on the server (a workspace may have hundreds). */
-export function SavedViewsMenu({ activeId, onApply }: { activeId?: string | null; onApply: (v: LibraryItem) => void }) {
+/** Saved searches. `compact`: a small ▾ beside the results title (the search page header). */
+export function SavedViewsMenu({ activeId, onApply, compact }: { activeId?: string | null; onApply: (v: LibraryItem) => void; compact?: boolean }) {
   const { org, ws, me, role } = useWs();
   const notify = useNotify();
   const del = useDeleteView(org.id, ws.id);
@@ -163,9 +164,17 @@ export function SavedViewsMenu({ activeId, onApply }: { activeId?: string | null
   const total = lib.data?.pages[0]?.total ?? 0;
   return (
     <>
-      <Button size="small" color="inherit" endIcon={<ExpandMoreRounded />} startIcon={<SavedSearchRounded />} onClick={(e) => setAnchor(e.currentTarget)} aria-haspopup="menu" sx={{ whiteSpace: "nowrap" }}>
-        Saved searches
-      </Button>
+      {compact ? (
+        <Tooltip title="Saved searches">
+          <IconButton size="small" onClick={(e) => setAnchor(e.currentTarget)} aria-haspopup="menu" aria-label="Saved searches">
+            <ExpandMoreRounded fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      ) : (
+        <Button size="small" color="inherit" endIcon={<ExpandMoreRounded />} startIcon={<SavedSearchRounded />} onClick={(e) => setAnchor(e.currentTarget)} aria-haspopup="menu" sx={{ whiteSpace: "nowrap" }}>
+          Saved searches
+        </Button>
+      )}
       <Menu anchorEl={anchor} open={!!anchor} onClose={() => setAnchor(null)} slotProps={{ paper: { sx: { width: 340 } } }} autoFocus={false}>
         <Box sx={{ px: 1.5, pb: 1 }} onKeyDown={(e) => e.stopPropagation()}>
           <TextField size="small" fullWidth autoFocus placeholder="Find a saved search" value={q} onChange={(e) => setQ(e.target.value)} inputProps={{ "aria-label": "Find a saved search" }} />

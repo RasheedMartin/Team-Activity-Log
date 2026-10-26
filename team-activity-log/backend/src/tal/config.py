@@ -66,6 +66,12 @@ class Settings(BaseSettings):
     # ---- Plans (docs/PRICING.md; limits in tal/plans.py) ----
     new_org_plan: Literal["free", "team", "business", "enterprise"] = Field(default="free", description="Plan for newly created organizations (billing upgrades them later).")
 
+    # While testing (owner request): pricing hidden, everyone on Free with its limits (no trial),
+    # and optionally sign-up only with a code you hand out.
+    superadmin_emails: list[str] = Field(default_factory=list, description="Accounts (verified emails) that can open the super admin page: see every org, delete an org.")
+    allow_wipe: bool = Field(default=False, description="Let super admins delete ALL data from the super admin page. Leave off except when you truly mean it.")
+    pricing_public: bool = Field(default=False, description="Show pricing, trials, and upgrades. Off while testing: every org is on Free, with its limits.")
+    signup_code: str | None = Field(default=None, description="If set, creating an account (email or Google) needs this code. Invited people never need it.")
     trial_days: int = Field(default=14, ge=0, le=90, description="New organizations get the Team plan free for this many days (0 = no trial). No card needed.")
 
     # ---- Billing: Stripe (docs/PRICING.md). Off until these are set. ----
@@ -105,6 +111,11 @@ class Settings(BaseSettings):
     cookie_secure: bool | None = Field(default=None, description="Defaults to true in production.")
     public_app_url: str = Field(default="http://localhost:5173", description="Base for links in emails.")
     run_indexer: bool = Field(default=True, description="Run the outbox → Elasticsearch indexer inside the API process.")
+    secret_key: str | None = Field(default=None, description="Encrypts stored third-party keys (e.g. an org's cloud OCR key). Long random string; changing it makes saved keys unreadable.")
+    keep_originals: bool = Field(default=True, description="Keep each imported file (slides, PDF, Word) in storage, downloadable from its deck or notebook.")
+    ocr_enabled: bool = Field(default=True, description="Read text in images (OCR) in the background worker.")
+    tesseract_cmd: str = Field(default="tesseract", description="The Tesseract binary (built-in OCR engine).")
+    ocr_languages: str = Field(default="eng", description="Tesseract languages, e.g. eng+deu (each needs its language pack).")
     max_upload_bytes: int = 25 * 1024 * 1024
     max_import_bytes: int = 200 * 1024 * 1024
     log_level: str = "INFO"

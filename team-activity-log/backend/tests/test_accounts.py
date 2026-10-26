@@ -98,7 +98,7 @@ async def test_rejects_forged_state_wrong_audience_unverified_email_and_open_red
 
 
 async def test_providers_endpoint(client):
-    assert (await client.get("/v1/auth/providers")).json() == {"google": True}
+    assert (await client.get("/v1/auth/providers")).json()["google"] is True
 
 
 # ---------------------------------------------------------------- email

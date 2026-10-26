@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import models as m
+from .ids import parse_uuid
 from .timeutil import iso, iso_date
 
 DEFAULT_PREFS = {"theme": "system", "density": "compact", "histogramDateField": "workDate", "shortcuts": True, "digest": "off", "reducedMotion": False}
@@ -189,10 +190,17 @@ async def post_views(db: AsyncSession, posts: Sequence[m.Post]) -> list[dict]:
 
 
 async def post_detail(db: AsyncSession, p: m.Post) -> dict:
+    from . import attachments as att
+
     [view] = await post_views(db, [p])
     ids = block_image_ids(p.blocks)
     imgs = await image_views(db, ids, p.org_id)
-    return {"post": view, "images": [imgs[i] for i in ids if i in imgs]}
+    out = {"post": view, "images": [imgs[i] for i in ids if i in imgs]}
+    file_ids = [x for x in (parse_uuid(i) for i in att.block_attachment_ids(p.blocks)) if x]
+    if file_ids:
+        rows = (await db.execute(select(m.Attachment).where(m.Attachment.id.in_(file_ids), m.Attachment.org_id == p.org_id))).scalars().all()
+        out["attachments"] = [att.view(a) for a in rows]
+    return out
 
 
 # ---------------------------------------------------------------- discussion
@@ -234,15 +242,29 @@ def saved_view_view(v: m.SavedView, pinned: bool) -> dict:
 
 def collection_view(c: m.CollectionRow, post_ids: list[str]) -> dict:
     return clean(
-        {"id": s(c.id), "workspaceId": s(c.workspace_id), "name": c.name, "kind": c.kind, "postIds": post_ids, "createdBy": s(c.created_by), "updatedAt": iso(c.updated_at), "sourceTagId": s(c.source_tag_id), "presentation": c.presentation}
+        {"id": s(c.id), "workspaceId": s(c.workspace_id), "name": c.name, "kind": c.kind, "postIds": post_ids, "createdBy": s(c.created_by), "updatedAt": iso(c.updated_at), "sourceTagId": s(c.source_tag_id), "presentation": c.presentation, "visibility": c.visibility, "followsTag": c.follows_tag or None}
     )
 
 
-async def collection_post_ids(db: AsyncSession, collection_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, list[str]]:
+def visible_to(viewer: uuid.UUID | None):
+    """Which collection members a person sees: not deleted, and published unless they wrote it
+    (others' drafts are unfinished, so they don't show or count)."""
+    alive = m.Post.deleted_at.is_(None)
+    if viewer is None:
+        return alive
+    return alive & ((m.Post.status == "published") | (m.Post.author_id == viewer)) & ((m.Post.visibility == "visible") | (m.Post.author_id == viewer))
+
+
+async def collection_post_ids(db: AsyncSession, collection_ids: Sequence[uuid.UUID], viewer: uuid.UUID | None = None) -> dict[uuid.UUID, list[str]]:
     out: dict[uuid.UUID, list[str]] = defaultdict(list)
     if collection_ids:
         rows = await db.execute(
-            select(m.CollectionPost.collection_id, m.CollectionPost.post_id).where(m.CollectionPost.collection_id.in_(collection_ids)).order_by(m.CollectionPost.collection_id, m.CollectionPost.position)
+            # Deleted posts (and, for a viewer, others' drafts) drop out; their membership stays, so
+            # restoring or publishing one puts it back in place.
+            select(m.CollectionPost.collection_id, m.CollectionPost.post_id)
+            .join(m.Post, m.Post.id == m.CollectionPost.post_id)
+            .where(m.CollectionPost.collection_id.in_(collection_ids), visible_to(viewer))
+            .order_by(m.CollectionPost.collection_id, m.CollectionPost.position)
         )
         for cid, pid in rows:
             out[cid].append(str(pid))

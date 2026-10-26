@@ -20,6 +20,9 @@ import { OrgHomePage, OrgPickerPage } from "./features/orgs/OrgHomePage";
 import { SearchPage } from "./features/search/SearchPage";
 
 const ComposerPage = lazy(() => import("./features/posts/ComposerPage"));
+const SheetsPage = lazy(() => import("./features/sheets/SheetsPage"));
+const SheetPage = lazy(() => import("./features/sheets/SheetPage"));
+const SuperAdminPage = lazy(() => import("./features/superadmin/SuperAdminPage"));
 const PostDetailPage = lazy(() => import("./features/posts/PostDetailPage"));
 const ActivityPage = lazy(() => import("./features/activity/ActivityPage"));
 const MentionsTab = lazy(() => import("./features/activity/Mentions"));
@@ -98,6 +101,7 @@ export function App() {
       <Route path="/new-org" element={<RequireAuth><CreateOrgPage /></RequireAuth>} />
       <Route path="/orgs" element={<RequireAuth><OrgPickerPage /></RequireAuth>} />
       <Route path="/me/*" element={<RequireAuth>{page(<UserPanelPage />)}</RequireAuth>} />
+      <Route path="/super" element={<RequireAuth>{page(<SuperAdminPage />)}</RequireAuth>} />
       <Route path="/o/:org" element={<RequireAuth><OrgRoute><OrgHomePage /></OrgRoute></RequireAuth>} />
       <Route path="/o/:org/admin/*" element={<RequireAuth><OrgRoute>{page(<AdminPage />)}</OrgRoute></RequireAuth>} />
       <Route path="/o/:org/w/:ws" element={<RequireAuth><WorkspaceRoute /></RequireAuth>}>
@@ -108,6 +112,8 @@ export function App() {
         <Route path="collections/:id" element={page(<CollectionPage />)} />
         <Route path="collections" element={page(<LibraryPage key="collection" kind="collection" />)} />
         <Route path="notebooks" element={page(<LibraryPage key="notebook" kind="notebook" />)} />
+        <Route path="sheets" element={page(<SheetsPage />)} />
+        <Route path="sheets/:id" element={page(<SheetPage />)} />
         <Route path="library" element={<LibraryRedirect />} />
         <Route path="new" element={page(<ComposerPage />)} />
         <Route path="p/:postId" element={page(<PostDetailPage />)} />

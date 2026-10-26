@@ -211,6 +211,7 @@ function seedAssets(orgId: ID): AssetRow[] {
       metadata: {
         ocrText: m.ocrText,
         ocrState: "ready",
+        ocrEngine: "mock",
         detectedType: m.type as ImageType,
         sourceKind: "upload",
         ...(m.type === "photo" ? { exif: { capturedAt: faker.date.past({ years: 2 }).toISOString(), cameraMake: "Canon", cameraModel: "EOS R6" } } : {}),
@@ -527,7 +528,7 @@ export function seedScenario(scenario: DataScenario): { sessionId?: ID } {
         id: uuidv7(),
         workspaceId: detector.id,
         name: notebook ? `${faker.helpers.arrayElement(SUBJECTS)} notebook ${i + 1}` : `${faker.helpers.arrayElement(["Group meeting", "Review", "Beam test", "Paper figures", "Run plan"])} ${2024 + (i % 3)}-${String((i % 12) + 1).padStart(2, "0")}`,
-        kind: notebook ? "notebook" : "manual",
+        kind: "notebook", // hand-picked groups are notebooks (owner decision)
         postIds,
         createdBy: authors[i % authors.length].id,
         updatedAt: new Date(t0 - i * 86_400_000).toISOString(),

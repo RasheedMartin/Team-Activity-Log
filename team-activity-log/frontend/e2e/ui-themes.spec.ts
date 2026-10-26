@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { openScenario } from "./helpers";
+import { openImport, openScenario } from "./helpers";
 
 // Slides step 4: themes for text slides — chosen in Present, saved with the post, and an imported
 // deck's own look used for its text slides.
@@ -29,14 +29,14 @@ test("pick a theme in Present; it's saved with the post", async ({ page }) => {
 
 test("an imported deck's text slides present in the deck's look", async ({ page }) => {
   await openScenario(page, "small");
-  await page.getByRole("complementary").getByRole("link", { name: "Import slides" }).click();
-  await page.getByLabel("PowerPoint file").setInputFiles({ name: "Formatting_2024.pptx", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", buffer: FIXTURE });
+  await openImport(page);
+  await page.getByLabel("File to import").setInputFiles({ name: "Formatting_2024.pptx", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", buffer: FIXTURE });
   await page.getByRole("radio", { name: /One post for the deck/ }).click();
   await page.getByRole("radio", { name: /^Text only/ }).click();
   await page.getByRole("button", { name: "Start import" }).click();
   await page.getByRole("button", { name: /^Create 1 draft$/ }).click({ timeout: 20_000 });
-  await page.getByRole("button", { name: "Publish all" }).click();
-  await page.getByRole("link", { name: "Open the deck" }).click();
+  await page.getByRole("button", { name: /^Publish all/ }).click(); // on the deck, where the import lands
+  await expect(page.getByRole("tab", { name: "Published (1)" })).toBeVisible(); // cards now open the post, not the editor
   await page.getByRole("list", { name: "Posts in this collection" }).getByRole("link").first().click();
   await page.getByRole("button", { name: "Present" }).click();
   await expect(surface(page)).toHaveCSS("background-color", "rgb(247, 249, 252)"); // the deck's #f7f9fc

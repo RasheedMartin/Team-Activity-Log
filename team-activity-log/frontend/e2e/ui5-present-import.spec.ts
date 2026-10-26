@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { openScenario } from "./helpers";
+import { openImport, openScenario, notebookAction } from "./helpers";
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -11,8 +11,8 @@ const deck = (name: string, real = true) => ({ name, mimeType: PPTX_MIME, buffer
 const EXPECTED_ITEMS: Record<string, number> = { "One post per slide": 8, "One post for the deck": 1, "Group by section": 3 };
 
 async function startImport(page: Page, file: ReturnType<typeof deck>, mode: string) {
-  await page.getByRole("complementary").getByRole("link", { name: "Import slides" }).click();
-  await page.getByLabel("PowerPoint file").setInputFiles(file);
+  await openImport(page);
+  await page.getByLabel("File to import").setInputFiles(file);
   await page.getByRole("radio", { name: new RegExp(mode) }).click();
   await page.getByRole("button", { name: "Start import" }).click();
 }
@@ -52,7 +52,6 @@ test("every seeded post derives slides without errors", async ({ page }) => {
 
 test("select posts → notebook → reorder → present", async ({ page }) => {
   await openScenario(page, "small");
-  await page.getByRole("button", { name: "Select posts" }).click();
   const boxes = page.getByRole("checkbox", { name: /^Select / });
   await boxes.nth(0).check();
   await boxes.nth(1).check();
@@ -70,7 +69,7 @@ test("select posts → notebook → reorder → present", async ({ page }) => {
   await expect(page.getByText("Entry 2 of 3").first()).toBeVisible();
   await page.getByRole("button", { name: "Continuous" }).click();
   await expect(page.locator("[data-nb-section]")).toHaveCount(3);
-  await page.getByRole("button", { name: "Edit" }).click();
+  await notebookAction(page, "Reorder or remove");
   await page.getByRole("button", { name: `Move ${first} down`, exact: true }).click();
   await expect(page.locator("[data-nb-section] h2").nth(1)).toHaveText(first);
   await page.getByRole("button", { name: "Present" }).click();
@@ -101,9 +100,9 @@ for (const mode of ["One post per slide", "One post for the deck", "Group by sec
     const expected = Number((await create.innerText()).match(/\d+/)![0]);
     await create.click();
     await expect(page.getByText(new RegExp(`Created ${expected} drafts`))).toBeVisible();
-    await page.getByRole("button", { name: "Publish all" }).click();
-    await expect(page.getByText("All imported drafts published")).toBeVisible();
-    await page.getByRole("link", { name: "Open the deck" }).click();
+    await page.getByRole("button", { name: /^Publish all/ }).click(); // on the deck, where the import lands
+    await expect(page.getByText(/^Published \d+ slides?$/)).toBeVisible();
+    await expect(page.getByRole("tab", { name: `Published (${expected})` })).toBeVisible();
     const cards = page.getByRole("list", { name: "Posts in this collection" }).getByRole("link");
     await expect(cards).toHaveCount(expected);
     if (mode === "One post per slide") {
@@ -128,7 +127,8 @@ test("delete a whole import removes its posts", async ({ page }) => {
   await openScenario(page, "small");
   await startImport(page, deck("Old_Deck.pptx"), "One post per slide");
   await page.getByRole("button", { name: /^Create \d+ drafts?$/ }).click({ timeout: 20_000 });
-  await page.getByRole("button", { name: "Delete this import" }).click();
+  await page.getByRole("button", { name: "More deck actions" }).click();
+  await page.getByRole("menuitem", { name: /Delete this import/ }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
   await expect(page.getByText("Import deleted")).toBeVisible();
   await page.getByRole("link", { name: "Activity" }).click();
@@ -151,7 +151,6 @@ test("no duplicate notebooks; back from a post returns to the notebook", async (
   // The make-notebook dialog refuses a duplicate name.
   const name = await page.getByLabel("Notebook title").inputValue();
   await page.getByRole("link", { name: "Search", exact: true }).click();
-  await page.getByRole("button", { name: "Select posts" }).click();
   await page.getByRole("checkbox", { name: /^Select / }).first().check();
   await page.getByRole("button", { name: "New notebook" }).click();
   await page.getByRole("dialog").getByLabel("Name").fill(name.toUpperCase());
@@ -180,25 +179,27 @@ test("notebook contents land exactly on the entry (reader and continuous)", asyn
     await toc.nth(i).click();
     await expect(page.locator("[data-nb-section] h2")).toHaveText(title);
     await expect(page.getByText(`Entry ${i + 1} of ${n}`).first()).toBeVisible();
-    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    expect(await page.evaluate(() => window.scrollY)).toBe(0); // the reader starts each entry at the top
   }
   await page.keyboard.press("ArrowRight");
   await expect(page.getByText(`Entry 3 of ${n}`).first()).toBeVisible();
-  // Continuous: once every entry has loaded, jumps land on the entry.
+  // Continuous: every entry has a place at once, but only those near the screen load (a long
+  // notebook isn't fetched all at once). Jumps land on the entry while the ones around it load.
   await page.getByRole("button", { name: "Continuous" }).click();
-  await expect(page.getByText(/^Loading \d+ of \d+ entries/)).toHaveCount(0, { timeout: 45_000 });
   await expect(page.locator("[data-nb-section]")).toHaveCount(n);
+  await expect.poll(() => page.locator("[data-nb-loading]").count()).toBeGreaterThan(n / 2); // most not fetched yet
   for (const i of [5, Math.min(40, n - 1)]) {
     await toc.nth(i).click();
     const id = (await page.locator("[data-nb-section]").nth(i).getAttribute("data-nb-section"))!;
-    const top = await page.evaluate((x) => Math.round(document.getElementById(`nb-${x}`)!.getBoundingClientRect().top), id);
-    expect(Math.abs(top - 16)).toBeLessThan(4);
+    await expect(page.locator(`#nb-${id}:not([data-nb-loading])`)).toBeVisible(); // it loaded
+    // Lands just below the sticky notebook bar.
+    await expect.poll(() => page.evaluate((x) => Math.abs(Math.round(document.getElementById(`nb-${x}`)!.getBoundingClientRect().top) - 16 - parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--nb-bar") || "0")), id)).toBeLessThan(4);
   }
 });
 
 test("import slides is easy to find, and a deck dropped anywhere starts an import", async ({ page }) => {
   await openScenario(page, "small", "home");
-  await expect(page.getByRole("complementary").getByRole("link", { name: "Import slides" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Workspace" }).getByRole("link", { name: "Decks" })).toBeVisible();
 
   // Drag a real .pptx over the Home page and drop it.
   const dt = await page.evaluateHandle(({ bytes, type }) => {
@@ -212,5 +213,5 @@ test("import slides is easy to find, and a deck dropped anywhere starts an impor
   await page.dispatchEvent("main", "drop", { dataTransfer: dt });
   await expect(page).toHaveURL(/\/import$/);
   await expect(page.getByText("Dropped_Deck.pptx")).toBeVisible();
-  await expect(page.getByLabel("Collection name")).toHaveValue("Dropped_Deck");
+  await expect(page.getByLabel("Deck name")).toHaveValue("Dropped_Deck");
 });

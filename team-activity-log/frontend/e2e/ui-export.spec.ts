@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { openScenario } from "./helpers";
+import { openImport, openScenario } from "./helpers";
 
 // Slides step 4: download what Present shows as a real PowerPoint file.
 
@@ -10,14 +10,14 @@ const FIXTURE = readFileSync(path.join(path.dirname(new URL(import.meta.url).pat
 
 test("download a deck as .pptx: designed slides, text slides, notes, pictures", async ({ page }) => {
   await openScenario(page, "small");
-  await page.getByRole("complementary").getByRole("link", { name: "Import slides" }).click();
-  await page.getByLabel("PowerPoint file").setInputFiles({ name: "Formatting_2024.pptx", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", buffer: FIXTURE });
+  await openImport(page);
+  await page.getByLabel("File to import").setInputFiles({ name: "Formatting_2024.pptx", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", buffer: FIXTURE });
   await page.getByRole("radio", { name: /One post for the deck/ }).click();
   await page.getByRole("radio", { name: /^Automatic/ }).click(); // a mix of designed and text slides
   await page.getByRole("button", { name: "Start import" }).click();
   await page.getByRole("button", { name: /^Create 1 draft$/ }).click({ timeout: 20_000 });
-  await page.getByRole("button", { name: "Publish all" }).click();
-  await page.getByRole("link", { name: "Open the deck" }).click();
+  await page.getByRole("button", { name: /^Publish all/ }).click(); // on the deck, where the import lands
+  await expect(page.getByRole("tab", { name: "Published (1)" })).toBeVisible(); // cards now open the post, not the editor
   await page.getByRole("list", { name: "Posts in this collection" }).getByRole("link").first().click();
   await page.getByRole("button", { name: "Present" }).click();
   await expect(page.getByText(/^1 \/ \d+$/)).toBeVisible();

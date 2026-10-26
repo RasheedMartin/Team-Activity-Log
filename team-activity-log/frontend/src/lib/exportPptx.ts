@@ -249,9 +249,11 @@ async function addAutomatic(ctx: Ctx, s: PptxGenJS.Slide, slide: Exclude<Slide, 
   if (slide.kind === "title") {
     const x = W * 0.08;
     s.addShape(ctx.pptx.ShapeType.rect, { x, y: H * 0.28, w: 0.9, h: 0.06, fill: { color: c(theme.accent) }, line: { type: "none" } });
-    s.addText(formatDay(slide.workDate).toUpperCase(), { x, y: H * 0.31, w: W * 0.84, h: 0.4, fontSize: 14, bold: true, color: c(theme.accent), fontFace: theme.bodyFont, margin: 0 });
+    const show = slide.show ?? { date: true, author: true, summary: true, tags: true };
+    if (show.date) s.addText(formatDay(slide.workDate).toUpperCase(), { x, y: H * 0.31, w: W * 0.84, h: 0.4, fontSize: 14, bold: true, color: c(theme.accent), fontFace: theme.bodyFont, margin: 0 });
     s.addText(slide.title, { x, y: H * 0.38, w: W * 0.84, h: H * 0.25, fontSize: 40, ...heading, valign: "top", margin: 0, fit: "shrink" });
-    const sub = [slide.summary, [people.get(slide.authorId)?.name, ...slide.tagIds.map((id) => tags.get(id)?.name)].filter(Boolean).join(" · ")].filter(Boolean).join("\n");
+    const byline = [show.author ? people.get(slide.authorId)?.name : undefined, ...(show.tags ? slide.tagIds.map((id) => tags.get(id)?.name) : [])].filter(Boolean).join(" · ");
+    const sub = [show.summary ? slide.summary : undefined, byline].filter(Boolean).join("\n");
     if (sub) s.addText(sub, { x, y: H * 0.64, w: W * 0.84, h: H * 0.2, fontSize: 18, ...body, valign: "top", margin: 0 });
   } else {
     const top = slide.heading ? 1.15 : 0.5;

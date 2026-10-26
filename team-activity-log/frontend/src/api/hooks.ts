@@ -7,7 +7,7 @@ import {
   useQueryClient,
   type QueryClient,
 } from "@tanstack/react-query";
-import { api, ApiError, del, get, patch, post, put } from "./client";
+import { api, API_BASE_URL, ApiError, del, get, patch, post, put } from "./client";
 import type {
   ImportSummary,
   ImportPost,
@@ -112,7 +112,7 @@ function useSetsMe<V>(fn: (v: V) => Promise<MeResponse>) {
 }
 
 export const useLogin = () => useSetsMe((v: { email: string; password: string }) => post<MeResponse>("/auth/login", v));
-export const useRegister = () => useSetsMe((v: { name: string; email: string; password: string }) => post<MeResponse>("/auth/register", v));
+export const useRegister = () => useSetsMe((v: { name: string; email: string; password: string; signupCode?: string }) => post<MeResponse>("/auth/register", v));
 export const useVerifyEmail = () => useSetsMe((token: string) => post<MeResponse>(`/auth/verify/${token}`));
 export const useMagicSignIn = () => useSetsMe((token: string) => post<MeResponse>(`/auth/magic/${token}`));
 export const useResetPassword = () => useSetsMe((v: { token: string; password: string }) => post<MeResponse>(`/auth/reset/${v.token}`, { password: v.password }));
@@ -310,16 +310,20 @@ export const usePost = (orgId: ID, id: ID | undefined) =>
 
 /** Search caches embed post copies; after a post changes, refresh them (and re-fetch lists). */
 export function invalidatePostLists(qc: QueryClient, orgId: ID) {
-  qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === "org" && q.queryKey[1] === orgId && (q.queryKey[4] === "search" || q.queryKey[4] === "drafts" || q.queryKey[4] === "trash" || q.queryKey[4] === "posts") });
+  // Collections and imports list posts too: a discarded draft must leave them everywhere at once.
+  const lists = ["search", "drafts", "trash", "posts", "collections"];
+  qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === "org" && q.queryKey[1] === orgId && (lists.includes(q.queryKey[4] as string) || q.queryKey[2] === "import") });
 }
 
 export function useCreateDraft(orgId: ID, wsId: ID) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (seed?: Partial<Post>) => post<PostDetail>(`${W(orgId, wsId)}/posts`, seed ?? {}),
-    onSuccess: (d) => {
+    // `collectionId`: write it as the next page of that notebook.
+    mutationFn: (seed?: Partial<Post> & { collectionId?: ID }) => post<PostDetail>(`${W(orgId, wsId)}/posts`, seed ?? {}),
+    onSuccess: (d, seed) => {
       qc.setQueryData(qk.post(orgId, d.post.id), d);
       qc.invalidateQueries({ queryKey: qk.drafts(orgId, wsId) });
+      if (seed?.collectionId) qc.invalidateQueries({ queryKey: qk.collections(orgId, wsId) }); // its notebook has a new page
     },
   });
 }
@@ -489,6 +493,8 @@ export interface LibraryQuery {
   q?: string;
   sort?: "recent" | "name";
   mine?: boolean;
+  /** Only others' collections and notebooks shared with the caller. */
+  shared?: boolean;
   limit?: number;
 }
 export function useLibrary(orgId: ID, wsId: ID, query: LibraryQuery, enabled = true) {
@@ -500,6 +506,7 @@ export function useLibrary(orgId: ID, wsId: ID, query: LibraryQuery, enabled = t
       if (query.q?.trim()) p.set("q", query.q.trim());
       if (query.sort) p.set("sort", query.sort);
       if (query.mine) p.set("mine", "1");
+      if (query.shared) p.set("shared", "1");
       if (query.limit) p.set("limit", String(query.limit));
       if (pageParam) p.set("cursor", pageParam);
       return get<LibraryPage>(`${W(orgId, wsId)}/library?${p}`, signal);
@@ -578,8 +585,11 @@ export function useCreateCollection(orgId: ID, wsId: ID) {
 export function useUpdateCollection(orgId: ID, wsId: ID) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, name, postIds, presentation }: { id: ID; name?: string; postIds?: ID[]; presentation?: Presentation | null }): Promise<Collection> => {
-      let c = name !== undefined || presentation !== undefined ? await patch<Collection>(`${W(orgId, wsId)}/collections/${id}`, { ...(name !== undefined ? { name } : {}), ...(presentation !== undefined ? { presentation } : {}) }) : undefined;
+    mutationFn: async ({ id, name, postIds, presentation, followTagId }: { id: ID; name?: string; postIds?: ID[]; presentation?: Presentation | null; followTagId?: ID | null }): Promise<Collection> => {
+      let c =
+        name !== undefined || presentation !== undefined || followTagId !== undefined
+          ? await patch<Collection>(`${W(orgId, wsId)}/collections/${id}`, { ...(name !== undefined ? { name } : {}), ...(presentation !== undefined ? { presentation } : {}), ...(followTagId !== undefined ? { followTagId } : {}) })
+          : undefined;
       if (postIds) c = await put<Collection>(`${W(orgId, wsId)}/collections/${id}/posts`, { postIds });
       return c!;
     },
@@ -596,14 +606,19 @@ export function useUpdateCollection(orgId: ID, wsId: ID) {
 }
 export function useDeleteCollection(orgId: ID, wsId: ID) {
   const qc = useQueryClient();
-  // Returns the deleted collection so callers can offer Undo (recreate it with the same posts).
+  // Returns the deleted collection so callers can offer Undo (recreate it with the same posts), and
+  // with deleteMyPosts the caller's own posts it sent to the recycle bin (to restore on Undo).
   return useMutation({
-    mutationFn: async (id: ID) => {
+    mutationFn: async (v: ID | { id: ID; deleteMyPosts?: boolean }) => {
+      const { id, deleteMyPosts } = typeof v === "string" ? { id: v, deleteMyPosts: false } : v;
       const c = await get<Collection>(`${W(orgId, wsId)}/collections/${id}`);
-      await del(`${W(orgId, wsId)}/collections/${id}`);
-      return c;
+      const r = await del<{ deletedPostIds?: ID[] } | undefined>(`${W(orgId, wsId)}/collections/${id}${deleteMyPosts ? "?deleteMyPosts=true" : ""}`);
+      return { ...c, deletedPostIds: r?.deletedPostIds ?? [] };
     },
-    onSuccess: () => invalidateLibrary(qc, orgId, wsId),
+    onSuccess: (r) => {
+      invalidateLibrary(qc, orgId, wsId);
+      if (r.deletedPostIds.length) invalidatePostLists(qc, orgId);
+    },
   });
 }
 export const useCollectionEntries = (orgId: ID, wsId: ID, id: ID | undefined) =>
@@ -767,14 +782,14 @@ export const useImportPosts = (orgId: ID, id: ID | undefined) =>
 export function useImportAction(orgId: ID, id: ID) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (v: { action: "items"; items: ImportItem[] } | { action: "mode"; mode: ImportMode } | { action: "commit" } | { action: "publishAll" } | { action: "delete" }): Promise<ImportJob | undefined> => {
+    mutationFn: async (v: { action: "items"; items: ImportItem[] } | { action: "mode"; mode: ImportMode } | { action: "commit"; visibility?: "workspace" | "people" } | { action: "publishAll" } | { action: "delete" }): Promise<ImportJob | undefined> => {
       switch (v.action) {
         case "items":
           return patch<ImportJob>(`${O(orgId)}/imports/${id}`, { items: v.items });
         case "mode":
           return patch<ImportJob>(`${O(orgId)}/imports/${id}`, { mode: v.mode });
         case "commit":
-          return post<ImportJob>(`${O(orgId)}/imports/${id}/commit`, {}, `commit-${id}`);
+          return post<ImportJob>(`${O(orgId)}/imports/${id}/commit`, v.visibility ? { visibility: v.visibility } : {}, `commit-${id}`);
         case "publishAll":
           return post<ImportJob>(`${O(orgId)}/imports/${id}/publish-all`);
         case "delete":
@@ -784,6 +799,7 @@ export function useImportAction(orgId: ID, id: ID) {
     onSuccess: (job) => {
       if (job) qc.setQueryData(qk.importJob(orgId, id), job);
       invalidatePostLists(qc, orgId);
+      qc.invalidateQueries({ queryKey: ["org", orgId, "post"] }); // e.g. Publish all: each post's status
       qc.invalidateQueries({ queryKey: ["org", orgId, "ws"] });
     },
   });
@@ -803,9 +819,10 @@ export function useBilling(orgId: ID) {
   });
 }
 
-/** Sign-in methods the server has configured (shows the Google button only when it works). */
+/** Public server settings: sign-in methods (the Google button only when it works), whether pricing
+ *  is open (hidden while testing), and whether sign-up needs an invite code. */
 export const useAuthProviders = () =>
-  useQuery({ queryKey: ["auth", "providers"], queryFn: ({ signal }) => get<{ google: boolean }>("/auth/providers", signal), staleTime: Infinity, retry: false });
+  useQuery({ queryKey: ["auth", "providers"], queryFn: ({ signal }) => get<{ google: boolean; pricing?: boolean; signupCode?: boolean }>("/auth/providers", signal), staleTime: Infinity, retry: false });
 
 // ---- dev ----
 
@@ -813,3 +830,163 @@ export const usePersonas = () =>
   useQuery({ queryKey: ["dev", "personas"], queryFn: ({ signal }) => get<{ user: User; roles: string[] }[]>("/dev/personas", signal) });
 export const useDevEmails = () =>
   useQuery({ queryKey: ["dev", "emails"], queryFn: ({ signal }) => get<DevEmail[]>("/dev/emails", signal), refetchInterval: 3000 });
+
+// ---- text in images (OCR) ----
+
+export const useOcrSettings = (orgId: ID, enabled = true) =>
+  useQuery({ queryKey: ["org", orgId, "ocr"], enabled, queryFn: ({ signal }) => get<import("./contract").OcrSettings>(`${O(orgId)}/ocr`, signal) });
+export function useSaveOcr(orgId: ID) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { provider: import("./contract").OcrProviderId; credentials?: Record<string, string>; forget?: boolean }) => put<import("./contract").OcrSettings>(`${O(orgId)}/ocr`, v),
+    onSuccess: (d) => qc.setQueryData(["org", orgId, "ocr"], d),
+  });
+}
+export function useRereadOcr(orgId: ID) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (which: "failed" | "all") => post<{ queued: number }>(`${O(orgId)}/ocr/reread`, { which }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["org", orgId, "ocr"] }),
+  });
+}
+/** Correct (or add) the text in one image; every post showing it is reindexed. */
+export function useCorrectOcr(orgId: ID) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ assetId, text }: { assetId: ID; text: string }) => put<{ ocrState: string; ocrText: string }>(`${O(orgId)}/assets/${assetId}/ocr`, { text }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["org", orgId, "post"] });
+      invalidatePostLists(qc, orgId);
+    },
+  });
+}
+
+// ---- combine / split drafts ----
+
+/** Combine drafts into the first one (deck order); the rest are set aside until split. */
+export function useCombineDrafts(orgId: ID) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (postIds: ID[]) => post<PostDetail>(`${O(orgId)}/posts/combine`, { postIds }),
+    onSuccess: (d) => {
+      qc.setQueryData(qk.post(orgId, d.post.id), d);
+      qc.invalidateQueries({ queryKey: ["org", orgId, "post"] });
+      invalidatePostLists(qc, orgId);
+    },
+  });
+}
+export function useSplitDraft(orgId: ID) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: ID) => post<PostDetail>(`${O(orgId)}/posts/${id}/split`),
+    onSuccess: (d) => {
+      qc.setQueryData(qk.post(orgId, d.post.id), d);
+      qc.invalidateQueries({ queryKey: ["org", orgId, "post"] });
+      invalidatePostLists(qc, orgId);
+    },
+  });
+}
+
+/** Owners set who else can edit or own a collection or notebook (everyone can view). */
+export function useSetCollectionMembers(orgId: ID, wsId: ID) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, members, visibility }: { id: ID; members: { userId: ID; role: import("./contract").CollectionRole }[]; visibility?: Collection["visibility"] }) =>
+      put<Collection>(`${W(orgId, wsId)}/collections/${id}/members`, { members, ...(visibility ? { visibility } : {}) }),
+    onSuccess: (c) => qc.setQueryData([...qk.collections(orgId, wsId), c.id], c),
+  });
+}
+
+// ---- attachments ----
+
+/** Attach a file to a post: the body is the file; the server dedupes by content and extracts text. */
+export async function uploadAttachment(orgId: ID, file: File): Promise<import("./contract").AttachmentView> {
+  const res = await fetch(`${API_BASE_URL}${O(orgId)}/attachments?filename=${encodeURIComponent(file.name)}`, { method: "POST", credentials: "include", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((body as { message?: string }).message ?? `Upload failed (${res.status})`);
+  return body as import("./contract").AttachmentView;
+}
+
+// ---- sheets ----
+
+type SheetT = import("./contract").Sheet;
+type SheetChartT = import("./contract").SheetChart;
+const sheetKey = (orgId: ID, id: ID) => ["org", orgId, "sheet", id] as const;
+
+export const useSheets = (orgId: ID, wsId: ID, q = "") =>
+  useQuery({
+    queryKey: ["org", orgId, "ws", wsId, "sheets", q],
+    queryFn: ({ signal }) => get<import("./contract").SheetSummary[]>(`${W(orgId, wsId)}/sheets${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ""}`, signal),
+    placeholderData: keepPreviousData,
+  });
+export const useSheet = (orgId: ID, id: ID | undefined) =>
+  useQuery({ queryKey: sheetKey(orgId, id ?? ""), queryFn: ({ signal }) => get<SheetT>(`${O(orgId)}/sheets/${id}`, signal), enabled: !!id, retry: (n, e) => !(e instanceof ApiError && e.status === 404) && n < 2 });
+/** A tab's rows (up to 50,000): fetched once per tab, then sorted and filtered in the browser. */
+export const useSheetRows = (orgId: ID, sheetId: ID | undefined, tabId: ID | undefined) =>
+  useQuery({
+    queryKey: [...sheetKey(orgId, sheetId ?? ""), "rows", tabId],
+    queryFn: ({ signal }) => get<import("./contract").SheetRows>(`${O(orgId)}/sheets/${sheetId}/tabs/${tabId}/rows`, signal),
+    enabled: !!sheetId && !!tabId,
+    staleTime: Infinity,
+  });
+
+/** Import a spreadsheet: the body is the file (.xlsx or .csv). */
+export function useImportSheet(orgId: ID, wsId: ID) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const res = await fetch(`${API_BASE_URL}${W(orgId, wsId)}/sheets?filename=${encodeURIComponent(file.name)}`, { method: "POST", credentials: "include", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((body as { message?: string }).message ?? `Import failed (${res.status})`);
+      return body as SheetT;
+    },
+    onSuccess: (s) => {
+      qc.setQueryData(sheetKey(orgId, s.id), s);
+      qc.invalidateQueries({ queryKey: ["org", orgId, "ws", wsId, "sheets"] });
+    },
+  });
+}
+export function useDeleteSheet(orgId: ID, wsId: ID) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: ID) => del<void>(`${O(orgId)}/sheets/${id}`),
+    onSuccess: (_, id) => {
+      qc.removeQueries({ queryKey: sheetKey(orgId, id) });
+      qc.invalidateQueries({ queryKey: ["org", orgId, "ws", wsId, "sheets"] });
+    },
+  });
+}
+/** Save, change, or delete a chart on a sheet; the sheet's chart list updates in place. */
+export function useSheetChart(orgId: ID, sheetId: ID) {
+  const qc = useQueryClient();
+  const patchSheet = (fn: (charts: SheetChartT[]) => SheetChartT[]) => qc.setQueryData<SheetT>(sheetKey(orgId, sheetId), (s) => (s ? { ...s, charts: fn(s.charts) } : s));
+  return {
+    create: useMutation({
+      mutationFn: (v: { tabId: ID; name: string; spec: import("./contract").SheetChartSpec }) => post<SheetChartT>(`${O(orgId)}/sheets/${sheetId}/charts`, v),
+      onSuccess: (c) => patchSheet((cs) => [...cs, c]),
+    }),
+    update: useMutation({
+      mutationFn: ({ id, ...v }: { id: ID; name?: string; spec?: import("./contract").SheetChartSpec }) => patch<SheetChartT>(`${O(orgId)}/sheets/${sheetId}/charts/${id}`, v),
+      onSuccess: (c) => patchSheet((cs) => cs.map((x) => (x.id === c.id ? c : x))),
+    }),
+    remove: useMutation({
+      mutationFn: (id: ID) => del<void>(`${O(orgId)}/sheets/${sheetId}/charts/${id}`),
+      onSuccess: (_, id) => patchSheet((cs) => cs.filter((x) => x.id !== id)),
+    }),
+  };
+}
+
+// ---- super admin ----
+
+export const useSuperOverview = () => useQuery({ queryKey: ["super", "overview"], queryFn: ({ signal }) => get<import("./contract").SuperOverview>("/super/overview", signal), retry: false });
+export function useSuperDeleteOrg() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, confirm }: { id: ID; confirm: string }) => api<{ deleted: string }>("DELETE", `/super/orgs/${id}`, { confirm }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["super"] }),
+  });
+}
+export function useSuperWipe() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (confirm: string) => post<{ wiped: boolean }>("/super/wipe", { confirm }), onSuccess: () => qc.clear() });
+}

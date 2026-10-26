@@ -1,4 +1,5 @@
 import {
+  TuneRounded,
   ChevronLeftRounded,
   ChevronRightRounded,
   CloseRounded,
@@ -11,15 +12,16 @@ import {
 import { Box, Button, CircularProgress, IconButton, InputBase, Skeleton, Stack, Tooltip, Typography } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import type { Collection, Post } from "../../api/contract";
+import type { Collection, Post, Presentation } from "../../api/contract";
 import { useCollection, usePeople, usePostDetails, useTags, useUpdateCollection, useUpdatePost } from "../../api/hooks";
 import { can, useWs, wsPath } from "../../app/session";
 import { useNotify } from "../../components/notify";
 import { EmptyState } from "../../components/ui";
 import { errorMessage } from "../../lib/format";
-import { deriveSlides, type Slide } from "../../lib/slides";
+import { applyPresentation, deriveSlides, type Slide } from "../../lib/slides";
 import { themeFor, type Theme } from "../../lib/themes";
 import { SlideFrame } from "./SlideView";
+import { SlidesPanel } from "./SlidesPanel";
 import { ThemePicker } from "./ThemePicker";
 
 type Msg = { type: "go"; index: number } | { type: "hello" };
@@ -56,9 +58,18 @@ export default function PresentPage() {
   // Themes: a notebook's theme covers all its posts; otherwise each post presents in its own.
   // When the presenter can't save a choice (a selection, or someone else's post), it applies for now.
   const [localTheme, setLocalTheme] = useState<Theme | null>(null);
-  const deck = useMemo(() => (loaded ? posts.flatMap((p) => deriveSlides(p.data!.post, p.data!.images).map((slide) => ({ slide, theme: localTheme ?? themeFor(collection?.presentation, p.data!.post.presentation) }))) : []), [loaded, posts, collection, localTheme]);
-  const slides: Slide[] = useMemo(() => deck.map((d) => d.slide), [deck]);
+  const all = useMemo(() => (loaded ? posts.flatMap((p) => deriveSlides(p.data!.post, p.data!.images).map((slide) => ({ slide, theme: localTheme ?? themeFor(collection?.presentation, p.data!.post.presentation) }))) : []), [loaded, posts, collection, localTheme]);
   const single = ids.length === 1 && !collection ? posts[0]?.data?.post : undefined;
+  // What presents (hidden slides, only designed, title slide parts): saved with the notebook/deck or
+  // the post; a plain selection keeps it for this session.
+  const [localPres, setLocalPres] = useState<Presentation | null>(null);
+  const pres: Presentation = useMemo(() => localPres ?? (collection ? collection.presentation : single?.presentation) ?? {}, [localPres, collection, single]);
+  const deck = useMemo(() => {
+    const keep = new Map(applyPresentation(all.map((d) => d.slide), pres).map((sl) => [sl.key, sl]));
+    return all.flatMap((d) => (keep.has(d.slide.key) ? [{ ...d, slide: keep.get(d.slide.key)! }] : []));
+  }, [all, pres]);
+  const slides: Slide[] = useMemo(() => deck.map((d) => d.slide), [deck]);
+  const [panel, setPanel] = useState(false);
   const canEditPost = (p?: Post) => !!p && can(role, "member") && !p.deletedAt && (p.authorId === me.user.id || p.coAuthorIds.includes(me.user.id) || (can(role, "admin") && p.status === "published"));
   const canSaveTheme = can(role, "member") && (collection ? true : canEditPost(single));
   const updatePost = useUpdatePost(org.id, single?.id ?? "");
@@ -70,6 +81,22 @@ export default function PresentPage() {
     else if (single) updatePost.mutate({ version: single.version, presentation: { ...single.presentation, theme: t } });
   };
   const notify = useNotify();
+  // Changes show at once; quick successive ones are saved together a moment later, with the latest
+  // version (two saves in flight would conflict).
+  const latest = useRef({ collection, single });
+  latest.current = { collection, single };
+  const presTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const savePres = (patch: Partial<Presentation>) => {
+    const next = { ...pres, ...patch };
+    setLocalPres(next);
+    if (!canSaveTheme || (!collection && !single)) return;
+    clearTimeout(presTimer.current);
+    presTimer.current = setTimeout(() => {
+      const { collection: c, single: p } = latest.current;
+      if (c) updateCollection.mutate({ id: c.id, presentation: next }, { onError: (e) => notify(errorMessage(e)) });
+      else if (p) updatePost.mutate({ version: p.version, presentation: next }, { onError: (e) => notify(errorMessage(e)) });
+    }, 500);
+  };
   const [exporting, setExporting] = useState(false);
   const download = async () => {
     setExporting(true);
@@ -254,9 +281,14 @@ export default function PresentPage() {
           {title}
         </Typography>
         <Tooltip title="Overview (O)"><IconButton onClick={() => setOverview(!overview)} sx={{ color: overview ? "#8ea2ff" : "inherit" }} aria-label="Slide overview" aria-pressed={overview}><GridViewRounded /></IconButton></Tooltip>
+        <Tooltip title="Choose which slides present">
+          <IconButton onClick={() => setPanel(true)} sx={{ color: "inherit" }} aria-label="Slide settings">
+            <TuneRounded />
+          </IconButton>
+        </Tooltip>
         <Tooltip title="Download as PowerPoint (.pptx)">
           <span>
-            <IconButton onClick={() => void download()} disabled={exporting || !deck.length} sx={{ color: "inherit" }} aria-label="Download as PowerPoint">
+            <IconButton onClick={() => void download()} disabled={exporting || !deck.length} sx={{ color: "inherit", display: { xs: "none", sm: "inline-flex" } }} aria-label="Download as PowerPoint">
               {exporting ? <CircularProgress size={20} color="inherit" /> : <FileDownloadOutlined />}
             </IconButton>
           </span>
@@ -275,7 +307,7 @@ export default function PresentPage() {
           </Tooltip>
         )}
         <ThemePicker current={deck[index]?.theme ?? themeFor()} deck={(single ?? posts[0]?.data?.post)?.presentation?.deck} scope={themeScope} onPick={pickTheme} />
-        <Tooltip title="Laser pointer (L)"><IconButton onClick={() => setLaser(!laser)} sx={{ color: laser ? "#ff5a5a" : "inherit" }} aria-label="Laser pointer" aria-pressed={laser}><RadioButtonCheckedRounded /></IconButton></Tooltip>
+        <Tooltip title="Laser pointer (L)"><IconButton onClick={() => setLaser(!laser)} sx={{ color: laser ? "#ff5a5a" : "inherit", display: { xs: "none", sm: "inline-flex" } }} aria-label="Laser pointer" aria-pressed={laser}><RadioButtonCheckedRounded /></IconButton></Tooltip>
         <Tooltip describeChild title="Presenter view with notes (P)">
           <Button size="small" startIcon={<OpenInNewRounded />} sx={{ color: "inherit", display: { xs: "none", sm: "inline-flex" } }} onClick={() => window.open(`${location.pathname}?${new URLSearchParams({ ...Object.fromEntries(params), presenter: "1" })}`, "tal-presenter", "width=1100,height=720")}>
             Notes
@@ -284,6 +316,17 @@ export default function PresentPage() {
         <Tooltip title="Exit (Esc)"><IconButton onClick={exit} sx={{ color: "inherit" }} aria-label="Exit presentation"><CloseRounded /></IconButton></Tooltip>
       </Stack>
 
+      <SlidesPanel
+        open={panel}
+        onClose={() => setPanel(false)}
+        all={all}
+        shown={new Set(slides.map((sl) => sl.key ?? ""))}
+        pres={pres}
+        onChange={savePres}
+        scope={themeScope}
+        people={people}
+        tags={tags}
+      />
       {overview && (
         <Box onClick={(e) => e.stopPropagation()} sx={{ position: "absolute", inset: 0, bottom: 56, bgcolor: "rgba(11,12,15,0.96)", overflow: "auto", p: 3, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 2, alignContent: "start" }} role="listbox" aria-label="All slides">
           {slides.map((s, i) => (

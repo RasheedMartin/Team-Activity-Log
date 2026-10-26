@@ -38,11 +38,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link as RouterLink, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ApiError } from "../../api/client";
-import type { Block, ImageView, Post, PostRevision, Shape } from "../../api/contract";
+import type { Block, ImageView, Post, PostRevision, Shape, AttachmentView } from "../../api/contract";
 import { patchImageInCaches, useComments, usePeople, usePost, usePostAction, useRevisions, useSaveAnnotation, useTags } from "../../api/hooks";
 import { can, useWs, wsPath } from "../../app/session";
 import { AnnotationLayer } from "../../components/AnnotationLayer";
 import { useNotify } from "../../components/notify";
+import { SheetChartBlock } from "../../components/SheetChartBlock";
+import { FileCard } from "../../components/FileCard";
 import { RichText } from "../../components/RichText";
 import { SlideCanvas } from "../../components/SlideCanvas";
 import { designDocs } from "../../lib/blocks";
@@ -79,12 +81,12 @@ export default function PostDetailPage() {
     ) : (
       <ErrorState error={q.error} onRetry={() => q.refetch()} />
     );
-  return <PostView post={q.data.post} images={q.data.images} />;
+  return <PostView post={q.data.post} images={q.data.images} attachments={q.data.attachments ?? []} />;
 }
 
 /** Plain text of a block list (for the revision diff). */
 const blocksText = (blocks: Block[]) =>
-  blocks.map((b) => (b.type === "text" || b.type === "table" ? docText(b.doc) : b.type === "image" ? "[image]" : b.type === "slide" ? ["— designed slide —", ...designDocs(b.design).map(docText)].join("\n") : "— slide —")).join("\n");
+  blocks.map((b) => (b.type === "text" || b.type === "table" ? docText(b.doc) : b.type === "image" ? "[image]" : b.type === "slide" ? ["— designed slide —", ...designDocs(b.design).map(docText)].join("\n") : b.type === "file" ? "[file]" : "— slide —")).join("\n");
 
 function RevisionDrawer({ post, open, onClose }: { post: Post; open: boolean; onClose: () => void }) {
   const { org } = useWs();
@@ -168,7 +170,7 @@ function ImageViewer({ image, onClose, canEdit }: { image: ImageView; onClose: (
   );
 }
 
-function PostView({ post, images }: { post: Post; images: ImageView[] }) {
+function PostView({ post, images, attachments }: { post: Post; images: ImageView[]; attachments: AttachmentView[] }) {
   const { org, ws, me, role } = useWs();
   const navigate = useNavigate();
   const notify = useNotify();
@@ -333,6 +335,8 @@ function PostView({ post, images }: { post: Post; images: ImageView[] }) {
             if (b.type === "text" || b.type === "table") return <RichText key={b.id} doc={b.doc} />;
             if (b.type === "slide_break") return <Divider key={b.id} sx={{ borderStyle: "dashed" }} />;
             if (b.type === "slide") return <SlideCanvas key={b.id} design={b.design} images={imgs} />;
+            if (b.type === "file") return <FileCard key={b.id} file={attachments.find((a) => a.id === b.attachmentId)} />;
+            if (b.type === "chart") return <SheetChartBlock key={b.id} sheetId={b.sheetId} chartId={b.chartId} />;
             const img = imgs.get(b.imageInstanceId);
             if (!img) return null;
             return (

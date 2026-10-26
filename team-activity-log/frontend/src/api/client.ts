@@ -58,3 +58,17 @@ export const post = <T>(path: string, body?: unknown, idempotencyKey?: string) =
 export const patch = <T>(path: string, body: unknown) => api<T>("PATCH", path, body);
 export const put = <T>(path: string, body: unknown) => api<T>("PUT", path, body);
 export const del = <T = void>(path: string) => api<T>("DELETE", path);
+
+/** Download a file the API serves (e.g. an import's original) under its own name. Fetched in the
+ *  page so it works with the mock too, then saved through a temporary link. */
+export async function downloadFile(path: string, fallbackName: string): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}${path}`, { credentials: "include" });
+  if (!res.ok) throw new Error(res.status === 404 ? "The original file isn't available" : `Download failed (${res.status})`);
+  const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "")?.[1] ?? fallbackName;
+  const url = URL.createObjectURL(await res.blob());
+  const a = Object.assign(document.createElement("a"), { href: url, download: name });
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}

@@ -108,12 +108,14 @@ def gallery_image(p: m.Post, inst: m.ImageInstance, asset: m.Asset) -> dict:
         "postId": str(p.id),
         "postTitle": p.title,
         "thumbUrl": _variant(asset, "small"),
+        "imageUrl": _variant(asset, "medium"),
         "width": asset.width,
         "height": asset.height,
         "blurhash": asset.blurhash,
         "dominantColor": (asset.dominant_colors or [None])[0],
         "caption": inst.caption,
         "figureLabel": inst.figure_label,
+        "annotation": inst.annotation if (inst.annotation or {}).get("shapes") else None,
     }
     return {k: v for k, v in out.items() if v is not None}
 

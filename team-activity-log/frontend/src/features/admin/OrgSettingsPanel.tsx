@@ -1,12 +1,13 @@
 import { Alert, Box, Button, Chip, LinearProgress, Paper, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useBilling, usePlan, useRenameOrg } from "../../api/hooks";
+import { useAuthProviders, useBilling, usePlan, useRenameOrg } from "../../api/hooks";
 import { UPGRADE_PRICES } from "../../app/pricing";
 import { formatDay } from "../../lib/dates";
 import { can, useOrgScope } from "../../app/session";
 import { useNotify } from "../../components/notify";
 import { errorMessage } from "../../lib/format";
+import { OcrCard } from "./OcrCard";
 
 export function OrgSettingsPanel() {
   const { org, role } = useOrgScope()!;
@@ -28,6 +29,7 @@ export function OrgSettingsPanel() {
         {rename.error && <Alert severity="error" sx={{ mt: 1 }}>{errorMessage(rename.error)}</Alert>}
       </Paper>
       <PlanCard orgId={org.id} />
+      <OcrCard orgId={org.id} />
       <Paper variant="outlined" sx={{ p: 2 }}>
         <Typography variant="h4" sx={{ mb: 0.5 }}>Ownership</Typography>
         <Typography variant="body2" color="text.secondary">
@@ -86,6 +88,7 @@ function Upgrade({ orgId, options }: { orgId: string; options: string[] }) {
 }
 
 function PlanCard({ orgId }: { orgId: string }) {
+  const pricingOpen = !!useAuthProviders().data?.pricing; // hidden while testing (PRICING_PUBLIC)
   const { data: p, error, refetch } = usePlan(orgId);
   const billing = useBilling(orgId);
   const [params, setParams] = useSearchParams();
@@ -128,7 +131,9 @@ function PlanCard({ orgId }: { orgId: string }) {
           <Typography variant="caption" color="text.secondary">
             Images count once however often they're used. Going over a limit never removes anything; it only blocks adding more.
           </Typography>
-          {p.billing.enabled ? (
+          {!pricingOpen ? (
+            <Typography variant="caption" color="text.secondary">Free while we're testing. Plans and pricing open later; your work stays as it is.</Typography>
+          ) : p.billing.enabled ? (
             p.billing.subscribed || p.billing.canManage ? (
               <Box>
                 <Button variant="outlined" disabled={billing.isPending} onClick={() => billing.mutate({ action: "portal" })}>Manage billing</Button>

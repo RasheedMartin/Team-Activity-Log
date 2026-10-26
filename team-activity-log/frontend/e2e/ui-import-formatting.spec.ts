@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { openScenario } from "./helpers";
+import { openImport, openScenario } from "./helpers";
 
 // Imported slides converted to post text keep their formatting and reading order (scripts/make-test-deck.mjs builds the
 // deck), the result stays editable, and both read on a phone.
@@ -11,15 +11,15 @@ const FIXTURE = readFileSync(path.join(path.dirname(new URL(import.meta.url).pat
 
 async function importDeck(page: Page) {
   await openScenario(page, "small");
-  await page.getByRole("complementary").getByRole("link", { name: "Import slides" }).click();
-  await page.getByLabel("PowerPoint file").setInputFiles({ name: "Formatting_2024.pptx", mimeType: PPTX_MIME, buffer: FIXTURE });
+  await openImport(page);
+  await page.getByLabel("File to import").setInputFiles({ name: "Formatting_2024.pptx", mimeType: PPTX_MIME, buffer: FIXTURE });
   await page.getByRole("radio", { name: /One post for the deck/ }).click();
   await page.getByRole("radio", { name: /^Text only/ }).click(); // these tests are about the conversion to post text
   await page.getByRole("button", { name: "Start import" }).click();
   await page.getByRole("button", { name: /^Create 1 draft$/ }).click({ timeout: 20_000 });
-  await page.getByRole("button", { name: "Publish all" }).click();
-  await expect(page.getByText("All imported drafts published")).toBeVisible();
-  await page.getByRole("link", { name: "Open the deck" }).click();
+  await page.getByRole("button", { name: /^Publish all/ }).click(); // on the deck, where the import lands
+  await expect(page.getByRole("tab", { name: "Published (1)" })).toBeVisible(); // cards now open the post, not the editor
+  await expect(page.getByText(/^Published \d+ slides?$/)).toBeVisible();
   await page.getByRole("list", { name: "Posts in this collection" }).getByRole("link").first().click();
   await expect(page.getByText("Gain stable")).toBeVisible();
 }

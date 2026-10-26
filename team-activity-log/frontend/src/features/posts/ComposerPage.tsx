@@ -9,19 +9,22 @@ import {
   DeleteOutlineRounded,
   NotesRounded,
   RadioButtonUncheckedRounded,
+  InsertChartOutlined,
   TableChartOutlined,
   ViewCarouselOutlined,
-  WarningAmberRounded,
-} from "@mui/icons-material";
+  WarningAmberRounded, AttachFileRounded } from "@mui/icons-material";
 import { Alert, Box, Button, Divider, IconButton, InputBase, LinearProgress, Menu, MenuItem, Paper, Skeleton, Stack, TextField, Tooltip, Typography } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useBlocker, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { Origin } from "../../app/origin";
 import { ApiError } from "../../api/client";
-import type { Block, ImageView, Post, PostDetail, Shape } from "../../api/contract";
-import { createImageInstance, patchImageInCaches, qk, uploadImage, useCreateDraft, usePost, usePostAction, useSaveAnnotation, useUpdateImage, useUpdatePost } from "../../api/hooks";
+import type { Block, ImageView, Post, PostDetail, Shape, AttachmentView, SheetChart } from "../../api/contract";
+import { createImageInstance, patchImageInCaches, qk, uploadImage, uploadAttachment, useCreateDraft, useImportJob, usePost, usePostAction, useSaveAnnotation, useUpdateImage, useUpdatePost } from "../../api/hooks";
 import { can, useWs, wsPath } from "../../app/session";
+import { SheetChartBlock } from "../../components/SheetChartBlock";
+import { ChartPicker } from "../sheets/ChartPicker";
+import { FileCard } from "../../components/FileCard";
 import { useNotify } from "../../components/notify";
 import { PeoplePicker, TagPicker } from "../../components/Pickers";
 import { ErrorState, Kbd, StatusPill } from "../../components/ui";
@@ -37,6 +40,7 @@ import { emptyTable } from "./editor/emptyTable";
 import { SlideEditor } from "./editor/SlideEditor";
 import { TextBlockEditor } from "./editor/TextBlockEditor";
 import { ImportTrail } from "../import/ImportTrail";
+import { deckHref } from "../collections/libraryLinks";
 import { ImageMetadataDrawer } from "./ImageMetadataDrawer";
 
 type LocalBlock = Block | { id: string; type: "uploading" };
@@ -102,9 +106,11 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
   const post = detail.post;
   const isDraft = post.status === "draft";
   /** Where Back, Publish, and Discard return: where the draft was opened from (a collection, the
-   *  drafts list, the import), else an imported draft's import. */
+   *  drafts list), else an imported draft's deck, where its slides are reviewed. */
   const origin = (useLocation().state as Origin | null)?.from;
-  const importHome = origin ?? (post.source?.kind === "import" ? `${wsPath(org, ws, "/import")}?job=${post.source.importJobId}` : undefined);
+  const importJob = useImportJob(orgId, post.source?.kind === "import" ? post.source.importJobId : undefined);
+  const deck = importJob.data?.collectionId;
+  const importHome = origin ?? (post.source?.kind === "import" ? (deck ? deckHref(wsPath(org, ws), deck, true) : `${wsPath(org, ws, "/import")}?job=${post.source.importJobId}`) : undefined);
   const update = useUpdatePost(orgId, post.id);
   const action = usePostAction(orgId);
   const updateImage = useUpdateImage(orgId);
@@ -113,6 +119,21 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
   const [f, setF] = useState<Fields>(() => toFields(post));
   const [uploads, setUploads] = useState<Record<string, UploadState>>({});
   const [extraImages, setExtraImages] = useState<Record<string, ImageView>>({});
+  // Attached files: the post's, plus any attached in this session.
+  const [files, setFiles] = useState<Record<string, AttachmentView>>(() => Object.fromEntries((detail.attachments ?? []).map((a) => [a.id, a])));
+  const attach = async (list: File[]) => {
+    for (const file of list) {
+      notify(`Attaching ${file.name}…`);
+      try {
+        const a = await uploadAttachment(orgId, file);
+        setFiles((m) => ({ ...m, [a.id]: a }));
+        change((cur) => ({ blocks: [...cur.blocks, { id: uuidv7(), type: "file", attachmentId: a.id } as LocalBlock] }));
+        notify(a.searchable ? `Attached ${a.filename}; its text is searchable` : `Attached ${a.filename}`);
+      } catch (e) {
+        notify(`Couldn't attach ${file.name}: ${errorMessage(e)}`);
+      }
+    }
+  };
   const [annotating, setAnnotating] = useState<string | null>(null);
   const [details, setDetails] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
@@ -165,12 +186,26 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
     return run;
   }, [update, notify]);
 
-  // Drafts autosave a moment after typing stops (§W2.5). Published posts save on "Update".
+  // Drafts autosave once typing pauses (§W2.5): 2 s of quiet, but at least every 10 s during a
+  // long burst, so a save never lands mid-word and nothing is lost. Published posts save on "Update".
+  const firstUnsaved = useRef<number | null>(null);
   useEffect(() => {
     if (!isDraft || !dirty || conflict) return;
-    const t = setTimeout(() => void save(), 1200);
+    firstUnsaved.current ??= Date.now();
+    const wait = Math.max(0, Math.min(2000, firstUnsaved.current + 10_000 - Date.now()));
+    const t = setTimeout(() => {
+      firstUnsaved.current = null;
+      void save();
+    }, wait);
     return () => clearTimeout(t);
   }, [f, dirty, isDraft, conflict, save]);
+  // "Saving…" only when a save is slow enough to notice; otherwise the status would flicker.
+  const [slowSave, setSlowSave] = useState(false);
+  useEffect(() => {
+    if (!update.isPending) return setSlowSave(false);
+    const t = setTimeout(() => setSlowSave(true), 600);
+    return () => clearTimeout(t);
+  }, [update.isPending]);
 
   // Leaving with unsaved published edits asks first; drafts flush on the way out.
   const leaving = useRef(false); // set right before an intentional navigation (Update, Cancel)
@@ -311,7 +346,7 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
   const missingAlt = imagesInPost.filter((i) => !i.altText).length;
   const checklist: { ok: boolean; label: string; blocking: boolean }[] = [
     { ok: !!f.title.trim(), label: "Title", blocking: true },
-    { ok: hasContent, label: "Some text or an image", blocking: true },
+    { ok: hasContent, label: "Some text, an image, or a file", blocking: true },
     { ok: pendingUploads === 0, label: failedUploads ? `${failedUploads} upload${failedUploads > 1 ? "s" : ""} failed` : pendingUploads ? "Uploads finishing" : "Uploads finished", blocking: true },
     { ok: f.tagIds.length > 0, label: "Tags help people find this later", blocking: false },
     { ok: missingAlt === 0, label: missingAlt ? `${missingAlt} image${missingAlt > 1 ? "s" : ""} without alt text` : "Alt text on images", blocking: false },
@@ -325,7 +360,8 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
       { id: post.id, action: "publish", version: version.current },
       {
         // An imported draft goes back to its import, to pick the next one.
-        onSuccess: () => (importHome ? (navigate(importHome), notify(`Published “${f.title || "Untitled"}”`)) : navigate(wsPath(org, ws, `/p/${post.id}`))),
+        // (Published now, so the unsaved-changes guard would apply: we're leaving on purpose.)
+        onSuccess: () => ((leaving.current = true), setDirty(false), importHome ? (navigate(importHome), notify(`Published “${f.title || "Untitled"}”`)) : navigate(wsPath(org, ws, `/p/${post.id}`))),
         onError: (e) => setProblems(e instanceof ApiError && Array.isArray((e.details as { problems?: string[] })?.problems) ? (e.details as { problems: string[] }).problems : [errorMessage(e)]),
       },
     );
@@ -380,7 +416,8 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  const status = conflict ? "Not saved" : update.isPending ? "Saving…" : dirty ? (isDraft ? "Unsaved" : "Unsaved changes") : savedAt ? `Saved ${timeAgo(savedAt)}` : "";
+  // Drafts: keep showing the last save while typing (they save themselves); only a slow save shows.
+  const status = conflict ? "Not saved" : slowSave ? "Saving…" : dirty && !isDraft ? "Unsaved changes" : savedAt ? `Saved ${timeAgo(savedAt)}` : dirty ? "Saving soon" : "";
   const annotatingImg = annotating ? images.get(annotating) : undefined;
 
   return (
@@ -442,7 +479,7 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
               This post changed in another tab or by someone else. Load the latest version, or keep yours and overwrite it.
             </Alert>
           )}
-          {post.source?.kind === "import" && isDraft && <ImportTrail source={post.source} postId={post.id} />}
+          {post.source?.kind === "import" && isDraft && <ImportTrail source={post.source} postId={post.id} deckId={deck} />}
           <Paper variant="outlined" sx={{ p: { xs: 2, sm: 3 } }}>
             <InputBase
               fullWidth
@@ -484,7 +521,11 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
             <Stack spacing={1.5}>
               {f.blocks.map((b, i) => (
                 <BlockFrame key={b.id} index={i} count={f.blocks.length} onMove={(d) => move(i, d)} onRemove={b.type === "image" || b.type === "uploading" ? undefined : () => removeBlock(b.id)}>
-                  {b.type === "text" || b.type === "table" ? (
+                  {b.type === "chart" ? (
+                    <SheetChartBlock sheetId={b.sheetId} chartId={b.chartId} />
+                  ) : b.type === "file" ? (
+                    <FileCard file={files[b.attachmentId]} />
+                  ) : b.type === "text" || b.type === "table" ? (
                     <Box onFocusCapture={() => (focusedIndex.current = i)}>
                       <TextBlockEditor
                         label={b.type === "table" ? "Table" : `Text block ${i + 1}`}
@@ -533,6 +574,7 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
               ))}
             </Stack>
             <AddBar
+              onAttach={(list) => void attach(list)}
               onText={() => {
                 const b = emptyText();
                 setFocusBlock(b.id); // typing goes into the block just added
@@ -544,6 +586,7 @@ function ComposerLoaded({ detail, orgId }: { detail: PostDetail; meId: string; o
                 insertAt(f.blocks.length, { id, type: "table", doc: emptyTable });
               }}
               onSlide={() => insertAt(f.blocks.length, { id: uuidv7(), type: "slide_break" })}
+              onChart={(c) => insertAt(f.blocks.length, { id: uuidv7(), type: "chart", sheetId: c.sheetId, chartId: c.id })}
               onDesigned={(layout) => insertAt(f.blocks.length, { id: uuidv7(), type: "slide", design: newDesign(layout) })}
               onFiles={(files) => addFiles(files)}
             />
@@ -642,8 +685,9 @@ function SlideBreak({ notes, onNotes, onDesign }: { notes: string; onNotes: (n: 
   );
 }
 
-function AddBar({ onText, onTable, onSlide, onDesigned, onFiles }: { onText: () => void; onTable: () => void; onSlide: () => void; onDesigned: (layout: SlideLayout) => void; onFiles: (files: File[]) => void }) {
+function AddBar({ onText, onTable, onSlide, onDesigned, onFiles, onAttach, onChart }: { onText: () => void; onTable: () => void; onSlide: () => void; onDesigned: (layout: SlideLayout) => void; onFiles: (files: File[]) => void; onAttach: (files: File[]) => void; onChart: (c: SheetChart) => void }) {
   const [menu, setMenu] = useState<HTMLElement | null>(null);
+  const [picking, setPicking] = useState(false);
   return (
     <Stack direction="row" spacing={1} sx={{ mt: 2, pt: 1.5, borderTop: 1, borderColor: "divider", flexWrap: "wrap", rowGap: 1 }}>
       <Button size="small" startIcon={<NotesRounded />} onClick={onText}>Text</Button>
@@ -651,7 +695,13 @@ function AddBar({ onText, onTable, onSlide, onDesigned, onFiles }: { onText: () 
         Images
         <input hidden type="file" accept="image/*" multiple onChange={(e) => (onFiles(Array.from(e.target.files ?? [])), (e.target.value = ""))} />
       </Button>
+      <Button size="small" startIcon={<AttachFileRounded />} component="label">
+        Attach a file
+        <input hidden type="file" multiple onChange={(e) => (onAttach(Array.from(e.target.files ?? [])), (e.target.value = ""))} aria-label="File to attach" />
+      </Button>
       <Button size="small" startIcon={<TableChartOutlined />} onClick={onTable}>Table</Button>
+      <Button size="small" startIcon={<InsertChartOutlined />} onClick={() => setPicking(true)}>Chart</Button>
+      {picking && <ChartPicker onClose={() => setPicking(false)} onPick={(c) => (setPicking(false), onChart(c))} />}
       <Button size="small" startIcon={<ViewCarouselOutlined />} onClick={onSlide}>Slide break</Button>
       <Button size="small" startIcon={<DashboardCustomizeOutlined />} onClick={(e) => setMenu(e.currentTarget)} aria-haspopup="menu">Designed slide</Button>
       <Menu anchorEl={menu} open={!!menu} onClose={() => setMenu(null)}>

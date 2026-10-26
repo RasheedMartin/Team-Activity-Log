@@ -39,6 +39,7 @@ import { errorMessage } from "../../lib/format";
 import { KINDS } from "./concepts";
 import { FavoriteButton } from "./FavoriteButton";
 import { libraryHref } from "./libraryLinks";
+import { ImportDocumentButton, ImportSlidesButton, NewNotebookButton } from "./NewNotebook";
 
 
 function RenameDialog({ item, onClose }: { item: LibraryItem; onClose: () => void }) {
@@ -96,7 +97,7 @@ function Row({ item, ownerName }: { item: LibraryItem; ownerName?: string }) {
     item.postCount !== undefined ? `${item.postCount} post${item.postCount === 1 ? "" : "s"}` : null,
     `updated ${timeAgo(item.updatedAt)}`,
     ownerName ? `by ${mine ? "you" : ownerName}` : null,
-    item.kind === "view" ? (item.shared ? "shared" : "only you") : null,
+    item.kind === "view" ? (item.shared ? "shared" : "only you") : item.sharedWithMe ? "shared with you" : !item.shared ? "shared with specific people" : null,
   ].filter(Boolean);
   return (
     <ListItem
@@ -144,13 +145,14 @@ export default function LibraryPage({ kind }: { kind: Exclude<LibraryKind, "view
   const [params, setParams] = useSearchParams();
   const sort = params.get("sort") === "name" ? "name" : "recent";
   const mine = params.get("mine") === "1";
+  const shared = params.get("shared") === "1";
   const [q, setQ] = useState(params.get("q") ?? "");
   const [debounced, setDebounced] = useState(q);
   useEffect(() => {
     const t = setTimeout(() => setDebounced(q), 200);
     return () => clearTimeout(t);
   }, [q]);
-  const lib = useLibrary(org.id, ws.id, { kind, q: debounced, sort, mine });
+  const lib = useLibrary(org.id, ws.id, { kind, q: debounced, sort, mine, shared });
   const { data: people = [] } = usePeople(org.id);
   const names = useMemo(() => new Map(people.map((p) => [p.id, p.name])), [people]);
   const items = lib.data?.pages.flatMap((p) => p.items) ?? [];
@@ -162,7 +164,7 @@ export default function LibraryPage({ kind }: { kind: Exclude<LibraryKind, "view
 
   return (
     <Box sx={{ maxWidth: 960, width: "100%", mx: "auto", px: { xs: 1.5, sm: 3 }, py: 3 }}>
-      <PageHeader title={KINDS[kind].plural} sub={KINDS[kind].blurb} />
+      <PageHeader title={KINDS[kind].plural} sub={KINDS[kind].blurb} actions={kind === "notebook" ? <Stack direction="row" spacing={1}><ImportDocumentButton /><NewNotebookButton /></Stack> : <ImportSlidesButton />} />
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mb: 2 }}>
         <TextField
           placeholder="Search by name"
@@ -176,9 +178,14 @@ export default function LibraryPage({ kind }: { kind: Exclude<LibraryKind, "view
           <MenuItem value="recent">Recently updated</MenuItem>
           <MenuItem value="name">Name</MenuItem>
         </TextField>
-        <ToggleButton value="mine" selected={mine} onChange={() => set({ mine: mine ? null : "1" })} size="small" sx={{ textTransform: "none", px: 2 }}>
+        <ToggleButton value="mine" selected={mine} onChange={() => set({ mine: mine ? null : "1", shared: null })} size="small" sx={{ textTransform: "none", px: 2 }}>
           Created by me
         </ToggleButton>
+        {(
+          <ToggleButton value="shared" selected={shared} onChange={() => set({ shared: shared ? null : "1", mine: null })} size="small" sx={{ textTransform: "none", px: 2 }}>
+            Shared with me
+          </ToggleButton>
+        )}
       </Stack>
       {lib.isPending ? (
         <Stack spacing={1}>{[0, 1, 2, 3].map((i) => <Skeleton key={i} variant="rounded" height={56} />)}</Stack>
@@ -186,8 +193,8 @@ export default function LibraryPage({ kind }: { kind: Exclude<LibraryKind, "view
         <ErrorState error={lib.error} onRetry={() => lib.refetch()} />
       ) : !items.length ? (
         <EmptyState
-          title={debounced || mine ? "Nothing matches" : `No ${KINDS[kind].plural.toLowerCase()} yet`}
-          body={debounced || mine ? "Try a different name or clear the filters." : kind === "collection" ? "Import slides to make one per deck, or select posts in Search and choose New collection." : "Select posts in Search and choose New notebook, or make one from a tag on Home."}
+          title={debounced || mine || shared ? "Nothing matches" : `No ${KINDS[kind].plural.toLowerCase()} yet`}
+          body={debounced || mine ? "Try a different name or clear the filters." : kind === "collection" ? "Import a PowerPoint deck to make one. Each slide becomes a searchable post." : "Make one with New notebook and write in it, or select posts in Search and choose New notebook."}
         />
       ) : (
         <Paper variant="outlined" sx={{ opacity: lib.isPlaceholderData ? 0.6 : 1 }}>
