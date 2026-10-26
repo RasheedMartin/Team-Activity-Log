@@ -207,23 +207,26 @@ async def notifications(org: str, u: m.User = Depends(require_user), db: AsyncSe
     ctx = await org_ctx(db, u, org)
     rows = (
         await db.execute(
-            select(m.NotificationRow, m.Post.title, m.CommentRow)
+            select(m.NotificationRow, m.Post.title, m.CommentRow, m.SavedView.name)
             .join(m.Post, m.Post.id == m.NotificationRow.post_id)
             .outerjoin(m.CommentRow, m.CommentRow.id == m.NotificationRow.comment_id)
+            .outerjoin(m.SavedView, m.SavedView.id == m.NotificationRow.saved_view_id)
             .where(m.NotificationRow.user_id == u.id, m.NotificationRow.org_id == ctx.org.id)
             .order_by(m.NotificationRow.created_at.desc())
             .limit(200)
         )
     ).all()
     out = []
-    for n, title, c in rows:
+    for n, title, c, view_name in rows:
         text = doc_text(c.doc) if c and not c.deleted_at else ""
         item = {
             "id": str(n.id),
             "kind": n.kind,
             "postId": str(n.post_id),
-            "commentId": str(n.comment_id),
-            "actorId": str(n.actor_id),
+            # Alerts have no comment or actor: they name the saved search and how many posts matched.
+            **({"commentId": str(n.comment_id)} if n.comment_id else {}),
+            **({"actorId": str(n.actor_id)} if n.actor_id else {}),
+            **({"savedViewId": str(n.saved_view_id), "viewName": view_name, "count": n.count} if n.kind == "alert" else {}),
             "workspaceId": str(n.workspace_id),
             "createdAt": iso(n.created_at),
             "postTitle": title,

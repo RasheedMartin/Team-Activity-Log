@@ -250,6 +250,8 @@ class Post(Base):
         CheckConstraint("status = 'published' or published_at is null", name="posts_draft_unpublished"),
         Index("posts_ws_status", "workspace_id", "status", "deleted_at"),
         Index("posts_author_drafts", "author_id", "workspace_id", postgresql_where=text("status = 'draft' and deleted_at is null")),
+        # Saved-search alerts ask "anything published here lately?" every round (tal.alerts).
+        Index("posts_ws_published", "workspace_id", "published_at", postgresql_where=text("status = 'published' and deleted_at is null")),
     )
 
 
@@ -396,6 +398,22 @@ class SavedView(Base):
     updated_at: Mapped[dt.datetime] = ts(False, True)
 
 
+class SearchAlert(Base):
+    """Someone follows a saved search (theirs, or a shared one): new posts that match it go to their
+    Activity ("instant"), or to Activity plus an email digest ("daily", "weekly"). Run by tal.alerts."""
+
+    __tablename__ = "search_alerts"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    view_id: Mapped[uuid.UUID] = fk("saved_views.id")
+    user_id: Mapped[uuid.UUID] = fk("users.id")
+    mode: Mapped[str] = mapped_column(String(10))  # instant | daily | weekly
+    checked_at: Mapped[dt.datetime] = ts(False, True)
+    # Posts already reported from the overlap window (index lag), so none is reported twice.
+    recent_ids: Mapped[list] = mapped_column(JSONB, server_default="[]")
+    created_at: Mapped[dt.datetime] = ts(False, True)
+    __table_args__ = (UniqueConstraint("view_id", "user_id", name="search_alerts_view_user"),)
+
+
 class Pin(Base):
     """Favorites in the sidebar (UI name). Personal, ordered."""
 
@@ -518,8 +536,11 @@ class NotificationRow(Base):
     workspace_id: Mapped[uuid.UUID] = fk("workspaces.id", "CASCADE", False, False)
     kind: Mapped[str] = mapped_column(String(10))
     post_id: Mapped[uuid.UUID] = fk("posts.id", "CASCADE", False, False)
-    comment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
-    actor_id: Mapped[uuid.UUID] = fk("users.id", "CASCADE", False, False)
+    comment_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))  # none for alerts
+    actor_id: Mapped[uuid.UUID | None] = fk("users.id", "CASCADE", True, False)  # none for alerts
+    # kind "alert": the saved search that matched and how many new posts (post_id is the newest).
+    saved_view_id: Mapped[uuid.UUID | None] = fk("saved_views.id", "CASCADE", True, False)
+    count: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[dt.datetime] = ts(False, True)
     read_at: Mapped[dt.datetime | None] = ts()
     __table_args__ = (Index("notifications_user_recent", "user_id", "created_at"),)

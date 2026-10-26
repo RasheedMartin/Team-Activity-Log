@@ -124,13 +124,14 @@ async def _reindex(org: str | None, new_version: int | None) -> None:
 
 
 async def _worker() -> None:
+    from .alerts import run_alerts
     from .mailer import run_mailer
     from .ocr import run_ocr
     from .search.indexer import ensure_index, run_indexer
 
     await ensure_index()
     stop = asyncio.Event()
-    await asyncio.gather(run_indexer(stop), run_mailer(stop), run_ocr(stop))
+    await asyncio.gather(run_indexer(stop), run_mailer(stop), run_ocr(stop), run_alerts(stop))
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -453,10 +453,15 @@ export interface Comment {
 
 export interface Notification {
   id: ID;
-  kind: "mention" | "reply";
+  /** "alert": new posts match a saved search the person follows (postId is the newest). */
+  kind: "mention" | "reply" | "alert";
   postId: ID;
-  commentId: ID;
-  actorId: ID;
+  commentId?: ID; // not on alerts
+  actorId?: ID; // not on alerts
+  savedViewId?: ID;
+  viewName?: string;
+  /** Alerts: how many new posts matched. */
+  count?: number;
   workspaceId: ID;
   createdAt: ISODateTime;
   readAt?: ISODateTime;
@@ -648,7 +653,13 @@ export interface SavedView {
   /** Pinned by the *caller* (pins are per user; see /pins). */
   pinned: boolean;
   updatedAt?: ISODateTime;
+  /** The caller's alert on this search, if they follow it. */
+  alert?: AlertMode;
 }
+
+/** Hear about new posts matching a saved search: in Activity as they're published, or also by a
+ * daily or weekly email digest. */
+export type AlertMode = "instant" | "daily" | "weekly";
 
 export interface Collection {
   id: ID;
@@ -693,6 +704,8 @@ export interface LibraryItem {
   postCount?: number;
   collectionKind?: Collection["kind"];
   filterSpec?: FilterSpec;
+  /** Saved searches: the caller's alert, if they follow it. */
+  alert?: AlertMode;
   /** Someone else's collection or notebook that was shared with the caller. */
   sharedWithMe?: boolean;
   /** The caller's role on a collection or notebook (owner if they made it). */

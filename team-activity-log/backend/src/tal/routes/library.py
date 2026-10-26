@@ -12,6 +12,7 @@ from .. import collection_access as access
 from .. import follow
 from .. import models as m
 from .. import sanitize as clean
+from ..alerts import MODES as ALERT_MODES
 from ..context import WsCtx, require_user, role_at_least, ws_ctx
 from ..db import get_db
 from ..errors import fail
@@ -44,8 +45,13 @@ async def toggle_pin(db: AsyncSession, ctx: WsCtx, kind: str, item_id: uuid.UUID
         db.add(m.Pin(user_id=ctx.user.id, workspace_id=ctx.ws.id, kind=kind, item_id=item_id, position=(pos or 0) + 1))
 
 
+async def my_alerts(db: AsyncSession, user_id: uuid.UUID) -> dict[uuid.UUID, str]:
+    return dict((await db.execute(select(m.SearchAlert.view_id, m.SearchAlert.mode).where(m.SearchAlert.user_id == user_id))).all())
+
+
 async def library_items(db: AsyncSession, ctx: WsCtx) -> list[dict]:
     pinned = await pinned_set(db, ctx)
+    alerts = await my_alerts(db, ctx.user.id)
     views = (
         await db.execute(select(m.SavedView).where(m.SavedView.workspace_id == ctx.ws.id, (m.SavedView.shared.is_(True)) | (m.SavedView.owner_id == ctx.user.id)))
     ).scalars().all()
@@ -58,7 +64,7 @@ async def library_items(db: AsyncSession, ctx: WsCtx) -> list[dict]:
     # with you) ones with nothing you can see yet.
     colls = [c for c in colls if (c.visibility == "workspace" or c.created_by == ctx.user.id or c.id in grants) and (counts.get(c.id) or c.created_by == ctx.user.id or c.id in grants)]
     items = [
-        {"kind": "view", "id": str(v.id), "name": v.name, "ownerId": str(v.owner_id), "shared": v.shared, "pinned": ("view", v.id) in pinned, "updatedAt": iso(v.updated_at) or EPOCH, "filterSpec": v.filter_spec}
+        {"kind": "view", "id": str(v.id), "name": v.name, "ownerId": str(v.owner_id), "shared": v.shared, "pinned": ("view", v.id) in pinned, "updatedAt": iso(v.updated_at) or EPOCH, "filterSpec": v.filter_spec, **({"alert": alerts[v.id]} if v.id in alerts else {})}
         for v in views
     ]
     items += [
@@ -142,7 +148,7 @@ async def _view(db: AsyncSession, ctx: WsCtx, view_id: str, *, visible_only: boo
 async def get_view(org: str, ws: str, view_id: str, u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
     ctx = await ws_ctx(db, u, org, ws)
     v = await _view(db, ctx, view_id)
-    return saved_view_view(v, ("view", v.id) in await pinned_set(db, ctx))
+    return saved_view_view(v, ("view", v.id) in await pinned_set(db, ctx), (await my_alerts(db, ctx.user.id)).get(v.id))
 
 
 @router.post("/orgs/{org}/workspaces/{ws}/saved-views", status_code=201)
@@ -157,7 +163,7 @@ async def create_view(org: str, ws: str, body: dict = Body(...), u: m.User = Dep
     if body.get("pinned", True):
         await toggle_pin(db, ctx, "view", v.id, True)
     await db.flush()
-    return saved_view_view(v, ("view", v.id) in await pinned_set(db, ctx))
+    return saved_view_view(v, ("view", v.id) in await pinned_set(db, ctx), (await my_alerts(db, ctx.user.id)).get(v.id))
 
 
 @router.patch("/orgs/{org}/workspaces/{ws}/saved-views/{view_id}")
@@ -179,7 +185,29 @@ async def patch_view(org: str, ws: str, view_id: str, body: dict = Body(...), u:
             v.shared = bool(edits["shared"])
         v.updated_at = now()
     await db.flush()
-    return saved_view_view(v, ("view", v.id) in await pinned_set(db, ctx))
+    return saved_view_view(v, ("view", v.id) in await pinned_set(db, ctx), (await my_alerts(db, ctx.user.id)).get(v.id))
+
+
+@router.put("/orgs/{org}/workspaces/{ws}/saved-views/{view_id}/alert")
+async def set_alert(org: str, ws: str, view_id: str, body: dict = Body(...), u: m.User = Depends(require_user), db: AsyncSession = Depends(get_db, scope="function")):
+    """Follow a saved search you can see (yours or shared): `mode` instant | daily | weekly | off.
+    Alerts start from now: posts already published don't count as new."""
+    ctx = await ws_ctx(db, u, org, ws)
+    v = await _view(db, ctx, view_id)
+    mode = body.get("mode")
+    if mode not in (*ALERT_MODES, "off"):
+        fail(422, "invalid", "Choose instant, daily, weekly, or off")
+    a = (await db.execute(select(m.SearchAlert).where(m.SearchAlert.view_id == v.id, m.SearchAlert.user_id == u.id))).scalar_one_or_none()
+    if mode == "off":
+        if a:
+            await db.delete(a)
+    elif a:
+        a.mode = mode
+    else:
+        t = now()
+        db.add(m.SearchAlert(id=uuid7(), view_id=v.id, user_id=u.id, mode=mode, checked_at=t, recent_ids=[], created_at=t))
+    await db.flush()
+    return saved_view_view(v, ("view", v.id) in await pinned_set(db, ctx), None if mode == "off" else mode)
 
 
 @router.delete("/orgs/{org}/workspaces/{ws}/saved-views/{view_id}", status_code=204)

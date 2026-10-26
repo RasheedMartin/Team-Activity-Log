@@ -236,8 +236,9 @@ def comment_view(c: m.CommentRow) -> dict:
 # ---------------------------------------------------------------- library
 
 
-def saved_view_view(v: m.SavedView, pinned: bool) -> dict:
-    return clean({"id": s(v.id), "workspaceId": s(v.workspace_id), "ownerId": s(v.owner_id), "name": v.name, "filterSpec": v.filter_spec, "shared": v.shared, "pinned": pinned, "updatedAt": iso(v.updated_at)})
+def saved_view_view(v: m.SavedView, pinned: bool, alert: str | None = None) -> dict:
+    """`alert`: the viewer's own alert on this search (instant, daily, weekly), if any."""
+    return clean({"id": s(v.id), "workspaceId": s(v.workspace_id), "ownerId": s(v.owner_id), "name": v.name, "filterSpec": v.filter_spec, "shared": v.shared, "pinned": pinned, "updatedAt": iso(v.updated_at), "alert": alert})
 
 
 def collection_view(c: m.CollectionRow, post_ids: list[str]) -> dict:

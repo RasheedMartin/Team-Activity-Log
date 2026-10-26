@@ -184,7 +184,7 @@ export function SavedViewsMenu({ activeId, onApply, compact }: { activeId?: stri
         {views.map((v) => (
           <MenuItem key={v.id} selected={v.id === activeId} onClick={() => (setAnchor(null), onApply(v))}>
             <ListItemIcon>{v.id === activeId ? <CheckRounded fontSize="small" /> : null}</ListItemIcon>
-            <ListItemText primary={v.name} secondary={v.shared ? "Shared" : "Only you"} slotProps={{ primary: { noWrap: true } }} />
+            <ListItemText primary={v.name} secondary={[v.shared ? "Shared" : "Only you", v.alert ? (v.alert === "instant" ? "alerts on" : `${v.alert} alerts`) : null].filter(Boolean).join(" · ")} slotProps={{ primary: { noWrap: true } }} />
             <FavoriteButton kind="view" id={v.id} name={v.name} size="small" />
             {(v.ownerId === me.user.id || can(role, "admin")) && (
               <Tooltip title="Delete saved search">

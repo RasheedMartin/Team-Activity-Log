@@ -556,6 +556,17 @@ export function useSaveView(orgId: ID, wsId: ID) {
     onSuccess: () => invalidateLibrary(qc, orgId, wsId),
   });
 }
+/** Follow a saved search (yours or shared): "off" stops. Alerts count posts published from now on. */
+export function useSetAlert(orgId: ID, wsId: ID) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, mode }: { id: ID; mode: import("./contract").AlertMode | "off" }) => put<SavedView>(`${W(orgId, wsId)}/saved-views/${id}/alert`, { mode }),
+    onSuccess: (v) => {
+      qc.setQueryData([...qk.views(orgId, wsId), v.id], v);
+      invalidateLibrary(qc, orgId, wsId);
+    },
+  });
+}
 export function useDeleteView(orgId: ID, wsId: ID) {
   const qc = useQueryClient();
   // Returns the deleted view so callers can offer Undo (recreate it).
