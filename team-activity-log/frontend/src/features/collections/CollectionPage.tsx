@@ -1,4 +1,4 @@
-import { AddRounded, ArrowBackRounded, FileDownloadOutlined, CallMergeRounded, PersonAddAltRounded, CallSplitRounded, CollectionsBookmarkOutlined, DeleteOutlineRounded, MoreVertRounded, SlideshowRounded, UploadFileOutlined, WarningAmberRounded } from "@mui/icons-material";
+import { AddRounded, ArrowBackRounded, ChevronLeftRounded, ChevronRightRounded, FileDownloadOutlined, CallMergeRounded, PersonAddAltRounded, CallSplitRounded, CollectionsBookmarkOutlined, DeleteOutlineRounded, MoreVertRounded, SlideshowRounded, UploadFileOutlined, WarningAmberRounded } from "@mui/icons-material";
 import { Box, Button, ButtonBase, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, ListItemIcon, Menu, MenuItem, Skeleton, Stack, Tab, Tabs, Tooltip, Typography } from "@mui/material";
 import { useMemo, useState } from "react";
 import { Link as RouterLink, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -16,6 +16,7 @@ import { formatDay } from "../../lib/dates";
 import { useRangeSelect } from "../../lib/useRangeSelect";
 import { docText } from "../../lib/prosemirror";
 import { AddPostsDialog } from "./AddPosts";
+import { AddSlideButton, DeckMenu } from "./DeckBuilder";
 import { FavoriteButton } from "./FavoriteButton";
 import { ShareDialog } from "./ShareDialog";
 
@@ -51,15 +52,17 @@ export default function CollectionPage() {
   const origin = useOrigin(c.data?.name ?? "collection"); // Back from a post or draft returns here
   const details = usePostDetails(org.id, c.data?.postIds ?? []);
   const loaded = details.filter((q) => q.data).map((q) => q.data!);
-  const deck = c.data?.kind === "deck_import";
+  const imported = c.data?.kind === "deck_import";
+  const built = c.data?.kind === "deck"; // made here slide by slide (DeckBuilder)
+  const deck = imported || built;
   const importJobId = loaded.find((d) => d.post.source?.kind === "import")?.post.source?.importJobId;
   const drafts = loaded.filter((d) => d.post.status === "draft").length;
   const status = new Map(loaded.map((d) => [d.post.id, d.post.status]));
   const [params, setParams] = useSearchParams();
   const show: Show = (["review", "published"] as const).find((x) => x === params.get("show")) ?? "all";
-  const tabs = deck || drafts > 0;
+  const tabs = imported || drafts > 0;
   const shows = (x: string) => !tabs || show === "all" || (show === "review" ? status.get(x) === "draft" : status.get(x) === "published");
-  const job = useImportJob(org.id, deck ? importJobId : undefined);
+  const job = useImportJob(org.id, imported ? importJobId : undefined);
   const importAct = useImportAction(org.id, importJobId ?? "");
   const navigate = useNavigate();
   const [menu, setMenu] = useState<HTMLElement | null>(null);
@@ -116,6 +119,16 @@ export default function CollectionPage() {
       ok.length ? () => ok.forEach((x) => action.mutate({ id: x, action: "restore" })) : undefined,
     );
   };
+  // Built decks: slide order is the deck's order (Present and the .pptx follow it).
+  const reorderable = built && canEdit && show === "all";
+  const move = (postId: string, by: -1 | 1) => {
+    const order = [...(c.data?.postIds ?? [])];
+    const i = order.indexOf(postId);
+    const j = i + by;
+    if (i < 0 || j < 0 || j >= order.length) return;
+    [order[i], order[j]] = [order[j], order[i]];
+    update.mutate({ id, postIds: order }, { onError: (e) => notify(e.message) });
+  };
   const remove = () => {
     const before = ids;
     update.mutate({ id, postIds: ids.filter((x) => !selected.has(x)) }, { onSuccess: () => notify(`Removed ${plural(chosen.length, "post")} from this collection`, () => update.mutate({ id, postIds: before })) });
@@ -133,10 +146,10 @@ export default function CollectionPage() {
           <Button size="small" startIcon={<ArrowBackRounded />} component={RouterLink} to={`${base}/${deck ? "collections" : "notebooks"}`} sx={{ color: "text.secondary", ml: -0.5, mb: 0.5 }}>
             {deck ? "Decks" : "Notebooks"}
           </Button>
-          {deck && <Typography variant="caption" color="text.secondary" component="div">Imported slides</Typography>}
+          {imported && <Typography variant="caption" color="text.secondary" component="div">Imported slides</Typography>}
           <Typography variant="h1" sx={{ fontSize: "1.6rem", wordBreak: "break-word" }}>{coll.name}</Typography>
           <Typography variant="body2" color="text.secondary">
-            {coll.postIds.length} post{coll.postIds.length === 1 ? "" : "s"}
+            {coll.postIds.length} {built ? "slide" : "post"}{coll.postIds.length === 1 ? "" : "s"}
             {drafts > 0 && ` · ${drafts} still draft${drafts === 1 ? "" : "s"}`}
             {coll.updatedAt && ` · updated ${formatDay(coll.updatedAt.slice(0, 10))}`}
           </Typography>
@@ -153,26 +166,33 @@ export default function CollectionPage() {
           <Button variant="contained" startIcon={<SlideshowRounded />} component={RouterLink} to={`${base}/present?collection=${coll.id}`} disabled={!coll.postIds.length}>
             Present
           </Button>
-          {deck && importJobId && drafts > 0 && (
+          {built && canEdit && <AddSlideButton deck={coll} origin={origin} />}
+          {built && drafts > 0 && (
+            <Button variant="outlined" disabled={busy} onClick={() => void run(loaded.filter((d) => d.post.status === "draft").map((d) => d.post.id), "publish").then(({ ok, failed }) => notify(failed ? `Published ${ok.length}. ${failed} need${failed === 1 ? "s" : ""} attention: open ${failed === 1 ? "it" : "them"} to see why.` : `Published ${plural(ok.length, "slide")}`))}>
+              Publish all {drafts}
+            </Button>
+          )}
+          {imported && importJobId && drafts > 0 && (
             <Button variant="outlined" disabled={importAct.isPending} onClick={() => importAct.mutate({ action: "publishAll" }, { onSuccess: () => (setParams({}, { replace: true }), notify(`Published ${plural(drafts, "slide")}`)), onError: (e) => notify(`Couldn't publish: ${e.message}`) })}>
               Publish all {drafts}
             </Button>
           )}
           {/* An imported deck holds its slides: review is publish or discard (owner request). */}
-          {!deck && canEdit && (
+          {!imported && canEdit && (
             <Button startIcon={<AddRounded />} onClick={() => setAdding(true)}>
               Add posts
             </Button>
           )}
           <AddPostsDialog open={adding} onClose={() => setAdding(false)} collectionId={coll.id} name={coll.name} postIds={coll.postIds} />
           <FavoriteButton kind="collection" id={coll.id} name={coll.name} />
-          {isOwner && !deck && (
+          {isOwner && !imported && (
             <>
               <Button startIcon={<PersonAddAltRounded />} onClick={() => setSharing(true)} aria-label="Share collection">Share</Button>
               {sharing && <ShareDialog c={coll} open onClose={() => setSharing(false)} />}
             </>
           )}
-          {deck && importJobId && isOwner && (
+          {built && isOwner && <DeckMenu deck={coll} />}
+          {imported && importJobId && isOwner && (
             <>
               <IconButton aria-label="More deck actions" onClick={(e) => setMenu(e.currentTarget)}><MoreVertRounded /></IconButton>
               <Menu anchorEl={menu} open={!!menu} onClose={() => setMenu(null)}>
@@ -216,37 +236,44 @@ export default function CollectionPage() {
         </Typography>
       )}
       {!coll.postIds.length ? (
-        <EmptyState icon={<CollectionsBookmarkOutlined />} title="Nothing here yet" body="Posts added to this collection show up here, in order." />
+        <EmptyState
+          icon={<CollectionsBookmarkOutlined />}
+          title={built ? "No slides yet" : "Nothing here yet"}
+          body={built ? "Add a slide from a layout, add posts you've already written (each becomes a slide), or import a PowerPoint into this deck." : "Posts added to this collection show up here, in order."}
+        />
       ) : (
         <>
-          <Stack direction="row" alignItems="center" spacing={1} useFlexGap sx={{ flexWrap: "wrap", mb: 1.5, minHeight: 40 }}>
-            <Checkbox size="small" checked={all} indeterminate={chosen.length > 0 && !all} onChange={() => setSelected(all ? new Set() : new Set(ids))} inputProps={{ "aria-label": all ? "Deselect all posts" : "Select all posts" }} />
-            <Typography variant="body2" color="text.secondary" sx={{ flex: 1, minWidth: 100 }}>{chosen.length ? `${chosen.length} selected` : "Select all"}</Typography>
-            {chosen.length > 0 && (
-              <>
-                {chosenDrafts.length > 0 && <Button size="small" variant="contained" disabled={busy} onClick={() => void publish()}>Publish {chosenDrafts.length}</Button>}
-                {chosen.length > 1 && onlyDrafts && (
-                  <Tooltip describeChild title="Into the first one, in deck order. You can split them back until it's published.">
-                    <Button
-                      size="small"
-                      startIcon={<CallMergeRounded />}
-                      disabled={busy || combine.isPending}
-                      onClick={() => combine.mutate(chosen, { onSuccess: (d) => (setSelected(new Set([d.post.id])), notify(`Combined ${chosen.length} slides into “${d.post.title || "Untitled"}”`, () => splitDraft.mutate(d.post.id))), onError: (e) => notify(e.message) })}
-                    >
-                      Combine into one post
+          {/* Nothing on this tab (e.g. To review with 0): nothing to select. */}
+          {ids.length > 0 && (
+            <Stack direction="row" alignItems="center" spacing={1} useFlexGap sx={{ flexWrap: "wrap", mb: 1.5, minHeight: 40 }}>
+              <Checkbox size="small" checked={all} indeterminate={chosen.length > 0 && !all} onChange={() => setSelected(all ? new Set() : new Set(ids))} inputProps={{ "aria-label": all ? "Deselect all posts" : "Select all posts" }} />
+              <Typography variant="body2" color="text.secondary" sx={{ flex: 1, minWidth: 100 }}>{chosen.length ? `${chosen.length} selected` : "Select all"}</Typography>
+              {chosen.length > 0 && (
+                <>
+                  {chosenDrafts.length > 0 && <Button size="small" variant="contained" disabled={busy} onClick={() => void publish()}>Publish {chosenDrafts.length}</Button>}
+                  {chosen.length > 1 && onlyDrafts && (
+                    <Tooltip describeChild title="Into the first one, in deck order. You can split them back until it's published.">
+                      <Button
+                        size="small"
+                        startIcon={<CallMergeRounded />}
+                        disabled={busy || combine.isPending}
+                        onClick={() => combine.mutate(chosen, { onSuccess: (d) => (setSelected(new Set([d.post.id])), notify(`Combined ${chosen.length} slides into “${d.post.title || "Untitled"}”`, () => splitDraft.mutate(d.post.id))), onError: (e) => notify(e.message) })}
+                      >
+                        Combine into one post
+                      </Button>
+                    </Tooltip>
+                  )}
+                  {chosen.length === 1 && loaded.find((d) => d.post.id === chosen[0])?.post.source?.mergedFrom?.length ? (
+                    <Button size="small" startIcon={<CallSplitRounded />} disabled={splitDraft.isPending} onClick={() => splitDraft.mutate(chosen[0], { onSuccess: () => (setSelected(new Set()), notify("Split back into separate slides")), onError: (e) => notify(e.message) })}>
+                      Split back
                     </Button>
-                  </Tooltip>
-                )}
-                {chosen.length === 1 && loaded.find((d) => d.post.id === chosen[0])?.post.source?.mergedFrom?.length ? (
-                  <Button size="small" startIcon={<CallSplitRounded />} disabled={splitDraft.isPending} onClick={() => splitDraft.mutate(chosen[0], { onSuccess: () => (setSelected(new Set()), notify("Split back into separate slides")), onError: (e) => notify(e.message) })}>
-                    Split back
-                  </Button>
-                ) : null}
-                {!deck && canEdit && <Button size="small" disabled={busy || update.isPending} onClick={remove}>Remove from collection</Button>}
-                <Button size="small" color="error" disabled={busy} onClick={() => void discard()}>{onlyDrafts ? "Discard" : "Delete"}</Button>
-              </>
-            )}
-          </Stack>
+                  ) : null}
+                  {!imported && canEdit && <Button size="small" disabled={busy || update.isPending} onClick={remove}>{built ? "Remove from deck" : "Remove from collection"}</Button>}
+                  <Button size="small" color="error" disabled={busy} onClick={() => void discard()}>{onlyDrafts ? "Discard" : "Delete"}</Button>
+                </>
+              )}
+            </Stack>
+          )}
         <Box component="ol" aria-label="Posts in this collection" sx={{ listStyle: "none", p: 0, m: 0, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 2 }}>
           {details.map((q, i) =>
             q.data && !shows(q.data.post.id) ? null : q.data ? (
@@ -259,6 +286,24 @@ export default function CollectionPage() {
                   inputProps={{ "aria-label": `Select ${q.data.post.title || "untitled post"}` }}
                   sx={{ position: "absolute", top: 12, left: 12, zIndex: 1, p: 0.5, bgcolor: "background.paper", borderRadius: 1, boxShadow: 1, "&:hover": { bgcolor: "background.paper" } }}
                 />
+                {reorderable && (
+                  <Stack direction="row" sx={{ position: "absolute", top: 12, right: 12, zIndex: 1, bgcolor: "background.paper", borderRadius: 1, boxShadow: 1 }}>
+                    <Tooltip title="Move earlier">
+                      <span>
+                        <IconButton size="small" disabled={i === 0 || update.isPending} onClick={() => move(q.data!.post.id, -1)} aria-label={`Move ${q.data.post.title || "untitled slide"} earlier`}>
+                          <ChevronLeftRounded fontSize="small" />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                    <Tooltip title="Move later">
+                      <span>
+                        <IconButton size="small" disabled={i === details.length - 1 || update.isPending} onClick={() => move(q.data!.post.id, 1)} aria-label={`Move ${q.data.post.title || "untitled slide"} later`}>
+                          <ChevronRightRounded fontSize="small" />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                  </Stack>
+                )}
                 <ButtonBase
                   component={RouterLink}
                   to={q.data.post.status === "draft" ? `${base}/p/${q.data.post.id}/edit` : `${base}/p/${q.data.post.id}`}

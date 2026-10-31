@@ -61,6 +61,7 @@ test("review imported slides on the deck, and always find the way back", async (
   await expect(page.getByText(/Published 7 posts/)).toBeVisible();
   await expect(page.getByRole("tab", { name: "Published (8)" })).toBeVisible();
   await expect(page.getByText(/Nothing left to review/)).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Select all posts" })).toHaveCount(0); // nothing to select
   await expect(page.getByRole("link", { name: "Present" })).toHaveAttribute("href", /\/present\?collection=/);
 });
 

@@ -1,10 +1,11 @@
 import { http, HttpResponse } from "msw";
-import type { Collection, CollectionRole, ID, LibraryItem, LibraryKind, LibraryPage, PinRef, Presentation, SavedView } from "../../api/contract";
+import type { AlertMode, Collection, CollectionRole, ID, LibraryItem, LibraryKind, LibraryPage, PinRef, Presentation, SavedView } from "../../api/contract";
 import { uuidv7 } from "../../lib/ids";
 import { db } from "../db";
 import { engine, fail, now, reindex, roleAtLeast, route, workspaceCtx, type OrgCtx } from "../server";
 import { membersOf, requireRole, roleIn, setMembers, sharedWith } from "./collectionAccess";
 import { backfill } from "../follow";
+import { alertFor, setAlert } from "../alerts";
 
 // Saved views, collections, and notebooks — built for scale (owner request): a paged, searchable
 // library; per-user pins for the rail; single-item reads. In Postgres: saved_views, collections,
@@ -19,9 +20,12 @@ function togglePin(userId: ID, wsId: ID, ref: PinRef, on: boolean) {
   setPins(userId, wsId, on ? [...pins, ref] : pins);
 }
 
-// Only imported decks are "collections" now; anything hand-picked (older rows too) is a notebook.
-const kindOf = (c: Collection): LibraryKind => (c.kind === "deck_import" ? "collection" : "notebook");
-const viewItem = (v: SavedView, me: ID): LibraryItem => ({ kind: "view", id: v.id, name: v.name, ownerId: v.ownerId, shared: v.shared, pinned: isPinned(me, v.workspaceId, "view", v.id), updatedAt: v.updatedAt ?? "1970-01-01T00:00:00Z", filterSpec: v.filterSpec });
+// Decks (imported or built) are "collections"; anything hand-picked (older rows too) is a notebook.
+const kindOf = (c: Collection): LibraryKind => (c.kind === "deck_import" || c.kind === "deck" ? "collection" : "notebook");
+const viewItem = (v: SavedView, me: ID): LibraryItem => {
+  const alert = alertFor(v.id, me);
+  return { kind: "view", id: v.id, name: v.name, ownerId: v.ownerId, shared: v.shared, pinned: isPinned(me, v.workspaceId, "view", v.id), updatedAt: v.updatedAt ?? "1970-01-01T00:00:00Z", filterSpec: v.filterSpec, ...(alert ? { alert } : {}) };
+};
 /** Like the server (views.visible_to): deleted posts, and others' drafts or hidden posts, drop out
  *  of what a person sees in a collection; membership stays, so restoring or publishing one puts it
  *  back in place. */
@@ -42,7 +46,10 @@ const view = (c: Collection, ctx: Pick<OrgCtx, "user" | "role">): Collection => 
 };
 
 const collectionItem = (c: Collection, me: ID): LibraryItem => ({ kind: kindOf(c), id: c.id, name: c.name, ownerId: c.createdBy, shared: c.visibility !== "people", sharedWithMe: sharedWith(c, me), myRole: c.createdBy === me ? "owner" : ((c.members ?? []).find((x) => x.userId === me)?.role ?? "viewer"), pinned: isPinned(me, c.workspaceId, kindOf(c), c.id), updatedAt: c.updatedAt ?? "1970-01-01T00:00:00Z", postCount: live(c, me).postIds.length, collectionKind: c.kind });
-const withPinned = (v: SavedView, me: ID): SavedView => ({ ...v, pinned: isPinned(me, v.workspaceId, "view", v.id) });
+const withPinned = (v: SavedView, me: ID): SavedView => {
+  const alert = alertFor(v.id, me);
+  return { ...v, pinned: isPinned(me, v.workspaceId, "view", v.id), ...(alert ? { alert } : {}) };
+};
 
 /** Everything in a workspace the caller can see, as library items. */
 function libraryItems(wsId: ID, me: ID): LibraryItem[] {
@@ -163,6 +170,18 @@ export const libraryHandlers = [
       return HttpResponse.json(withPinned(db.t.savedViews.get(v!.id)!, ctx.user.id));
     }),
   ),
+  http.put(
+    "/v1/orgs/:org/workspaces/:ws/saved-views/:id/alert",
+    route(async ({ cookies, params, request }) => {
+      const ctx = workspaceCtx(cookies, params.org as string, params.ws as string);
+      const v = db.t.savedViews.get(params.id as string);
+      if (!v || v.workspaceId !== ctx.ws.id || (!v.shared && v.ownerId !== ctx.user.id)) fail(404, "not_found", "View not found");
+      const { mode } = (await request.json()) as { mode?: string };
+      if (!["instant", "daily", "weekly", "off"].includes(mode ?? "")) fail(422, "invalid", "Choose instant, daily, weekly, or off");
+      setAlert(v!.id, ctx.user.id, mode as AlertMode | "off");
+      return HttpResponse.json(withPinned(v!, ctx.user.id));
+    }),
+  ),
   http.delete(
     "/v1/orgs/:org/workspaces/:ws/saved-views/:id",
     route(({ cookies, params }) => {
@@ -213,7 +232,7 @@ export const libraryHandlers = [
         if (byTag) fail(409, "exists", `This tag already has a notebook: “${byTag.name}”`, { existingId: byTag.id });
         assertUniqueNotebookName(ctx.ws.id, body.name);
       }
-      const c = db.t.collections.put({ id: uuidv7(), workspaceId: ctx.ws.id, name: body.name.trim(), kind: "notebook", followsTag: !!body.sourceTagId || undefined, postIds: body.postIds ?? [], createdBy: ctx.user.id, updatedAt: now(), sourceTagId: body.sourceTagId });
+      const c = db.t.collections.put({ id: uuidv7(), workspaceId: ctx.ws.id, name: body.name.trim(), kind: body.kind === "deck" ? "deck" : "notebook", followsTag: !!body.sourceTagId || undefined, postIds: body.postIds ?? [], createdBy: ctx.user.id, updatedAt: now(), sourceTagId: body.sourceTagId });
       syncPostCollections(c, []);
       return HttpResponse.json(view(c, ctx), { status: 201 });
     }),

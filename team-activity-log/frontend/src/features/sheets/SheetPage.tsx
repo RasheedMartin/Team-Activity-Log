@@ -1,196 +1,60 @@
-import {
-  AddchartRounded,
-  ArrowBackRounded,
-  ArrowDownwardRounded,
-  ArrowUpwardRounded,
-  CalendarTodayOutlined,
-  CategoryOutlined,
-  CloseRounded,
-  DeleteOutlineRounded,
-  FileDownloadOutlined,
-  MoreHorizRounded,
-  NumbersRounded,
-  SearchRounded,
-  SubjectRounded,
-} from "@mui/icons-material";
-import {
-  Alert,
-  Box,
-  Button,
-  ButtonBase,
-  Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  Divider,
-  IconButton,
-  InputAdornment,
-  ListItemIcon,
-  Menu,
-  MenuItem,
-  Paper,
-  Skeleton,
-  Stack,
-  Tab,
-  Tabs,
-  TextField,
-  ToggleButton,
-  ToggleButtonGroup,
-  Tooltip,
-  Typography,
-} from "@mui/material";
-import { useVirtualizer } from "@tanstack/react-virtual";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link as RouterLink, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import type { SheetCell, SheetChart, SheetColumn } from "../../api/contract";
-import { ApiError, downloadFile } from "../../api/client";
-import { useDeleteSheet, useSheet, useSheetRows } from "../../api/hooks";
+import { AddchartRounded, AddRounded, ArrowBackRounded, CloseRounded, DeleteOutlineRounded, SearchRounded, UndoRounded } from "@mui/icons-material";
+import { Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, InputAdornment, Skeleton, Stack, Tab, Tabs, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography } from "@mui/material";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { Link as RouterLink, useParams, useSearchParams } from "react-router-dom";
+import type { SheetCell, SheetChart, SheetColumn, SheetColumnOp, SheetRowOp } from "../../api/contract";
+import { ApiError } from "../../api/client";
+import { useEditSheet, usePeople, useSheet, useSheetRows } from "../../api/hooks";
 import { can, useWs, wsPath } from "../../app/session";
 import { useNotify } from "../../components/notify";
 import { EmptyState, ErrorState } from "../../components/ui";
+import { timeAgo } from "../../lib/dates";
 import { errorMessage } from "../../lib/format";
+import { colIndex, view, type Sort } from "../../lib/sheetData";
 import { ChartBuilder } from "./ChartBuilder";
 import { ChartsPanel } from "./ChartsPanel";
-import { colIndex, columnStats, fmtCell, view, type Sort } from "../../lib/sheetData";
+import { ColumnMenu } from "./ColumnMenu";
+import { SheetGrid, type Active } from "./SheetGrid";
+import { SheetMenu } from "./SheetMenu";
 
-const ROW_H = 36;
-const NUM_W = 56;
-const WIDTH: Record<SheetColumn["type"], number> = { number: 130, date: 130, category: 170, text: 240 };
-const TYPE_ICON: Record<SheetColumn["type"], ReactNode> = {
-  number: <NumbersRounded sx={{ fontSize: 14 }} />,
-  date: <CalendarTodayOutlined sx={{ fontSize: 13 }} />,
-  category: <CategoryOutlined sx={{ fontSize: 14 }} />,
-  text: <SubjectRounded sx={{ fontSize: 14 }} />,
-};
-const TYPE_NAME: Record<SheetColumn["type"], string> = { number: "Numbers", date: "Dates", category: "Categories", text: "Text" };
 const plural = (n: number, one: string) => `${n.toLocaleString()} ${one}${n === 1 ? "" : "s"}`;
-
-/** A column's menu: sort it, and what's in it (for the rows the filter shows). */
-function ColumnMenu({ anchor, col, rows, shown, sort, onSort, onClose }: { anchor: HTMLElement | null; col: SheetColumn | null; rows: SheetCell[][]; shown: number[]; sort: Sort; onSort: (s: Sort) => void; onClose: () => void }) {
-  const stats = useMemo(() => (col ? columnStats(rows, col, shown) : null), [rows, col, shown]);
-  if (!col || !stats) return null;
-  const line = (label: string, value: ReactNode) => (
-    <Stack direction="row" justifyContent="space-between" spacing={3} key={label}>
-      <Typography variant="body2" color="text.secondary">{label}</Typography>
-      <Typography variant="body2" sx={{ fontVariantNumeric: "tabular-nums", textAlign: "right", minWidth: 0 }} noWrap>{value}</Typography>
-    </Stack>
-  );
-  const active = sort?.key === col.key ? sort.dir : null;
-  return (
-    <Menu anchorEl={anchor} open={!!anchor} onClose={onClose} slotProps={{ paper: { sx: { minWidth: 240, maxWidth: 320 } } }}>
-      <Box sx={{ px: 2, pt: 0.5, pb: 1 }}>
-        <Typography sx={{ fontWeight: 600 }} noWrap>{col.name}</Typography>
-        <Typography variant="caption" color="text.secondary">{TYPE_NAME[col.type]}</Typography>
-      </Box>
-      <MenuItem selected={active === "asc"} onClick={() => (onSort({ key: col.key, dir: "asc" }), onClose())}>
-        <ListItemIcon><ArrowUpwardRounded fontSize="small" /></ListItemIcon>
-        {col.type === "number" ? "Smallest first" : col.type === "date" ? "Oldest first" : "A to Z"}
-      </MenuItem>
-      <MenuItem selected={active === "desc"} onClick={() => (onSort({ key: col.key, dir: "desc" }), onClose())}>
-        <ListItemIcon><ArrowDownwardRounded fontSize="small" /></ListItemIcon>
-        {col.type === "number" ? "Largest first" : col.type === "date" ? "Newest first" : "Z to A"}
-      </MenuItem>
-      {active && (
-        <MenuItem onClick={() => (onSort(null), onClose())}>
-          <ListItemIcon><CloseRounded fontSize="small" /></ListItemIcon>
-          Clear sort
-        </MenuItem>
-      )}
-      <Divider />
-      <Stack spacing={0.5} sx={{ px: 2, py: 1 }} aria-label={`About ${col.name}`}>
-        {line("Filled", stats.filled.toLocaleString())}
-        {stats.empty > 0 && line("Empty", stats.empty.toLocaleString())}
-        {line("Distinct", stats.distinct.toLocaleString())}
-        {stats.min !== undefined && line(col.type === "date" ? "Earliest" : "Min", fmtCell(stats.min, col.type))}
-        {stats.max !== undefined && line(col.type === "date" ? "Latest" : "Max", fmtCell(stats.max, col.type))}
-        {stats.sum !== undefined && line("Sum", fmtCell(stats.sum, "number"))}
-        {stats.avg !== undefined && line("Average", fmtCell(stats.avg, "number"))}
-        {!!stats.top?.length && (
-          <>
-            <Typography variant="caption" color="text.secondary" sx={{ pt: 0.5 }}>Most common</Typography>
-            {stats.top.map((t) => line(t.value, t.count.toLocaleString()))}
-          </>
-        )}
-      </Stack>
-    </Menu>
-  );
-}
-
-/** A tab's rows: only the visible ones are in the page (tabs hold up to 50,000). */
-function Grid({ columns, rows, shown, sort, onHeader }: { columns: SheetColumn[]; rows: SheetCell[][]; shown: number[]; sort: Sort; onHeader: (el: HTMLElement, col: SheetColumn) => void }) {
-  const scroller = useRef<HTMLDivElement>(null);
-  const v = useVirtualizer({ count: shown.length, getScrollElement: () => scroller.current, estimateSize: () => ROW_H, overscan: 12 });
-  const template = `${NUM_W}px ${columns.map((c) => `${WIDTH[c.type]}px`).join(" ")}`;
-  const width = NUM_W + columns.reduce((n, c) => n + WIDTH[c.type], 0);
-  const cell = { px: 1.25, height: ROW_H, display: "flex", alignItems: "center", borderRight: 1, borderBottom: 1, borderColor: "divider", minWidth: 0, fontSize: "0.85rem" } as const;
-  return (
-    <Paper variant="outlined" ref={scroller} role="grid" aria-rowcount={shown.length + 1} aria-colcount={columns.length} sx={{ overflow: "auto", height: { xs: "60vh", md: "calc(100vh - 290px)" }, minHeight: 280, position: "relative" }}>
-      <Box sx={{ width, minWidth: "100%" }}>
-        <Box role="row" sx={{ display: "grid", gridTemplateColumns: template, position: "sticky", top: 0, zIndex: 2, bgcolor: "background.paper", boxShadow: (t) => `0 1px 0 ${t.palette.divider}` }}>
-          <Box sx={{ ...cell, position: "sticky", left: 0, bgcolor: "background.paper", zIndex: 1 }} />
-          {columns.map((c) => (
-            <ButtonBase
-              key={c.key}
-              role="columnheader"
-              aria-sort={sort?.key === c.key ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
-              onClick={(e) => onHeader(e.currentTarget, c)}
-              sx={{ ...cell, justifyContent: c.type === "number" ? "flex-end" : "flex-start", gap: 0.5, fontWeight: 600, "&:hover": { bgcolor: "action.hover" } }}
-            >
-              <Box component="span" sx={{ color: "text.disabled", display: "flex" }} aria-hidden>{TYPE_ICON[c.type]}</Box>
-              <Box component="span" sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</Box>
-              {sort?.key === c.key && (sort.dir === "asc" ? <ArrowUpwardRounded sx={{ fontSize: 14 }} /> : <ArrowDownwardRounded sx={{ fontSize: 14 }} />)}
-            </ButtonBase>
-          ))}
-        </Box>
-        <Box sx={{ height: v.getTotalSize(), position: "relative" }}>
-          {v.getVirtualItems().map((it) => {
-            const i = shown[it.index];
-            const r = rows[i];
-            return (
-              <Box key={it.key} role="row" aria-rowindex={it.index + 2} sx={{ display: "grid", gridTemplateColumns: template, position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${it.start}px)`, "&:hover > *": { bgcolor: "action.hover" } }}>
-                <Box sx={{ ...cell, position: "sticky", left: 0, zIndex: 1, bgcolor: "background.paper", color: "text.disabled", justifyContent: "flex-end", fontSize: "0.75rem", fontVariantNumeric: "tabular-nums" }}>{i + 1}</Box>
-                {columns.map((c) => {
-                  const text = fmtCell(r[colIndex(c.key)], c.type);
-                  return (
-                    <Box key={c.key} role="gridcell" title={text.length > 24 ? text : undefined} sx={{ ...cell, justifyContent: c.type === "number" ? "flex-end" : "flex-start", fontVariantNumeric: c.type === "number" ? "tabular-nums" : undefined }}>
-                      <Box component="span" sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{text}</Box>
-                    </Box>
-                  );
-                })}
-              </Box>
-            );
-          })}
-        </Box>
-      </Box>
-    </Paper>
-  );
+interface Undo {
+  label: string;
+  ops: SheetRowOp[];
 }
 
 /**
- * One sheet (owner request: Sheets v1 = read + chart + embed): its tabs as tables you can sort,
- * filter, and summarize column by column. The original file stays downloadable.
+ * One sheet (owner request: Sheets): its tabs as tables you can sort, filter, and summarize
+ * column by column; edit them if you may (v2); chart them (Charts view).
  */
 export default function SheetPage() {
   const { org, ws, role } = useWs();
-  const { id } = useParams();
+  const { id = "" } = useParams();
   const [params, setParams] = useSearchParams();
-  const navigate = useNavigate();
   const notify = useNotify();
   const sheet = useSheet(org.id, id);
   const s = sheet.data;
   const tab = s?.tabList.find((t) => t.id === params.get("tab")) ?? s?.tabList[0];
   const data = useSheetRows(org.id, s?.id, tab?.id);
   const rows = data.data?.rows;
+  const ids = data.data?.ids;
   const columns = data.data?.columns ?? tab?.columns ?? [];
+  const edit = useEditSheet(org.id, id, tab?.id ?? "");
+  const { data: people = [] } = usePeople(org.id);
   const [q, setQ] = useState("");
   const [debounced, setDebounced] = useState("");
   const [sort, setSort] = useState<Sort>(null);
   const [colMenu, setColMenu] = useState<{ el: HTMLElement; col: SheetColumn } | null>(null);
-  const [more, setMore] = useState<HTMLElement | null>(null);
-  const [confirm, setConfirm] = useState(false);
   const [building, setBuilding] = useState<{ chart?: SheetChart } | null>(null);
+  const [active, setActive] = useState<Active | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const lastPicked = useRef<number | null>(null);
+  const [pending, setPending] = useState<Map<string, SheetCell>>(new Map());
+  const [undo, setUndo] = useState<Undo[]>([]);
+  const [deletingCol, setDeletingCol] = useState<SheetColumn | null>(null);
+  const focusRow = useRef<number | null>(null); // a row just added: put the cursor on it once it's in
   const charts = params.get("view") === "charts";
+  const editable = !!s?.canEdit && !charts;
   const go = (patch: { tab?: string; charts?: boolean }) => {
     const tabId = patch.tab ?? params.get("tab");
     const next: Record<string, string> = {};
@@ -198,14 +62,109 @@ export default function SheetPage() {
     if (patch.charts ?? charts) next.view = "charts";
     setParams(next, { replace: true });
   };
-  const del = useDeleteSheet(org.id, ws.id);
   useEffect(() => {
     const t = setTimeout(() => setDebounced(q), 150);
     return () => clearTimeout(t);
   }, [q]);
-  useEffect(() => (setSort(null), setQ(""), setDebounced("")), [tab?.id]);
+  useEffect(() => {
+    setSort(null);
+    setQ("");
+    setDebounced("");
+    setActive(null);
+    setSelected(new Set());
+    setUndo([]);
+  }, [tab?.id]);
   const tabCharts = s?.charts.filter((c) => c.tabId === tab?.id).length ?? 0;
   const shown = useMemo(() => (rows ? view(rows, debounced, sort) : []), [rows, debounced, sort]);
+  useEffect(() => {
+    if (focusRow.current === null || !ids) return;
+    const r = shown.indexOf(ids.indexOf(focusRow.current));
+    if (r >= 0) setActive({ r, c: 0 });
+    focusRow.current = null;
+  }, [ids, shown]);
+
+  // ---- edits ----
+  const run = (ops: SheetRowOp[], then?: (r: Awaited<ReturnType<typeof edit.rows.mutateAsync>>) => void) =>
+    edit.rows.mutateAsync(ops).then(
+      (r) => then?.(r),
+      (e) => notify(errorMessage(e)),
+    );
+  const setCell = (rowIndex: number, col: SheetColumn, value: string) => {
+    if (!ids || !rows) return;
+    const before = rows[rowIndex]?.[colIndex(col.key)] ?? null;
+    const key = `${rowIndex}:${col.key}`;
+    setPending((p) => new Map(p).set(key, value === "" ? null : value));
+    const rowId = ids[rowIndex];
+    void run([{ op: "set", id: rowId, col: col.key, value: value === "" ? null : value }], () => setUndo((u) => [...u.slice(-49), { label: `Undo edit in ${col.name}`, ops: [{ op: "set", id: rowId, col: col.key, value: before }] }])).finally(() =>
+      setPending((p) => {
+        const n = new Map(p);
+        n.delete(key);
+        return n;
+      }),
+    );
+  };
+  const undoLast = () => {
+    const last = undo[undo.length - 1];
+    if (!last) return;
+    setUndo((u) => u.slice(0, -1));
+    void run(last.ops);
+  };
+  const addRow = (after?: number) =>
+    void run([{ op: "insert", ...(after !== undefined && ids ? { after: ids[after] } : {}) }], (r) => {
+      focusRow.current = r.inserted[0]?.id ?? null;
+      if (after === undefined) {
+        // so the new row is on screen
+        setSort(null);
+        setQ("");
+        setDebounced("");
+      }
+    });
+  const pickRow = (i: number, range: boolean) => {
+    setSelected((cur) => {
+      const next = new Set(cur);
+      if (range && lastPicked.current !== null) {
+        const a = shown.indexOf(lastPicked.current);
+        const b = shown.indexOf(i);
+        for (const x of shown.slice(Math.min(a, b), Math.max(a, b) + 1)) next.add(x);
+      } else if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+    lastPicked.current = i;
+  };
+  const deleteRows = () => {
+    if (!ids || !rows) return;
+    const gone = [...selected].sort((a, b) => a - b);
+    const goneIds = gone.map((i) => ids[i]);
+    // Undo puts each run of rows back after the row before it (or first): last-first, see the API.
+    const groups = new Map<number | "first", number[]>();
+    const goneSet = new Set(gone);
+    for (const i of gone) {
+      let p = i - 1;
+      while (p >= 0 && goneSet.has(p)) p--;
+      const anchor = p < 0 ? "first" : ids[p];
+      groups.set(anchor, [...(groups.get(anchor) ?? []), i]);
+    }
+    const restore: SheetRowOp[] = [...groups].flatMap(([anchor, list]) =>
+      [...list].reverse().map((i) => ({ op: "insert" as const, ...(anchor === "first" ? { first: true } : { after: anchor }), cells: Object.fromEntries(columns.map((c) => [c.key, rows[i][colIndex(c.key)] ?? null])) })),
+    );
+    setSelected(new Set());
+    setActive(null);
+    void run([{ op: "delete", ids: goneIds }], () => notify(`Deleted ${plural(gone.length, "row")}`, () => void run(restore)));
+  };
+  const editColumn = (op: SheetColumnOp) => {
+    if (op.op === "delete") return setDeletingCol(columns.find((c) => c.key === op.key) ?? null);
+    edit.columns.mutateAsync([op]).then(
+      () => op.op === "type" && notify(`${columns.find((c) => c.key === op.key)?.name} now holds ${op.type === "category" ? "categories" : op.type === "text" ? "text" : `${op.type}s`}`),
+      (e) => notify(errorMessage(e)),
+    );
+  };
+  const onKey = (e: KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z" && !(e.target instanceof HTMLInputElement)) {
+      e.preventDefault();
+      undoLast();
+    }
+  };
 
   if (sheet.isPending) return <Box sx={{ maxWidth: 1200, mx: "auto", p: 3 }}><Skeleton width={240} height={40} /><Skeleton variant="rounded" height={400} sx={{ mt: 2 }} /></Box>;
   if (sheet.error || !s) {
@@ -213,34 +172,23 @@ export default function SheetPage() {
       ? <ErrorState error={sheet.error} onRetry={() => sheet.refetch()} />
       : <EmptyState title="Sheet not found" body="It may have been deleted." action={<Button component={RouterLink} to={wsPath(org, ws, "/sheets")}>Back to Sheets</Button>} />;
   }
+  const editor = s.updatedBy ? people.find((p) => p.id === s.updatedBy)?.name : undefined;
+  const busy = edit.rows.isPending || edit.columns.isPending;
 
   return (
-    <Box sx={{ maxWidth: 1200, width: "100%", mx: "auto", px: { xs: 1.5, sm: 3 }, py: 2 }}>
+    <Box sx={{ maxWidth: 1200, width: "100%", mx: "auto", px: { xs: 1.5, sm: 3 }, py: 2 }} onKeyDown={onKey}>
       <Button size="small" color="inherit" startIcon={<ArrowBackRounded />} component={RouterLink} to={wsPath(org, ws, "/sheets")} sx={{ color: "text.secondary", mb: 1 }}>
         Sheets
       </Button>
       <Stack direction="row" alignItems="flex-start" spacing={1} sx={{ mb: 1 }}>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography variant="h5" component="h1" sx={{ fontWeight: 600, overflowWrap: "anywhere" }}>{s.name}</Typography>
-          <Typography variant="body2" color="text.secondary" noWrap>
-            {[s.filename, s.tabs > 1 ? plural(s.tabs, "tab") : null, plural(s.rows, "row")].filter(Boolean).join(" · ")}
+          <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
+            {[s.filename ?? "Made in the app", s.tabs > 1 ? plural(s.tabs, "tab") : null, plural(s.rows, "row"), `edited ${timeAgo(s.updatedAt)}${editor ? ` by ${editor}` : ""}`].filter(Boolean).join(" · ")}
+            {!s.canEdit && <Chip size="small" label="View only" variant="outlined" sx={{ ml: 1, height: 20 }} />}
           </Typography>
         </Box>
-        <Tooltip title="More">
-          <IconButton onClick={(e) => setMore(e.currentTarget)} aria-label="Sheet actions"><MoreHorizRounded /></IconButton>
-        </Tooltip>
-        <Menu anchorEl={more} open={!!more} onClose={() => setMore(null)}>
-          <MenuItem onClick={() => (setMore(null), void downloadFile(`/orgs/${org.id}/sheets/${s.id}/original`, s.filename).catch((e) => notify(e.message)))}>
-            <ListItemIcon><FileDownloadOutlined fontSize="small" /></ListItemIcon>
-            Download original
-          </MenuItem>
-          {s.canDelete && (
-            <MenuItem onClick={() => (setMore(null), setConfirm(true))} sx={{ color: "error.main" }}>
-              <ListItemIcon><DeleteOutlineRounded fontSize="small" color="error" /></ListItemIcon>
-              Delete sheet
-            </MenuItem>
-          )}
-        </Menu>
+        <SheetMenu sheet={s} tabName={tab?.name} data={data.data} />
       </Stack>
 
       {s.tabList.length > 1 && (
@@ -261,29 +209,34 @@ export default function SheetPage() {
               New chart
             </Button>
           )
+        ) : selected.size > 0 ? (
+          <>
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>{plural(selected.size, "row")} selected</Typography>
+            {editable && selected.size === 1 && <Button size="small" startIcon={<AddRounded />} disabled={busy} onClick={() => addRow([...selected][0])}>Insert row below</Button>}
+            {editable && <Button size="small" color="error" startIcon={<DeleteOutlineRounded />} disabled={busy} onClick={deleteRows}>Delete</Button>}
+            <Button size="small" onClick={() => setSelected(new Set())}>Clear</Button>
+          </>
         ) : (
-        <>
-        <TextField
-          size="small"
-          placeholder="Filter rows"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchRounded fontSize="small" /></InputAdornment>, endAdornment: q ? <IconButton size="small" onClick={() => setQ("")} aria-label="Clear filter"><CloseRounded fontSize="small" /></IconButton> : undefined } }}
-          inputProps={{ "aria-label": "Filter rows" }}
-          sx={{ flex: "1 1 220px", maxWidth: 360 }}
-        />
-        {sort && (
-          <Chip
-            size="small"
-            label={`${columns.find((c) => c.key === sort.key)?.name ?? ""} ${sort.dir === "asc" ? "↑" : "↓"}`}
-            onDelete={() => setSort(null)}
-            aria-label="Clear sort"
-          />
-        )}
-        <Typography variant="body2" color="text.secondary" sx={{ ml: "auto !important" }} aria-live="polite">
-          {rows ? (debounced ? `${shown.length.toLocaleString()} of ${plural(rows.length, "row")}` : plural(rows.length, "row")) : ""}
-        </Typography>
-        </>
+          <>
+            <TextField
+              size="small"
+              placeholder="Filter rows"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchRounded fontSize="small" /></InputAdornment>, endAdornment: q ? <IconButton size="small" onClick={() => setQ("")} aria-label="Clear filter"><CloseRounded fontSize="small" /></IconButton> : undefined } }}
+              inputProps={{ "aria-label": "Filter rows" }}
+              sx={{ flex: "1 1 200px", maxWidth: 360 }}
+            />
+            {sort && <Chip size="small" label={`${columns.find((c) => c.key === sort.key)?.name ?? ""} ${sort.dir === "asc" ? "↑" : "↓"}`} onDelete={() => setSort(null)} aria-label="Clear sort" />}
+            {editable && !!undo.length && (
+              <Tooltip title={`${undo[undo.length - 1].label} (Ctrl/⌘ Z)`}>
+                <IconButton size="small" onClick={undoLast} disabled={busy} aria-label="Undo"><UndoRounded fontSize="small" /></IconButton>
+              </Tooltip>
+            )}
+            <Typography variant="body2" color="text.secondary" sx={{ ml: "auto !important" }} aria-live="polite">
+              {busy ? "Saving…" : rows ? (debounced ? `${shown.length.toLocaleString()} of ${plural(rows.length, "row")}` : plural(rows.length, "row")) : ""}
+            </Typography>
+          </>
         )}
       </Stack>
 
@@ -296,32 +249,49 @@ export default function SheetPage() {
       ) : !shown.length && debounced ? (
         <EmptyState title="No rows match" body="Try other words, or clear the filter." action={<Button onClick={() => setQ("")}>Clear filter</Button>} />
       ) : (
-        <Grid columns={columns} rows={rows} shown={shown} sort={sort} onHeader={(el, col) => setColMenu({ el, col })} />
+        <SheetGrid
+          columns={columns}
+          rows={rows}
+          shown={shown}
+          sort={sort}
+          editable={editable}
+          pending={pending}
+          selectedRows={selected}
+          onSelectRow={pickRow}
+          onHeader={(el, col) => setColMenu({ el, col })}
+          onSet={setCell}
+          active={active}
+          setActive={setActive}
+        />
       )}
-      {!charts && <Typography variant="caption" color="text.disabled" sx={{ display: "block", mt: 0.75 }}>Click a column name to sort it or see what's in it.</Typography>}
+      {!charts && (
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 0.75, flexWrap: "wrap" }}>
+          {editable && rows && <Button size="small" startIcon={<AddRounded />} onClick={() => addRow()} disabled={busy}>Add row</Button>}
+          <Typography variant="caption" color="text.disabled">
+            {editable ? "Click a cell and type to edit; Enter saves. Click a row number to select rows, a column name for more." : "Click a column name to sort it or see what's in it."}
+          </Typography>
+        </Stack>
+      )}
       {building && rows && tab && <ChartBuilder sheetId={s.id} tabId={tab.id} columns={columns} rows={rows} chart={building.chart} onClose={() => setBuilding(null)} onSaved={() => go({ charts: true })} />}
 
-      <ColumnMenu anchor={colMenu?.el ?? null} col={colMenu?.col ?? null} rows={rows ?? []} shown={shown} sort={sort} onSort={setSort} onClose={() => setColMenu(null)} />
+      <ColumnMenu anchor={colMenu?.el ?? null} col={colMenu?.col ?? null} rows={rows ?? []} shown={shown} sort={sort} editable={editable} onSort={setSort} onEdit={editColumn} onClose={() => setColMenu(null)} />
 
-      <Dialog open={confirm} onClose={() => setConfirm(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Delete this sheet?</DialogTitle>
+      <Dialog open={!!deletingCol} onClose={() => setDeletingCol(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Delete “{deletingCol?.name}”?</DialogTitle>
         <DialogContent>
-          <Typography variant="body2">
-            “{s.name}” and its saved charts are deleted for everyone. Posts that show one of its charts will say the chart is no longer available.
-          </Typography>
+          <Typography variant="body2">The column and every value in it are deleted for everyone.</Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirm(false)}>Cancel</Button>
+          <Button onClick={() => setDeletingCol(null)}>Cancel</Button>
           <Button
             color="error"
             variant="contained"
-            disabled={del.isPending}
-            onClick={() =>
-              del.mutateAsync(s.id).then(
-                () => (notify("Sheet deleted"), navigate(wsPath(org, ws, "/sheets"))),
-                (e) => notify(errorMessage(e)),
-              )
-            }
+            disabled={edit.columns.isPending}
+            onClick={() => {
+              const col = deletingCol!;
+              setDeletingCol(null);
+              edit.columns.mutateAsync([{ op: "delete", key: col.key }]).then(() => notify(`Deleted ${col.name}`), (e) => notify(errorMessage(e)));
+            }}
           >
             Delete
           </Button>

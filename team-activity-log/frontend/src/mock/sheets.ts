@@ -161,13 +161,38 @@ export function asDate(v: Cell): string | null {
   return t.toISOString().slice(0, 10);
 }
 
-function infer(values: Cell[]): SheetColumn["type"] {
+export function infer(values: Cell[]): SheetColumn["type"] {
   const present = values.filter((v) => v !== null && v !== "");
   if (!present.length) return "text";
   if (present.every((v) => asNumber(v) !== null)) return "number";
   if (present.every((v) => asDate(v))) return "date";
   if (new Set(present.map(String)).size <= Math.max(12, Math.floor(present.length / 20))) return "category";
   return "text";
+}
+
+// ---------------------------------------------------------------- edits (tal/sheets.py: coerce)
+
+export const TYPE_WORD: Partial<Record<SheetColumn["type"], string>> = { number: "a number", date: "a date (like 2026-03-01)" };
+
+/** A cell as text: 4512 reads "4512". */
+export function asText(v: Cell | undefined): string | null {
+  if (v === null || v === undefined || v === "") return null;
+  return String(v).trim() || null;
+}
+
+/** [ok, value] for a cell typed into a column of this type; empty is always fine. */
+export function coerce(v: Cell | undefined, kind: SheetColumn["type"]): [boolean, Cell] {
+  const text = asText(v);
+  if (text === null) return [true, null];
+  if (kind === "number") {
+    const n = asNumber(v ?? null);
+    return [n !== null, n];
+  }
+  if (kind === "date") {
+    const d = asDate(text);
+    return [d !== null, d];
+  }
+  return [true, text];
 }
 
 function table(name: string, grid: Cell[][]): ParsedTab | null {

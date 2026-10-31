@@ -107,12 +107,19 @@ export interface SheetRow extends Omit<SheetSummary, "tabs" | "rows"> {
   sha256: string;
   searchText: string;
   createdAt: string;
-  blob: Blob;
+  /** The imported file; none for a sheet made in the app. */
+  blob?: Blob;
+  editAccess?: "owner" | "workspace";
+  updatedBy?: ID;
 }
 export interface SheetTabRow extends SheetTab {
   sheetId: ID;
   position: number;
   rows: SheetCell[][];
+  /** Row ids, parallel to rows (older mock rows lack them; assigned on first read). */
+  rowIds?: number[];
+  /** Column keys are never reused: the next new one is c{nextCol}. */
+  nextCol?: number;
 }
 export interface SheetChartRow extends SheetChart {
   createdBy: ID;

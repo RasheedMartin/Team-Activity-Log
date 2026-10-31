@@ -19,6 +19,7 @@ import logging
 import time
 import uuid
 from typing import Any
+from urllib.parse import urlencode
 
 import httpx
 from sqlalchemy import select
@@ -58,8 +59,11 @@ async def stripe(method: str, path: str, data: dict[str, Any] | None = None) -> 
     s = get_settings()
     if not s.stripe_secret_key:
         raise BillingError("Billing isn't set up on this server")
+    # httpx only form-encodes dicts; the pairs from _form go as an encoded body (order and repeats kept).
+    form = urlencode(_form(data or {}))
+    headers = {"Content-Type": "application/x-www-form-urlencoded"} if form else {}
     async with httpx.AsyncClient(timeout=20) as client:
-        r = await client.request(method, f"{API}{path}", data=_form(data or {}) or None, auth=(s.stripe_secret_key, ""))
+        r = await client.request(method, f"{API}{path}", content=form or None, headers=headers, auth=(s.stripe_secret_key, ""))
     body = r.json() if r.content else {}
     if r.status_code >= 400:
         raise BillingError((body.get("error") or {}).get("message") or f"Stripe error {r.status_code}")

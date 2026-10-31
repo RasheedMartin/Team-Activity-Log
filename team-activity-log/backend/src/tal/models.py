@@ -250,6 +250,8 @@ class Post(Base):
         CheckConstraint("status = 'published' or published_at is null", name="posts_draft_unpublished"),
         Index("posts_ws_status", "workspace_id", "status", "deleted_at"),
         Index("posts_author_drafts", "author_id", "workspace_id", postgresql_where=text("status = 'draft' and deleted_at is null")),
+        # Saved-search alerts ask "anything published here lately?" every round (tal.alerts).
+        Index("posts_ws_published", "workspace_id", "published_at", postgresql_where=text("status = 'published' and deleted_at is null")),
     )
 
 
@@ -297,7 +299,7 @@ class CollectionRow(Base):
     created_at: Mapped[dt.datetime] = ts(False, True)
     updated_at: Mapped[dt.datetime] = ts(False, True)
     __table_args__ = (
-        CheckConstraint("kind in ('manual','deck_import','saved_selection','notebook')", name="collections_kind"),
+        CheckConstraint("kind in ('manual','deck_import','deck','saved_selection','notebook')", name="collections_kind"),
         CheckConstraint("visibility in ('workspace','people')", name="collections_visibility"),
         # One notebook per tag (survives renames); unique notebook names per workspace.
         Index("collections_tag_notebook", "workspace_id", "source_tag_id", unique=True, postgresql_where=text("kind = 'notebook' and source_tag_id is not null")),
@@ -335,7 +337,11 @@ class Sheet(Base):
     sha256: Mapped[str] = mapped_column(String(64))
     bytes: Mapped[int] = mapped_column(BigInteger)
     search_text: Mapped[str] = mapped_column(Text, server_default="")
+    # Who may change cells, columns, and the data: its creator and admins ("owner"), or anyone in
+    # the workspace who isn't a viewer ("workspace"). Everyone in the workspace can view.
+    edit_access: Mapped[str] = mapped_column(String(10), server_default="owner")
     created_by: Mapped[uuid.UUID | None] = fk("users.id", "SET NULL", True)
+    updated_by: Mapped[uuid.UUID | None] = fk("users.id", "SET NULL", True, False)
     created_at: Mapped[dt.datetime] = ts(False, True)
     updated_at: Mapped[dt.datetime] = ts(False, True)
 
@@ -346,10 +352,23 @@ class SheetTab(Base):
     sheet_id: Mapped[uuid.UUID] = fk("sheets.id")
     position: Mapped[int] = mapped_column(Integer)
     name: Mapped[str] = mapped_column(String(300))
-    columns: Mapped[list] = mapped_column(JSONB)  # [{key, name, type}]
-    rows: Mapped[list] = mapped_column(JSONB)  # [[value, …], …] in column order
+    # [{key, name, type, auto?}]: key "cN" is index N in every row's cells; keys are never reused,
+    # so adding or deleting a column rewrites no rows. "auto": the type follows what's typed in.
+    columns: Mapped[list] = mapped_column(JSONB)
+    next_col: Mapped[int] = mapped_column(Integer, server_default="0")  # the next new column is "c{next_col}"
     row_count: Mapped[int] = mapped_column(Integer)
     truncated: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+
+
+class SheetRow(Base):
+    """One row of a tab (rows live apart so an edit touches only the rows it changes)."""
+
+    __tablename__ = "sheet_rows"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    tab_id: Mapped[uuid.UUID] = fk("sheet_tabs.id", "CASCADE", False, False)
+    pos: Mapped[float] = mapped_column(Float)  # order within the tab; inserts take a midpoint
+    cells: Mapped[list] = mapped_column(JSONB)  # number | "YYYY-MM-DD" | str | None, by column index
+    __table_args__ = (Index("sheet_rows_tab_pos", "tab_id", "pos"),)
 
 
 class SheetChart(Base):
@@ -394,6 +413,22 @@ class SavedView(Base):
     shared: Mapped[bool] = mapped_column(Boolean, server_default="false")
     created_at: Mapped[dt.datetime] = ts(False, True)
     updated_at: Mapped[dt.datetime] = ts(False, True)
+
+
+class SearchAlert(Base):
+    """Someone follows a saved search (theirs, or a shared one): new posts that match it go to their
+    Activity ("instant"), or to Activity plus an email digest ("daily", "weekly"). Run by tal.alerts."""
+
+    __tablename__ = "search_alerts"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    view_id: Mapped[uuid.UUID] = fk("saved_views.id")
+    user_id: Mapped[uuid.UUID] = fk("users.id")
+    mode: Mapped[str] = mapped_column(String(10))  # instant | daily | weekly
+    checked_at: Mapped[dt.datetime] = ts(False, True)
+    # Posts already reported from the overlap window (index lag), so none is reported twice.
+    recent_ids: Mapped[list] = mapped_column(JSONB, server_default="[]")
+    created_at: Mapped[dt.datetime] = ts(False, True)
+    __table_args__ = (UniqueConstraint("view_id", "user_id", name="search_alerts_view_user"),)
 
 
 class Pin(Base):
@@ -518,8 +553,11 @@ class NotificationRow(Base):
     workspace_id: Mapped[uuid.UUID] = fk("workspaces.id", "CASCADE", False, False)
     kind: Mapped[str] = mapped_column(String(10))
     post_id: Mapped[uuid.UUID] = fk("posts.id", "CASCADE", False, False)
-    comment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
-    actor_id: Mapped[uuid.UUID] = fk("users.id", "CASCADE", False, False)
+    comment_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))  # none for alerts
+    actor_id: Mapped[uuid.UUID | None] = fk("users.id", "CASCADE", True, False)  # none for alerts
+    # kind "alert": the saved search that matched and how many new posts (post_id is the newest).
+    saved_view_id: Mapped[uuid.UUID | None] = fk("saved_views.id", "CASCADE", True, False)
+    count: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[dt.datetime] = ts(False, True)
     read_at: Mapped[dt.datetime | None] = ts()
     __table_args__ = (Index("notifications_user_recent", "user_id", "created_at"),)

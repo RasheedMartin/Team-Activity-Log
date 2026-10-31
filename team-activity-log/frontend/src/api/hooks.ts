@@ -556,6 +556,17 @@ export function useSaveView(orgId: ID, wsId: ID) {
     onSuccess: () => invalidateLibrary(qc, orgId, wsId),
   });
 }
+/** Follow a saved search (yours or shared): "off" stops. Alerts count posts published from now on. */
+export function useSetAlert(orgId: ID, wsId: ID) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, mode }: { id: ID; mode: import("./contract").AlertMode | "off" }) => put<SavedView>(`${W(orgId, wsId)}/saved-views/${id}/alert`, { mode }),
+    onSuccess: (v) => {
+      qc.setQueryData([...qk.views(orgId, wsId), v.id], v);
+      invalidateLibrary(qc, orgId, wsId);
+    },
+  });
+}
 export function useDeleteView(orgId: ID, wsId: ID) {
   const qc = useQueryClient();
   // Returns the deleted view so callers can offer Undo (recreate it).
@@ -956,6 +967,112 @@ export function useDeleteSheet(orgId: ID, wsId: ID) {
     },
   });
 }
+/** Upload a file as the request body (sheets: import and replace). */
+async function postFile<T>(path: string, file: File, fallback: string): Promise<T> {
+  const res = await fetch(`${API_BASE_URL}${path}${path.includes("?") ? "&" : "?"}filename=${encodeURIComponent(file.name)}`, { method: "POST", credentials: "include", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((body as { message?: string }).message ?? `${fallback} (${res.status})`);
+  return body as T;
+}
+
+/** A blank sheet made in the app. */
+export function useNewSheet(orgId: ID, wsId: ID) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => post<SheetT>(`${W(orgId, wsId)}/sheets/blank`, { name }),
+    onSuccess: (s) => {
+      qc.setQueryData(sheetKey(orgId, s.id), s);
+      qc.invalidateQueries({ queryKey: ["org", orgId, "ws", wsId, "sheets"] });
+    },
+  });
+}
+
+/** Rename, or open editing to the workspace. */
+export function usePatchSheet(orgId: ID, sheetId: ID) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { name?: string; editAccess?: SheetT["editAccess"] }) => patch<SheetT>(`${O(orgId)}/sheets/${sheetId}`, v),
+    onSuccess: (s) => {
+      qc.setQueryData(sheetKey(orgId, s.id), s);
+      qc.invalidateQueries({ queryKey: ["org", orgId, "ws", s.workspaceId, "sheets"] });
+    },
+  });
+}
+
+/** Replace a sheet's data with a new version of the file (charts keep working where columns match). */
+export function useReplaceSheet(orgId: ID, sheetId: ID) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ file, tabName }: { file: File; tabName?: string }) =>
+      postFile<SheetT & { removedCharts: number; brokenCharts: string[] }>(`${O(orgId)}/sheets/${sheetId}/replace${tabName ? `?tab=${encodeURIComponent(tabName)}` : ""}`, file, "Replace failed"),
+    onSuccess: (s) => {
+      const { removedCharts: _r, brokenCharts: _b, ...sheet } = s;
+      void _r;
+      void _b;
+      qc.setQueryData(sheetKey(orgId, s.id), sheet);
+      qc.removeQueries({ queryKey: [...sheetKey(orgId, s.id), "rows"] });
+      qc.invalidateQueries({ queryKey: ["org", orgId, "ws", s.workspaceId, "sheets"] });
+    },
+  });
+}
+
+type RowsT = import("./contract").SheetRows;
+
+/** Apply what an edit changed to the cached rows (no reload of the whole tab). */
+export function applyRowEdit(cur: RowsT, r: import("./contract").SheetEditResult): RowsT {
+  const ids = [...cur.ids];
+  const rows = [...cur.rows];
+  const at = new Map(ids.map((id, i) => [id, i]));
+  for (const x of r.rows) {
+    const i = at.get(x.id);
+    if (i !== undefined) rows[i] = x.cells;
+  }
+  const gone = new Set(r.deleted);
+  // `after` is the row before each new one in the final order (null: first). A new row can follow
+  // another new row, so place them as their predecessor appears.
+  let pending = [...r.inserted];
+  while (pending.length) {
+    const ready = pending.filter((x) => x.after === null || ids.includes(x.after) || !pending.some((p) => p.id === x.after));
+    if (!ready.length) break;
+    for (const x of ready) {
+      const i = x.after === null ? -1 : ids.indexOf(x.after);
+      const where = x.after === null ? 0 : i < 0 ? ids.length : i + 1;
+      ids.splice(where, 0, x.id);
+      rows.splice(where, 0, x.cells);
+    }
+    pending = pending.filter((x) => !ready.includes(x));
+  }
+  const keep = ids.map((id, i) => [id, i] as const).filter(([id]) => !gone.has(id));
+  return { columns: r.columns, ids: keep.map(([id]) => id), rows: keep.map(([, i]) => rows[i]) };
+}
+
+/** Edit a tab's rows and columns. Row edits update the cache from what the server changed. */
+export function useEditSheet(orgId: ID, sheetId: ID, tabId: ID) {
+  const qc = useQueryClient();
+  const rowsKey = [...sheetKey(orgId, sheetId), "rows", tabId];
+  const setTab = (patchTab: (t: import("./contract").SheetTab) => import("./contract").SheetTab) =>
+    qc.setQueryData<SheetT>(sheetKey(orgId, sheetId), (s) => (s ? { ...s, tabList: s.tabList.map((t) => (t.id === tabId ? patchTab(t) : t)) } : s));
+  return {
+    rows: useMutation({
+      mutationFn: (ops: import("./contract").SheetRowOp[]) => patch<import("./contract").SheetEditResult>(`${O(orgId)}/sheets/${sheetId}/tabs/${tabId}/rows`, { ops }),
+      onSuccess: (r) => {
+        if (r.retyped) qc.invalidateQueries({ queryKey: rowsKey });
+        else qc.setQueryData<RowsT>(rowsKey, (cur) => (cur ? applyRowEdit(cur, r) : cur));
+        setTab((t) => ({ ...t, columns: r.columns, rowCount: r.rowCount }));
+      },
+    }),
+    columns: useMutation({
+      mutationFn: (ops: import("./contract").SheetColumnOp[]) => patch<import("./contract").SheetTab>(`${O(orgId)}/sheets/${sheetId}/tabs/${tabId}/columns`, { ops }),
+      onSuccess: (t, ops) => {
+        setTab(() => t);
+        // A type change rewrites values; adding or renaming only changes the column list.
+        if (ops.some((o) => o.op === "type" || o.op === "delete")) qc.invalidateQueries({ queryKey: rowsKey });
+        else qc.setQueryData<RowsT>(rowsKey, (cur) => (cur ? { ...cur, columns: t.columns } : cur));
+      },
+    }),
+  };
+}
+
 /** Save, change, or delete a chart on a sheet; the sheet's chart list updates in place. */
 export function useSheetChart(orgId: ID, sheetId: ID) {
   const qc = useQueryClient();

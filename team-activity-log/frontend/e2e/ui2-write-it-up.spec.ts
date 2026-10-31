@@ -128,7 +128,7 @@ test("one Activity entry in the rail: mentions, drafts, and recycle bin are tabs
   await openScenario(page, "small");
   await expect(page.getByRole("navigation", { name: "Workspace" }).getByRole("link", { name: /My drafts|Hidden|Recycle/ })).toHaveCount(0);
   await page.getByRole("link", { name: "Activity" }).click();
-  await expect(page.getByRole("tab", { name: /Mentions & replies/ })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: /Mentions & alerts/ })).toHaveAttribute("aria-selected", "true");
   await page.getByRole("tab", { name: /Drafts/ }).click();
   await expect(page).toHaveURL(/\/activity\/drafts$/);
   await expect(page.getByRole("tabpanel", { name: "Drafts" })).toBeVisible();

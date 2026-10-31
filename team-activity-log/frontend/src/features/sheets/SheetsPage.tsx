@@ -1,8 +1,8 @@
-import { SearchRounded, TableChartOutlined, UploadFileOutlined } from "@mui/icons-material";
-import { Box, Button, InputAdornment, LinearProgress, List, ListItemButton, ListItemIcon, ListItemText, Paper, Skeleton, Stack, TextField, Typography } from "@mui/material";
+import { AddRounded, SearchRounded, TableChartOutlined, UploadFileOutlined } from "@mui/icons-material";
+import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, InputAdornment, LinearProgress, List, ListItemButton, ListItemIcon, ListItemText, Paper, Skeleton, Stack, TextField, Typography } from "@mui/material";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link as RouterLink, useNavigate, useSearchParams } from "react-router-dom";
-import { useImportSheet, usePeople, useSheets } from "../../api/hooks";
+import { useImportSheet, useNewSheet, usePeople, useSheets } from "../../api/hooks";
 import { can, useWs, wsPath } from "../../app/session";
 import { useNotify } from "../../components/notify";
 import { EmptyState, ErrorState, PageHeader } from "../../components/ui";
@@ -43,6 +43,33 @@ export function ImportSheetButton() {
   );
 }
 
+/** "New sheet" (Sheets v2): a blank sheet to type into; its columns take the type of what's typed. */
+function NewSheetButton() {
+  const { org, ws, role } = useWs();
+  const create = useNewSheet(org.id, ws.id);
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  if (!can(role, "member")) return null;
+  const submit = () => create.mutate(name.trim(), { onSuccess: (s) => (setOpen(false), navigate(wsPath(org, ws, `/sheets/${s.id}`))) });
+  return (
+    <>
+      <Button variant="outlined" startIcon={<AddRounded />} onClick={() => (setName(""), create.reset(), setOpen(true))}>New sheet</Button>
+      <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="xs">
+        <DialogTitle>New sheet</DialogTitle>
+        <DialogContent>
+          <TextField fullWidth autoFocus label="Name" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && name.trim() && submit()} sx={{ mt: 1 }} placeholder="e.g. Cooldown log" />
+          {create.error && <Alert severity="error" sx={{ mt: 2 }}>{errorMessage(create.error)}</Alert>}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpen(false)}>Cancel</Button>
+          <Button variant="contained" disabled={!name.trim() || create.isPending} onClick={submit}>Create</Button>
+        </DialogActions>
+      </Dialog>
+    </>
+  );
+}
+
 /**
  * Sheets (owner request): spreadsheets kept as tables you can sort, filter, chart, and embed in
  * posts. Search finds a sheet by its name, column names, or anything written in its cells.
@@ -63,7 +90,7 @@ export default function SheetsPage() {
 
   return (
     <Box sx={{ maxWidth: 960, width: "100%", mx: "auto", px: { xs: 1.5, sm: 3 }, py: 3 }}>
-      <PageHeader title="Sheets" sub="Spreadsheets as tables: sort, filter, chart, and put a live chart in a post." actions={<ImportSheetButton />} />
+      <PageHeader title="Sheets" sub="Spreadsheets as tables: edit, sort, filter, chart, and put a live chart in a post." actions={<Stack direction="row" spacing={1}><ImportSheetButton /><NewSheetButton /></Stack>} />
       <TextField
         fullWidth
         placeholder="Search names, columns, and cells"
@@ -84,7 +111,7 @@ export default function SheetsPage() {
         <EmptyState
           icon={<TableChartOutlined />}
           title={debounced ? "Nothing matches" : "No sheets yet"}
-          body={debounced ? "Try other words: search looks inside cells too." : "Import an Excel (.xlsx) or CSV file. Each tab becomes a table you can sort, filter, and chart."}
+          body={debounced ? "Try other words: search looks inside cells too." : "Import an Excel (.xlsx) or CSV file (each tab becomes a table), or start a new sheet and type in it."}
         />
       ) : (
         <Paper variant="outlined" sx={{ opacity: sheets.isPlaceholderData ? 0.6 : 1 }}>

@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import db, events
+from .alerts import run_alerts
 from .config import get_settings
 from .errors import ApiError, api_error_handler
 from .mailer import run_mailer
@@ -44,6 +45,7 @@ async def lifespan(app: FastAPI):
         tasks.append(asyncio.create_task(run_indexer(stop)))
         tasks.append(asyncio.create_task(run_mailer(stop)))
         tasks.append(asyncio.create_task(run_ocr(stop)))
+        tasks.append(asyncio.create_task(run_alerts(stop)))
     log.info("OCR: %s", "off (OCR_ENABLED=false)" if not s.ocr_enabled else "Tesseract ready" if tesseract_available() else "waiting: Tesseract isn't installed, so images stay queued")
     log.info("Email: %s; Google sign-in: %s", s.email_provider if s.email_provider != "log" else "not sent (EMAIL_PROVIDER=log)", "on" if s.google_enabled else "off")
     yield

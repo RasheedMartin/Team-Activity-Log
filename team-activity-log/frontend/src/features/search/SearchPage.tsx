@@ -29,6 +29,7 @@ import { describeCondition, type DescribeCtx } from "./fields";
 import { FilterSidebar } from "./FilterSidebar";
 import { Histogram, HistogramTable } from "./Histogram";
 import { OnboardingChecklist } from "./Onboarding";
+import { AlertButton } from "./AlertButton";
 import { FavoriteButton } from "../collections/FavoriteButton";
 import { GalleryGrid, GalleryViewer, PeekPane, ResultsList } from "./Results";
 import { ImageCarousel } from "./ImageCarousel";
@@ -94,6 +95,14 @@ export function SearchPage() {
   const collections = collectionResults.map((r) => r.data).filter((c): c is Collection => !!c);
   const collectionsKey = collections.map((c) => `${c.id}:${c.name}`).join("|");
   const { data: activeView } = useSavedView(org.id, ws.id, activeViewId);
+  // A link to just "?view=<id>" (alert emails, Activity) opens the saved search with its filters.
+  useEffect(() => {
+    if (activeView && [...params.keys()].every((k) => k === "view")) {
+      const p = toSearchParams(activeView.filterSpec ?? {});
+      p.set("view", activeView.id);
+      setParams(p, { replace: true });
+    }
+  }, [activeView, params, setParams]);
   const tags = useMemo(() => new Map((tagData?.tags ?? []).map((t) => [t.id, t])), [tagData]);
   const people = useMemo(() => new Map(peopleList.map((p) => [p.id, p])), [peopleList]);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- collectionsKey tracks the loaded names
@@ -364,7 +373,10 @@ export function SearchPage() {
               </Tooltip>
             )}
             {activeView ? (
-              <FavoriteButton kind="view" id={activeView.id} name={activeView.name} size="small" />
+              <>
+                <FavoriteButton kind="view" id={activeView.id} name={activeView.name} size="small" />
+                <AlertButton view={activeView} />
+              </>
             ) : onlyCollection ? (
               <FavoriteButton kind={onlyCollection.kind === "notebook" ? "notebook" : "collection"} id={onlyCollection.id} name={onlyCollection.name} size="small" />
             ) : null}

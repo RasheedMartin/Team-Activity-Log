@@ -431,7 +431,7 @@ async def commit(org: str, job_id: str, body: dict = Body(default={}), u: m.User
     if target:
         # Owner request: add to an existing deck or notebook (one you can edit, of the right kind).
         coll = await db.get(m.CollectionRow, target)
-        if not coll or coll.workspace_id != j.workspace_id or coll.kind != ("deck_import" if kind == "pptx" else "notebook"):
+        if not coll or coll.workspace_id != j.workspace_id or coll.kind not in (("deck_import", "deck") if kind == "pptx" else ("notebook",)):
             fail(422, "invalid", "That deck or notebook can't take this import")
         await collection_access.require(db, await ws_ctx(db, u, org, str(j.workspace_id)), coll, "editor")
         start = (await db.scalar(select(func.max(m.CollectionPost.position)).where(m.CollectionPost.collection_id == coll.id)))

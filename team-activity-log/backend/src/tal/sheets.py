@@ -227,6 +227,39 @@ def _table(name: str, grid: list[list]) -> Tab | None:
     return t
 
 
+# ---------------------------------------------------------------- edits
+
+TYPES = ("number", "date", "category", "text")
+TYPE_WORD = {"number": "a number", "date": "a date (like 2026-03-01)"}
+
+
+def as_text(v: object) -> str | None:
+    """A cell as text: 4512.0 reads "4512", not "4512.0"."""
+    if v is None or v == "":
+        return None
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
+    return str(v).strip() or None
+
+
+def coerce(v: object, kind: str) -> tuple[bool, object]:
+    """(ok, value) for a cell typed into a column of this type; empty is always fine (None)."""
+    text = as_text(v)
+    if text is None:
+        return True, None
+    if kind == "number":
+        n = _as_number(v)
+        return (n is not None), n
+    if kind == "date":
+        d = _as_date(text)
+        return (d is not None), d
+    return True, text
+
+
+def infer_type(values: list) -> str:
+    return _infer(values)
+
+
 def parse_sheet(data: bytes, filename: str) -> list[Tab]:
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if ext == "xlsx":

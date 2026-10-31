@@ -1,5 +1,5 @@
 import { TableChartOutlined } from "@mui/icons-material";
-import { Box, Link, Skeleton, Stack, Typography } from "@mui/material";
+import { Box, Link, Skeleton, Stack, Typography, useTheme } from "@mui/material";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import type { ID, SheetChartSpec, SheetColumn, SheetCell } from "../api/contract";
@@ -28,6 +28,8 @@ function useWidth() {
 /** A chart drawn from a tab's rows at the width it's given (height follows, within bounds). */
 export function SheetChartView({ rows, columns, spec, name, interactive = true }: { rows: SheetCell[][]; columns: SheetColumn[]; spec: SheetChartSpec; name?: string; interactive?: boolean }) {
   const { ref, w } = useWidth();
+  // The chart picks light or dark ink and palette from the surface it sits on (dark mode).
+  const surface = useTheme().palette.background.paper;
   const { data, note } = useMemo(() => sheetChartData(rows, columns, spec), [rows, columns, spec]);
   const h = Math.round(Math.min(380, Math.max(220, w * 0.55)));
   const fs = w < 420 ? 11 : 12;
@@ -41,7 +43,7 @@ export function SheetChartView({ rows, columns, spec, name, interactive = true }
           </Stack>
         ) : (
           w > 0 && (
-            <ChartSvg data={data} chartType={spec.type} w={w} h={h} fontSize={fs} interactive={interactive}>
+            <ChartSvg data={data} chartType={spec.type} w={w} h={h} fontSize={fs} background={surface} interactive={interactive}>
               <table>
                 <caption>{name}</caption>
                 <thead><tr><th>{columns.find((c) => c.key === spec.x)?.name}</th>{data.series.map((s) => <th key={s.name}>{s.name}</th>)}</tr></thead>

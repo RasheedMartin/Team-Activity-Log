@@ -150,8 +150,9 @@ export function StatusPill({ status }: { status: "draft" | "hidden" | "deleted" 
 
 export function PageHeader({ title, actions, sub }: { title: ReactNode; actions?: ReactNode; sub?: ReactNode }) {
   return (
-    <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2, flexWrap: "wrap", rowGap: 1 }}>
-      <Box sx={{ flex: 1, minWidth: 0 }}>
+    <Stack direction="row" alignItems="center" spacing={2} useFlexGap sx={{ mb: 2, flexWrap: "wrap", rowGap: 1.5 }}>
+      {/* On a phone the actions wrap below the title rather than squeezing it into a column. */}
+      <Box sx={{ flex: "1 1 280px", minWidth: 0 }}>
         <Typography variant="h2">{title}</Typography>
         {sub && (
           <Typography variant="body2" color="text.secondary">

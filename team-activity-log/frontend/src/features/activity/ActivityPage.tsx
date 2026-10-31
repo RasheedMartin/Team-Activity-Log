@@ -22,7 +22,7 @@ export default function ActivityPage() {
   const binCount = (trash.data?.deleted.length ?? 0) + (trash.data?.hidden.length ?? 0);
   const count = (n: number) => (n ? ` (${n})` : "");
   const tabs = [
-    { to: base, label: `Mentions & replies${count(unread)}` },
+    { to: base, label: `Mentions & alerts${count(unread)}` },
     ...(isMember ? [{ to: `${base}/drafts`, label: `Drafts${count(drafts.data?.length ?? 0)}` }] : []),
     ...(isAdmin ? [{ to: `${base}/recycle-bin`, label: `Recycle bin${count(binCount)}` }] : []),
   ];

@@ -1,4 +1,5 @@
 import { http, HttpResponse, sse } from "msw";
+import { runAlerts } from "../alerts";
 import type { Comment, ID, LiveEvent } from "../../api/contract";
 import { uuidv7 } from "../../lib/ids";
 import { doc, docText, mentionedIds, paragraph } from "../../lib/prosemirror";
@@ -203,6 +204,7 @@ export const discussionHandlers = [
     "/v1/orgs/:org/notifications",
     route(({ cookies, params }) => {
       const ctx = orgCtx(cookies, params.org as string);
+      runAlerts(); // the server's background loop, in the mock
       const orgWs = new Set(db.t.workspaces.filter((w) => w.orgId === ctx.org.id).map((w) => w.id));
       const list = db.t.notifications
         .filter((n) => n.userId === ctx.user.id && orgWs.has(n.workspaceId))
@@ -210,9 +212,10 @@ export const discussionHandlers = [
         .slice(0, 200)
         .map(({ userId: _u, ...n }) => {
           void _u;
-          const c = db.t.comments.get(n.commentId);
+          const c = n.commentId ? db.t.comments.get(n.commentId) : undefined;
           const text = c && !c.deletedAt ? docText(c.doc) : "";
-          return { ...n, postTitle: db.t.posts.get(n.postId)?.title, excerpt: text.length > 140 ? `${text.slice(0, 140)}…` : text };
+          const viewName = n.savedViewId ? db.t.savedViews.get(n.savedViewId)?.name : undefined;
+          return { ...n, postTitle: db.t.posts.get(n.postId)?.title, excerpt: text.length > 140 ? `${text.slice(0, 140)}…` : text, ...(viewName ? { viewName } : {}) };
         });
       return HttpResponse.json(list);
     }, { flaky: false }),

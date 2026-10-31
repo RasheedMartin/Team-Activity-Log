@@ -9,7 +9,7 @@ import type { LibraryKind } from "../../api/contract";
 export const KINDS: Record<LibraryKind, { label: string; plural: string; icon: ReactNode; blurb: string }> = {
   view: { label: "Saved search", plural: "Saved searches", icon: <SavedSearchRounded />, blurb: "A search you rerun. New posts that match show up on their own." },
   // "collection" in the API: since the owner's decision, only imported slide decks.
-  collection: { label: "Deck", plural: "Decks", icon: <SlideshowOutlined />, blurb: "Imported slide decks: one shared copy of each, reviewed and presented here." },
+  collection: { label: "Deck", plural: "Decks", icon: <SlideshowOutlined />, blurb: "Slide decks: build one here slide by slide, or import a PowerPoint. Present or download either." },
   notebook: { label: "Notebook", plural: "Notebooks", icon: <MenuBookOutlined />, blurb: "Posts in an order: write pages, pull posts in, follow a tag, present, share." },
 };
 

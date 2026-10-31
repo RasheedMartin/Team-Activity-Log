@@ -33,10 +33,18 @@ test("write a notebook: empty, write pages, pull in posts, delete with my pages,
   await expect(page.getByText(/^\d+ entr/)).toHaveText(/^2 entries/);
   await expect(page.getByRole("navigation", { name: "Contents" })).toContainText("Draft");
 
-  // Pull in someone else's post.
+  // Pull in someone else's post (picked by author through the API: the newest posts shift with the date).
+  const slug = /\/w\/([^/?]+)/.exec(page.url())![1];
+  const theirs = await page.evaluate(async (slug) => {
+    const me = await (await fetch("/v1/me")).json();
+    const ws = me.orgs[0].workspaces.find((w: { slug: string }) => w.slug === slug).id;
+    const r = await (await fetch(`/v1/orgs/${me.orgs[0].org.id}/workspaces/${ws}/search`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sort: "newest" }) })).json();
+    return r.hits.find((h: { post: { authorId: string; title: string } }) => h.post.authorId !== me.user.id && h.post.title).post.title as string;
+  }, slug);
   await notebookAction(page, "Add posts");
   const dialog = page.getByRole("dialog");
-  await dialog.getByRole("list", { name: "Posts to add" }).getByRole("button").filter({ hasNotText: /Day [12]/ }).first().click();
+  await dialog.getByLabel("Search posts to add").fill(`"${theirs}"`);
+  await dialog.getByRole("list", { name: "Posts to add" }).getByRole("button").filter({ hasText: theirs }).first().click();
   await dialog.getByRole("button", { name: "Add 1" }).click();
   await expect(page.getByText(/^\d+ entr/)).toHaveText(/^3 entries/);
 

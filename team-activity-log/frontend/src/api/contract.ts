@@ -135,13 +135,16 @@ export interface SheetColumn {
   key: string; // "c0", "c1", …
   name: string;
   type: "number" | "date" | "category" | "text";
+  /** The type follows what's typed in (new columns, blank sheets) until someone picks one. */
+  auto?: boolean;
 }
 export type SheetCell = number | string | null; // dates are YYYY-MM-DD
 export interface SheetSummary {
   id: ID;
   workspaceId: ID;
   name: string;
-  filename: string;
+  /** The imported file's name; absent for a sheet made in the app. */
+  filename?: string;
   bytes: number;
   createdBy: ID | null;
   updatedAt: ISODateTime;
@@ -174,13 +177,41 @@ export interface SheetChart {
 }
 export interface Sheet extends SheetSummary {
   canDelete: boolean;
+  /** Its creator and admins edit; everyone (not viewers) too when editAccess is "workspace". */
+  canEdit: boolean;
+  editAccess: "owner" | "workspace";
+  /** An imported file is kept for download; a sheet made in the app has none. */
+  hasOriginal: boolean;
+  updatedBy?: ID;
   tabList: SheetTab[];
   charts: SheetChart[];
 }
 export interface SheetRows {
   columns: SheetColumn[];
+  /** Each row's id (for edits), in the same order as rows. */
+  ids: number[];
   rows: SheetCell[][];
 }
+/** One edit to a tab's rows; a batch applies in order, all or nothing. */
+export type SheetRowOp =
+  | { op: "set"; id: number; col: string; value: SheetCell }
+  /** At the end, after a row, or first. Several after one row: send them last-first. */
+  | { op: "insert"; after?: number; first?: boolean; cells?: Record<string, SheetCell> }
+  | { op: "delete"; ids: number[] };
+/** What an edit changed (only that comes back). `retyped`: a column changed type; reload rows. */
+export interface SheetEditResult {
+  rows: { id: number; cells: SheetCell[] }[];
+  inserted: { id: number; cells: SheetCell[]; after: number | null }[];
+  deleted: number[];
+  columns: SheetColumn[];
+  rowCount: number;
+  retyped: boolean;
+}
+export type SheetColumnOp =
+  | { op: "add"; name?: string; after?: string }
+  | { op: "rename"; key: string; name: string }
+  | { op: "delete"; key: string }
+  | { op: "type"; key: string; type: SheetColumn["type"] };
 
 /**
  * A designed slide: elements placed on a fixed canvas (units are points; 960×540 is 16:9), the
@@ -453,10 +484,15 @@ export interface Comment {
 
 export interface Notification {
   id: ID;
-  kind: "mention" | "reply";
+  /** "alert": new posts match a saved search the person follows (postId is the newest). */
+  kind: "mention" | "reply" | "alert";
   postId: ID;
-  commentId: ID;
-  actorId: ID;
+  commentId?: ID; // not on alerts
+  actorId?: ID; // not on alerts
+  savedViewId?: ID;
+  viewName?: string;
+  /** Alerts: how many new posts matched. */
+  count?: number;
   workspaceId: ID;
   createdAt: ISODateTime;
   readAt?: ISODateTime;
@@ -648,14 +684,21 @@ export interface SavedView {
   /** Pinned by the *caller* (pins are per user; see /pins). */
   pinned: boolean;
   updatedAt?: ISODateTime;
+  /** The caller's alert on this search, if they follow it. */
+  alert?: AlertMode;
 }
+
+/** Hear about new posts matching a saved search: in Activity as they're published, or also by a
+ * daily or weekly email digest. */
+export type AlertMode = "instant" | "daily" | "weekly";
 
 export interface Collection {
   id: ID;
   workspaceId: ID;
   name: string;
   /** "notebook" (owner request): posts stitched into one continuous document, ordered by the user. */
-  kind: "manual" | "deck_import" | "saved_selection" | "notebook";
+  /** "deck_import": slides imported from a file; "deck": built in the app, slide by slide. */
+  kind: "manual" | "deck_import" | "deck" | "saved_selection" | "notebook";
   postIds: ID[];
   createdBy: ID;
   updatedAt?: ISODateTime;
@@ -693,6 +736,8 @@ export interface LibraryItem {
   postCount?: number;
   collectionKind?: Collection["kind"];
   filterSpec?: FilterSpec;
+  /** Saved searches: the caller's alert, if they follow it. */
+  alert?: AlertMode;
   /** Someone else's collection or notebook that was shared with the caller. */
   sharedWithMe?: boolean;
   /** The caller's role on a collection or notebook (owner if they made it). */
