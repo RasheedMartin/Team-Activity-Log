@@ -106,3 +106,21 @@ def test_stripe_form_encoding():
     from tal.billing import _form
 
     assert _form({"a": {"b": 1}, "l": [{"x": 2}], "t": True, "n": None}) == [("a[b]", "1"), ("l[0][x]", "2"), ("t", "true")]
+
+
+async def test_stripe_call_sends_a_form_body(stripe_on, monkeypatch):
+    """The real request path (not stubbed): an async client posts the encoded form to Stripe."""
+    import httpx
+
+    from tal import billing
+
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.update(path=request.url.path, type=request.headers["content-type"], body=request.content.decode())
+        return httpx.Response(200, json={"url": "https://checkout.stripe.com/x"})
+
+    real = httpx.AsyncClient
+    monkeypatch.setattr(billing.httpx, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
+    assert await billing.stripe("POST", "/checkout/sessions", {"line_items": [{"price": "p", "quantity": 2}]}) == {"url": "https://checkout.stripe.com/x"}
+    assert seen == {"path": "/v1/checkout/sessions", "type": "application/x-www-form-urlencoded", "body": "line_items%5B0%5D%5Bprice%5D=p&line_items%5B0%5D%5Bquantity%5D=2"}
