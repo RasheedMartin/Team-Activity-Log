@@ -19,7 +19,7 @@ test("import a workbook: tabs, sort, filter, column stats, search, download", as
   await page.getByLabel("Spreadsheet to import").setInputFiles({ name: "Gain_Runs.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: XLSX });
   await expect(page).toHaveURL(/\/sheets\/[^/]+$/, { timeout: 20_000 });
   await expect(page.getByRole("heading", { name: "Gain_Runs" })).toBeVisible();
-  await expect(page.getByText("Gain_Runs.xlsx · 2 tabs · 43 rows")).toBeVisible();
+  await expect(page.getByText(/^Gain_Runs\.xlsx · 2 tabs · 43 rows · edited/)).toBeVisible();
 
   const grid = page.getByRole("grid");
   const firstRow = grid.getByRole("row").nth(1);

@@ -135,13 +135,16 @@ export interface SheetColumn {
   key: string; // "c0", "c1", …
   name: string;
   type: "number" | "date" | "category" | "text";
+  /** The type follows what's typed in (new columns, blank sheets) until someone picks one. */
+  auto?: boolean;
 }
 export type SheetCell = number | string | null; // dates are YYYY-MM-DD
 export interface SheetSummary {
   id: ID;
   workspaceId: ID;
   name: string;
-  filename: string;
+  /** The imported file's name; absent for a sheet made in the app. */
+  filename?: string;
   bytes: number;
   createdBy: ID | null;
   updatedAt: ISODateTime;
@@ -174,13 +177,41 @@ export interface SheetChart {
 }
 export interface Sheet extends SheetSummary {
   canDelete: boolean;
+  /** Its creator and admins edit; everyone (not viewers) too when editAccess is "workspace". */
+  canEdit: boolean;
+  editAccess: "owner" | "workspace";
+  /** An imported file is kept for download; a sheet made in the app has none. */
+  hasOriginal: boolean;
+  updatedBy?: ID;
   tabList: SheetTab[];
   charts: SheetChart[];
 }
 export interface SheetRows {
   columns: SheetColumn[];
+  /** Each row's id (for edits), in the same order as rows. */
+  ids: number[];
   rows: SheetCell[][];
 }
+/** One edit to a tab's rows; a batch applies in order, all or nothing. */
+export type SheetRowOp =
+  | { op: "set"; id: number; col: string; value: SheetCell }
+  /** At the end, after a row, or first. Several after one row: send them last-first. */
+  | { op: "insert"; after?: number; first?: boolean; cells?: Record<string, SheetCell> }
+  | { op: "delete"; ids: number[] };
+/** What an edit changed (only that comes back). `retyped`: a column changed type; reload rows. */
+export interface SheetEditResult {
+  rows: { id: number; cells: SheetCell[] }[];
+  inserted: { id: number; cells: SheetCell[]; after: number | null }[];
+  deleted: number[];
+  columns: SheetColumn[];
+  rowCount: number;
+  retyped: boolean;
+}
+export type SheetColumnOp =
+  | { op: "add"; name?: string; after?: string }
+  | { op: "rename"; key: string; name: string }
+  | { op: "delete"; key: string }
+  | { op: "type"; key: string; type: SheetColumn["type"] };
 
 /**
  * A designed slide: elements placed on a fixed canvas (units are points; 960×540 is 16:9), the

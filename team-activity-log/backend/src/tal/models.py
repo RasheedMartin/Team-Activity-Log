@@ -337,7 +337,11 @@ class Sheet(Base):
     sha256: Mapped[str] = mapped_column(String(64))
     bytes: Mapped[int] = mapped_column(BigInteger)
     search_text: Mapped[str] = mapped_column(Text, server_default="")
+    # Who may change cells, columns, and the data: its creator and admins ("owner"), or anyone in
+    # the workspace who isn't a viewer ("workspace"). Everyone in the workspace can view.
+    edit_access: Mapped[str] = mapped_column(String(10), server_default="owner")
     created_by: Mapped[uuid.UUID | None] = fk("users.id", "SET NULL", True)
+    updated_by: Mapped[uuid.UUID | None] = fk("users.id", "SET NULL", True, False)
     created_at: Mapped[dt.datetime] = ts(False, True)
     updated_at: Mapped[dt.datetime] = ts(False, True)
 
@@ -348,10 +352,23 @@ class SheetTab(Base):
     sheet_id: Mapped[uuid.UUID] = fk("sheets.id")
     position: Mapped[int] = mapped_column(Integer)
     name: Mapped[str] = mapped_column(String(300))
-    columns: Mapped[list] = mapped_column(JSONB)  # [{key, name, type}]
-    rows: Mapped[list] = mapped_column(JSONB)  # [[value, …], …] in column order
+    # [{key, name, type, auto?}]: key "cN" is index N in every row's cells; keys are never reused,
+    # so adding or deleting a column rewrites no rows. "auto": the type follows what's typed in.
+    columns: Mapped[list] = mapped_column(JSONB)
+    next_col: Mapped[int] = mapped_column(Integer, server_default="0")  # the next new column is "c{next_col}"
     row_count: Mapped[int] = mapped_column(Integer)
     truncated: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+
+
+class SheetRow(Base):
+    """One row of a tab (rows live apart so an edit touches only the rows it changes)."""
+
+    __tablename__ = "sheet_rows"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    tab_id: Mapped[uuid.UUID] = fk("sheet_tabs.id", "CASCADE", False, False)
+    pos: Mapped[float] = mapped_column(Float)  # order within the tab; inserts take a midpoint
+    cells: Mapped[list] = mapped_column(JSONB)  # number | "YYYY-MM-DD" | str | None, by column index
+    __table_args__ = (Index("sheet_rows_tab_pos", "tab_id", "pos"),)
 
 
 class SheetChart(Base):
